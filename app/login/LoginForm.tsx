@@ -18,7 +18,7 @@ export default function LoginForm() {
       </div>
       <div className="space-y-1.5">
         <label className="text-xs font-medium text-slate-500">Email</label>
-        <input name="email" type="email" required className="input" placeholder="admin@ceejay.ph" />
+        <input name="email" type="email" required className="input" placeholder="you@example.com" />
       </div>
       <div className="space-y-1.5">
         <label className="text-xs font-medium text-slate-500">Password</label>

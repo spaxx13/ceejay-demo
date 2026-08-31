@@ -214,7 +214,7 @@ function seed(): Store {
   ];
 
   store.users = [
-    { id: id(store, "user"), name: "Ceejay Owner", email: "admin@ceejay.ph", password: seedPassword("SEED_ADMIN_PASSWORD", "owner admin"), role: "owner_admin", technicianId: null, active: true },
+    { id: id(store, "user"), name: "Ceejay Owner", email: "ceejay.spaxx@yahoo.com", password: seedPassword("SEED_ADMIN_PASSWORD", "owner admin"), role: "owner_admin", technicianId: null, active: true },
     { id: id(store, "user"), name: "Branch Admin", email: "branch@ceejay.ph", password: seedPassword("SEED_BRANCH_PASSWORD", "branch admin"), role: "branch_admin", technicianId: null, active: true },
     { id: id(store, "user"), name: "Marco Reyes", email: "marco@ceejay.ph", password: seedPassword("SEED_TECH_PASSWORD", "technician"), role: "technician", technicianId: store.technicians[0].id, active: true },
   ];

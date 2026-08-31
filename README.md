@@ -28,8 +28,9 @@ deployed instance.
 
 ### Suggested demo flow
 
-1. Log in as **admin@ceejay.ph**, go to **Zones**, add a zone (e.g. "North Quezon
-   City" with City = "Quezon City") and check off a technician to cover it.
+1. Log in as the seeded **Owner Admin** account, go to **Zones**, add a zone
+   (e.g. "North Quezon City" with City = "Quezon City") and check off a
+   technician to cover it.
 2. Open `/request` in a new tab (simulating a customer, no login) and submit a
    request with City = "Quezon City" — it auto-matches the zone and
    round-robin-assigns the technician you just set up.
