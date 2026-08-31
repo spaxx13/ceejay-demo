@@ -4,6 +4,7 @@ import { getRequestById, getLookups, getDeviceModels, getZones, getTechnicians, 
 import StatusBadge from "@/components/StatusBadge";
 import { reassignRequest, changeRequestStatus, updateRequestNotes } from "@/lib/actions";
 import type { ServiceAgreement } from "@/lib/types";
+import { formatDate, formatDateTime } from "@/lib/format";
 
 const RESULT_LABEL: Record<string, string> = { pass: "Pass", fail: "Fail", na: "N/A" };
 
@@ -13,7 +14,7 @@ function AgreementCard({ agreement, title }: { agreement: ServiceAgreement; titl
       <div>
         <h3 className="text-sm font-semibold text-slate-800">{title}</h3>
         <p className="text-xs text-slate-400">
-          Completed by {agreement.technicianName} on {new Date(agreement.completedAt).toLocaleString()}
+          Completed by {agreement.technicianName} on {formatDateTime(agreement.completedAt)}
           {agreement.sentToCustomerAt && " · sent to customer"}
         </p>
       </div>
@@ -134,9 +135,9 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
             <dt className="text-slate-400">Zone</dt>
             <dd className={zone ? "text-slate-800" : "text-amber-700"}>{zone?.name ?? "Unzoned — needs manual triage"}</dd>
             <dt className="text-slate-400">Preferred</dt>
-            <dd className="text-slate-800">{new Date(`${req.preferredDatetime}T00:00:00`).toLocaleDateString()}</dd>
+            <dd className="text-slate-800">{formatDate(req.preferredDatetime)}</dd>
             <dt className="text-slate-400">Submitted</dt>
-            <dd className="text-slate-800">{new Date(req.createdAt).toLocaleString()}</dd>
+            <dd className="text-slate-800">{formatDateTime(req.createdAt)}</dd>
           </dl>
           {req.photoDataUrl && (
             <div>
@@ -234,7 +235,7 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
             {activity.map((a) => (
               <li key={a.id} className="border-b border-slate-200 pb-2 last:border-0">
                 <p className="text-slate-700">{a.message}</p>
-                <p className="text-[11px] text-slate-400">{new Date(a.at).toLocaleString()}</p>
+                <p className="text-[11px] text-slate-400">{formatDateTime(a.at)}</p>
               </li>
             ))}
           </ul>

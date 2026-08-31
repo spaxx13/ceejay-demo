@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getNotifications, getRequests } from "@/lib/db";
 import { markNotificationRead, markAllNotificationsRead } from "@/lib/actions";
+import { formatDateTime } from "@/lib/format";
 
 const ICON: Record<string, string> = { request_in_progress: "🔧", checklist_completed: "✅" };
 
@@ -41,7 +42,7 @@ export default async function AdminNotificationsPage() {
                   <div>
                     <p className="text-sm text-slate-800">{n.message}</p>
                     <p className="mt-0.5 text-xs text-slate-400">
-                      {new Date(n.createdAt).toLocaleString()}
+                      {formatDateTime(n.createdAt)}
                       {req && (
                         <>
                           {" · "}

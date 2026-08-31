@@ -2,6 +2,7 @@ import { getLookups, getBranches, getInventory, getStockMovements } from "@/lib/
 import SimpleLookupTable from "@/components/SimpleLookupTable";
 import InventoryItemManager from "@/components/InventoryItemManager";
 import { createLookup, toggleLookupActive, updateLookupLabel } from "@/lib/actions";
+import { formatDateTime } from "@/lib/format";
 
 export default async function InventoryPage() {
   const [lookups, allBranches, items, stockMovements] = await Promise.all([
@@ -69,7 +70,7 @@ export default async function InventoryPage() {
                   {itemName(m.itemId)} · <span className={m.quantity < 0 ? "text-red-600" : "text-green-700"}>{m.quantity > 0 ? "+" : ""}{m.quantity}</span> ({m.type})
                 </p>
                 <p className="text-[11px] text-slate-400">
-                  {m.reason} — {branchName(m.branchId)} · {m.actor} · {new Date(m.at).toLocaleString()}
+                  {m.reason} — {branchName(m.branchId)} · {m.actor} · {formatDateTime(m.at)}
                 </p>
               </div>
             </li>

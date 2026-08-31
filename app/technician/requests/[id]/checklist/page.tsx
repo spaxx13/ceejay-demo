@@ -5,6 +5,7 @@ import { getRequestById, getLookups, getDeviceModels, getServiceAgreements } fro
 import { getCurrentUser } from "@/lib/auth";
 import ChecklistForm from "@/components/ChecklistForm";
 import type { ServiceAgreement } from "@/lib/types";
+import { formatDateTime } from "@/lib/format";
 
 const RESULT_LABEL: Record<string, string> = { pass: "Pass", fail: "Fail", na: "N/A" };
 
@@ -15,7 +16,7 @@ function AgreementSummary({ agreement, title }: { agreement: ServiceAgreement; t
         <p className="text-2xl">✅</p>
         <p className="text-sm font-semibold text-slate-800">{title}</p>
         <p className="text-xs text-slate-400">
-          Completed {new Date(agreement.completedAt).toLocaleString()}
+          Completed {formatDateTime(agreement.completedAt)}
           {agreement.sentToCustomerAt && " — sent to customer"}
         </p>
       </div>

@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { technicianUpdateStatus } from "@/lib/actions";
 import StatusBadge from "./StatusBadge";
+import { formatDate } from "@/lib/format";
 
 type Status = { id: string; label: string };
 type Req = {
@@ -63,7 +64,7 @@ export default function TechnicianBoard({ requests, statuses }: { requests: Req[
               <img src={r.photoDataUrl} alt="Device issue" className="max-h-56 w-full rounded-lg border border-slate-200 object-contain" />
             )}
             <p className="text-xs text-slate-400">Device: {r.deviceLabel}</p>
-            <p className="text-xs text-slate-400">Preferred: {new Date(`${r.preferredDatetime}T00:00:00`).toLocaleDateString()}</p>
+            <p className="text-xs text-slate-400">Preferred: {formatDate(r.preferredDatetime)}</p>
             {r.customFieldEntries.map((e) => (
               <p key={e.label} className="text-xs text-slate-400">
                 {e.label}: {typeof e.value === "boolean" ? (e.value ? "Yes" : "No") : e.value || "—"}

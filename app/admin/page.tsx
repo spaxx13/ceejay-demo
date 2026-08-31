@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getRequests, getZones, getTechnicians, getLeads, getCustomers, getLookups, getSales, getInventory } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import StatusBadge from "@/components/StatusBadge";
+import { formatDateTime } from "@/lib/format";
 
 export default async function AdminDashboard() {
   const [user, requests, zones, technicians, leads, customers, lookups, sales, inventory] = await Promise.all([
@@ -112,7 +113,7 @@ export default async function AdminDashboard() {
                   </td>
                   <td className="py-2.5 pr-3 text-slate-800">{r.customerName}</td>
                   <td className="py-2.5 pr-3">{status && <StatusBadge label={status.label} />}</td>
-                  <td className="py-2.5 text-slate-500">{new Date(r.createdAt).toLocaleString()}</td>
+                  <td className="py-2.5 text-slate-500">{formatDateTime(r.createdAt)}</td>
                 </tr>
               );
             })}

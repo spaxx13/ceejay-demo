@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getSales, getBranches, getRequestById } from "@/lib/db";
+import { formatDateTime } from "@/lib/format";
 
 const peso = (n: number) => `₱${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
@@ -25,7 +26,7 @@ export default async function SaleDetailPage({ params }: { params: Promise<{ id:
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Ceejay Cellphone Repair Shop</p>
           <p className="text-sm text-slate-500">{branch?.name}</p>
           <p className="mt-2 font-mono text-lg font-bold text-blue-300">{sale.reference}</p>
-          <p className="text-xs text-slate-400">{new Date(sale.createdAt).toLocaleString()}</p>
+          <p className="text-xs text-slate-400">{formatDateTime(sale.createdAt)}</p>
         </div>
 
         <div className="border-t border-slate-200 pt-3 text-sm">

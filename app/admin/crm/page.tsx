@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getLookups, getZones, getLeads, getCustomers } from "@/lib/db";
 import StatusBadge from "@/components/StatusBadge";
 import { createLead, createCustomer } from "@/lib/actions";
+import { formatDate } from "@/lib/format";
 
 export default async function CrmPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
   const { q } = await searchParams;
@@ -156,7 +157,7 @@ export default async function CrmPage({ searchParams }: { searchParams: Promise<
                   <td className="py-2.5 pr-3 text-slate-800">{c.name}</td>
                   <td className="py-2.5 pr-3 text-slate-500">{c.phone || "—"}</td>
                   <td className="py-2.5 pr-3 text-slate-500">{c.source}</td>
-                  <td className="py-2.5 pr-3 text-slate-500">{new Date(c.createdAt).toLocaleDateString()}</td>
+                  <td className="py-2.5 pr-3 text-slate-500">{formatDate(c.createdAt)}</td>
                   <td className="py-2.5">
                     <Link href={`/admin/crm/${c.id}`} className="btn-secondary !px-3 !py-1 text-xs">
                       View

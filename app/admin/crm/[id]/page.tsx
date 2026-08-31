@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { getLeadById, getCustomerById, getLookups, getActivity, getRequests, getZones } from "@/lib/db";
 import StatusBadge from "@/components/StatusBadge";
 import { updateLeadStatus, addLeadNote, convertLeadToCustomer, addCustomerNote } from "@/lib/actions";
+import { formatDate, formatDateTime } from "@/lib/format";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -41,7 +42,7 @@ export default async function CrmDetailPage({ params }: { params: Promise<{ id: 
               <dt className="text-slate-400">Follow-up</dt>
               <dd className="text-slate-800">{lead.followUpDate ?? "—"}</dd>
               <dt className="text-slate-400">Created</dt>
-              <dd className="text-slate-800">{new Date(lead.createdAt).toLocaleString()}</dd>
+              <dd className="text-slate-800">{formatDateTime(lead.createdAt)}</dd>
             </dl>
             {lead.notes && <p className="whitespace-pre-line rounded-md bg-slate-50 p-3 text-sm text-slate-600">{lead.notes}</p>}
 
@@ -98,7 +99,7 @@ export default async function CrmDetailPage({ params }: { params: Promise<{ id: 
             {activity.map((a) => (
               <li key={a.id} className="border-b border-slate-200 pb-2 last:border-0">
                 <p className="text-slate-700">{a.message}</p>
-                <p className="text-[11px] text-slate-400">{new Date(a.at).toLocaleString()}</p>
+                <p className="text-[11px] text-slate-400">{formatDateTime(a.at)}</p>
               </li>
             ))}
           </ul>
@@ -140,7 +141,7 @@ export default async function CrmDetailPage({ params }: { params: Promise<{ id: 
             <dt className="text-slate-400">Source</dt>
             <dd className="text-slate-800">{customer.source}</dd>
             <dt className="text-slate-400">Customer Since</dt>
-            <dd className="text-slate-800">{new Date(customer.createdAt).toLocaleDateString()}</dd>
+            <dd className="text-slate-800">{formatDate(customer.createdAt)}</dd>
           </dl>
           {customer.notes && <p className="whitespace-pre-line rounded-md bg-slate-50 p-3 text-sm text-slate-600">{customer.notes}</p>}
           <form action={addCustomerNote} className="space-y-2">
@@ -164,7 +165,7 @@ export default async function CrmDetailPage({ params }: { params: Promise<{ id: 
                     <Link href={`/admin/requests/${r.id}`} className="font-mono text-xs text-blue-300 hover:underline">
                       {r.reference}
                     </Link>
-                    <p className="text-xs text-slate-400">{new Date(r.createdAt).toLocaleDateString()}</p>
+                    <p className="text-xs text-slate-400">{formatDate(r.createdAt)}</p>
                   </div>
                   {status && <StatusBadge label={status.label} />}
                 </li>
@@ -181,7 +182,7 @@ export default async function CrmDetailPage({ params }: { params: Promise<{ id: 
           {activity.map((a) => (
             <li key={a.id} className="border-b border-slate-200 pb-2 last:border-0">
               <p className="text-slate-700">{a.message}</p>
-              <p className="text-[11px] text-slate-400">{new Date(a.at).toLocaleString()}</p>
+              <p className="text-[11px] text-slate-400">{formatDateTime(a.at)}</p>
             </li>
           ))}
         </ul>

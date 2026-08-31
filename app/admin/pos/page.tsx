@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getBranches, getSales } from "@/lib/db";
+import { formatDateTime } from "@/lib/format";
 
 const peso = (n: number) => `₱${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
@@ -97,7 +98,7 @@ export default async function PosPage({
                 <td className="py-3 pr-3 text-slate-800">{s.customerName}</td>
                 <td className="py-3 pr-3 text-slate-500 uppercase">{s.paymentMethod}</td>
                 <td className="py-3 pr-3 font-semibold text-slate-800">{peso(s.total)}</td>
-                <td className="py-3 pr-3 text-slate-500">{new Date(s.createdAt).toLocaleString()}</td>
+                <td className="py-3 pr-3 text-slate-500">{formatDateTime(s.createdAt)}</td>
                 <td className="py-3">
                   <Link href={`/admin/pos/${s.id}`} className="btn-secondary !px-3 !py-1 text-xs">
                     View

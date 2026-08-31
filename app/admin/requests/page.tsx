@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getLookups, getZones, getTechnicians, getRequests } from "@/lib/db";
 import StatusBadge from "@/components/StatusBadge";
+import { formatDate } from "@/lib/format";
 
 export default async function RequestsPage({
   searchParams,
@@ -112,7 +113,7 @@ export default async function RequestsPage({
                   {r.zoneId ? labelFor(r.zoneId, zones) : <span className="text-amber-700">Unzoned</span>}
                 </td>
                 <td className="py-3 pr-3 text-slate-500">{r.assignedTechnicianId ? labelFor(r.assignedTechnicianId, technicians) : <span className="text-amber-700">Unassigned</span>}</td>
-                <td className="py-3 pr-3 text-slate-500">{new Date(`${r.preferredDatetime}T00:00:00`).toLocaleDateString()}</td>
+                <td className="py-3 pr-3 text-slate-500">{formatDate(r.preferredDatetime)}</td>
                 <td className="py-3 pr-3">
                   <StatusBadge label={labelFor(r.statusId, statuses)} />
                 </td>
