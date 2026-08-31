@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { store } from "@/lib/store";
+import { getUsers, getTechnicians } from "@/lib/db";
 import { requireRole } from "@/lib/auth";
 import SettingsTabs from "@/components/SettingsTabs";
 import UserManager from "@/components/UserManager";
@@ -8,7 +8,8 @@ export default async function UsersPage() {
   const actor = await requireRole("owner_admin");
   if (!actor) redirect("/admin");
 
-  const users = store.users.map((u) => ({
+  const [allUsers, allTechnicians] = await Promise.all([getUsers(), getTechnicians()]);
+  const users = allUsers.map((u) => ({
     id: u.id,
     name: u.name,
     email: u.email,
@@ -16,7 +17,7 @@ export default async function UsersPage() {
     technicianId: u.technicianId,
     active: u.active,
   }));
-  const technicians = store.technicians.filter((t) => t.active).map((t) => ({ id: t.id, name: t.name }));
+  const technicians = allTechnicians.filter((t) => t.active).map((t) => ({ id: t.id, name: t.name }));
 
   return (
     <div className="space-y-6">

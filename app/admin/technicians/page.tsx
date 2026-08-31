@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { store } from "@/lib/store";
+import { getTechnicians, getBranches, getZones } from "@/lib/db";
 import { requireRole } from "@/lib/auth";
 import SettingsTabs from "@/components/SettingsTabs";
 import TechnicianManager from "@/components/TechnicianManager";
@@ -7,7 +7,8 @@ import TechnicianManager from "@/components/TechnicianManager";
 export default async function TechniciansPage() {
   if (!(await requireRole("owner_admin"))) redirect("/admin");
 
-  const technicians = store.technicians.map((t) => ({
+  const [allTechnicians, allBranches, allZones] = await Promise.all([getTechnicians(), getBranches(), getZones()]);
+  const technicians = allTechnicians.map((t) => ({
     id: t.id,
     name: t.name,
     contactNumber: t.contactNumber,
@@ -17,8 +18,8 @@ export default async function TechniciansPage() {
     zoneIds: t.zoneIds,
     active: t.active,
   }));
-  const branches = store.branches.filter((b) => b.active).map((b) => ({ id: b.id, name: b.name }));
-  const zones = store.zones.filter((z) => z.active).map((z) => ({ id: z.id, name: z.name }));
+  const branches = allBranches.filter((b) => b.active).map((b) => ({ id: b.id, name: b.name }));
+  const zones = allZones.filter((z) => z.active).map((z) => ({ id: z.id, name: z.name }));
 
   return (
     <div className="space-y-6">

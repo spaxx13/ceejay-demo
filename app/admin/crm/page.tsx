@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { store } from "@/lib/store";
+import { getLookups, getZones, getLeads, getCustomers } from "@/lib/db";
 import StatusBadge from "@/components/StatusBadge";
 import { createLead, createCustomer } from "@/lib/actions";
 
@@ -7,12 +7,12 @@ export default async function CrmPage({ searchParams }: { searchParams: Promise<
   const { q } = await searchParams;
   const query = (q ?? "").toLowerCase();
 
-  const leadStatuses = store.lookups.filter((l) => l.kind === "lead_status").sort((a, b) => a.order - b.order);
-  const sources = store.lookups.filter((l) => l.kind === "customer_source" && l.active).sort((a, b) => a.order - b.order);
-  const zones = store.zones;
+  const [lookups, zones, allLeads, allCustomers] = await Promise.all([getLookups(), getZones(), getLeads(), getCustomers()]);
+  const leadStatuses = lookups.filter((l) => l.kind === "lead_status").sort((a, b) => a.order - b.order);
+  const sources = lookups.filter((l) => l.kind === "customer_source" && l.active).sort((a, b) => a.order - b.order);
 
-  let leads = [...store.leads].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
-  let customers = [...store.customers].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+  let leads = [...allLeads].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+  let customers = [...allCustomers].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
   if (query) {
     leads = leads.filter((l) => l.name.toLowerCase().includes(query) || l.phone.includes(query));
     customers = customers.filter((c) => c.name.toLowerCase().includes(query) || c.phone.includes(query));

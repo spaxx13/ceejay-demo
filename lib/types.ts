@@ -4,7 +4,6 @@ export type User = {
   id: string;
   name: string;
   email: string;
-  password: string; // plaintext demo-only auth, no DB
   role: Role;
   technicianId: string | null; // set when role === "technician"
   active: boolean;

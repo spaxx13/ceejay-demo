@@ -1,11 +1,12 @@
 import Link from "next/link";
-import { store } from "@/lib/store";
+import { getNotifications, getRequests } from "@/lib/db";
 import { markNotificationRead, markAllNotificationsRead } from "@/lib/actions";
 
 const ICON: Record<string, string> = { request_in_progress: "🔧", checklist_completed: "✅" };
 
 export default async function AdminNotificationsPage() {
-  const notifications = [...store.notifications].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+  const [allNotifications, requests] = await Promise.all([getNotifications(), getRequests()]);
+  const notifications = [...allNotifications].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
   const unreadCount = notifications.filter((n) => !n.readAt).length;
 
   return (
@@ -29,7 +30,7 @@ export default async function AdminNotificationsPage() {
       ) : (
         <div className="space-y-2">
           {notifications.map((n) => {
-            const req = store.requests.find((r) => r.id === n.requestId);
+            const req = requests.find((r) => r.id === n.requestId);
             return (
               <div
                 key={n.id}

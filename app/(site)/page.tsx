@@ -1,15 +1,15 @@
 import Link from "next/link";
-import { store } from "@/lib/store";
+import { getSiteContent, getLookups, getBranches } from "@/lib/db";
 import InShopIllustration from "@/components/site/InShopIllustration";
 import HomeServiceIllustration from "@/components/site/HomeServiceIllustration";
 
-export default function HomePage() {
-  const sc = store.siteContent;
-  const serviceTypes = store.lookups
+export default async function HomePage() {
+  const [sc, lookups, allBranches] = await Promise.all([getSiteContent(), getLookups(), getBranches()]);
+  const serviceTypes = lookups
     .filter((l) => l.kind === "service_type" && l.active)
     .sort((a, b) => a.order - b.order)
     .slice(0, 6);
-  const branches = store.branches.filter((b) => b.active).slice(0, 3);
+  const branches = allBranches.filter((b) => b.active).slice(0, 3);
 
   return (
     <main>

@@ -1,9 +1,9 @@
 import Link from "next/link";
-import { store } from "@/lib/store";
+import { getBranches } from "@/lib/db";
 import Logo from "@/components/Logo";
 
-export default function SiteFooter() {
-  const branches = store.branches.filter((b) => b.active);
+export default async function SiteFooter() {
+  const branches = (await getBranches()).filter((b) => b.active);
 
   return (
     <footer className="border-t border-slate-200 bg-slate-50">

@@ -1,18 +1,25 @@
-import { store } from "@/lib/store";
+import { getLookups, getRequests, getDeviceModels, getServiceAgreements, getCustomFormFields } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import TechnicianBoard from "@/components/TechnicianBoard";
 
 export default async function TechnicianPage() {
-  const user = await getCurrentUser();
-  const statuses = store.lookups.filter((l) => l.kind === "request_status").sort((a, b) => a.order - b.order);
+  const [user, lookups, allRequests, deviceModels, agreements, customFormFields] = await Promise.all([
+    getCurrentUser(),
+    getLookups(),
+    getRequests(),
+    getDeviceModels(),
+    getServiceAgreements(),
+    getCustomFormFields(),
+  ]);
+  const statuses = lookups.filter((l) => l.kind === "request_status").sort((a, b) => a.order - b.order);
 
-  const myRequests = store.requests
+  const myRequests = allRequests
     .filter((r) => r.assignedTechnicianId === user?.technicianId)
     .sort((a, b) => (a.preferredDatetime < b.preferredDatetime ? -1 : 1))
     .map((r) => {
-      const brand = store.lookups.find((l) => l.id === r.deviceBrandId);
-      const model = store.deviceModels.find((m) => m.id === r.deviceModelId);
-      const serviceType = store.lookups.find((l) => l.id === r.serviceTypeId);
+      const brand = lookups.find((l) => l.id === r.deviceBrandId);
+      const model = deviceModels.find((m) => m.id === r.deviceModelId);
+      const serviceType = lookups.find((l) => l.id === r.serviceTypeId);
       const status = statuses.find((s) => s.id === r.statusId);
       return {
         id: r.id,
@@ -31,10 +38,10 @@ export default async function TechnicianPage() {
         statusId: r.statusId,
         adminNotes: r.adminNotes,
         inProgress: status?.label === "In Progress",
-        hasPreAgreement: store.serviceAgreements.some((a) => a.requestId === r.id && a.phase === "pre_repair"),
-        hasPostAgreement: store.serviceAgreements.some((a) => a.requestId === r.id && a.phase === "post_repair"),
+        hasPreAgreement: agreements.some((a) => a.requestId === r.id && a.phase === "pre_repair"),
+        hasPostAgreement: agreements.some((a) => a.requestId === r.id && a.phase === "post_repair"),
         customFieldEntries: Object.entries(r.customFields)
-          .map(([key, value]) => ({ label: store.customFormFields.find((f) => f.key === key)?.label, value }))
+          .map(([key, value]) => ({ label: customFormFields.find((f) => f.key === key)?.label, value }))
           .filter((e): e is { label: string; value: string | boolean } => !!e.label),
       };
     });

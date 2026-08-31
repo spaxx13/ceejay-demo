@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { store } from "@/lib/store";
+import { getSiteContent } from "@/lib/db";
 import { requireRole } from "@/lib/auth";
 import SettingsTabs from "@/components/SettingsTabs";
 import { updateSiteContent } from "@/lib/actions";
@@ -8,7 +8,7 @@ import { updateSiteContent } from "@/lib/actions";
 export default async function SiteContentPage() {
   if (!(await requireRole("owner_admin"))) redirect("/admin");
 
-  const sc = store.siteContent;
+  const sc = await getSiteContent();
 
   return (
     <div className="space-y-6">

@@ -1,16 +1,18 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { store } from "@/lib/store";
+import { getSales, getBranches, getRequestById } from "@/lib/db";
 
 const peso = (n: number) => `₱${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 export default async function SaleDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const sale = store.sales.find((s) => s.id === id);
+  const sales = await getSales();
+  const sale = sales.find((s) => s.id === id);
   if (!sale) notFound();
 
-  const branch = store.branches.find((b) => b.id === sale.branchId);
-  const linkedRequest = sale.homeServiceRequestId ? store.requests.find((r) => r.id === sale.homeServiceRequestId) : null;
+  const branches = await getBranches();
+  const branch = branches.find((b) => b.id === sale.branchId);
+  const linkedRequest = sale.homeServiceRequestId ? await getRequestById(sale.homeServiceRequestId) : null;
 
   return (
     <div className="mx-auto max-w-lg space-y-6">

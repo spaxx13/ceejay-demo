@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { store } from "@/lib/store";
+import { getRequestFormContent, getCustomFormFields } from "@/lib/db";
 import { requireRole } from "@/lib/auth";
 import SettingsTabs from "@/components/SettingsTabs";
 import FieldManager from "@/components/FieldManager";
@@ -9,8 +9,8 @@ import { updateRequestFormContent } from "@/lib/actions";
 export default async function RequestFormContentPage() {
   if (!(await requireRole("owner_admin"))) redirect("/admin");
 
-  const rc = store.requestFormContent;
-  const fields = [...store.customFormFields].sort((a, b) => a.order - b.order);
+  const [rc, customFormFields] = await Promise.all([getRequestFormContent(), getCustomFormFields()]);
+  const fields = [...customFormFields].sort((a, b) => a.order - b.order);
 
   return (
     <div className="space-y-6">

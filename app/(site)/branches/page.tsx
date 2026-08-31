@@ -1,8 +1,8 @@
 import Link from "next/link";
-import { store } from "@/lib/store";
+import { getBranches } from "@/lib/db";
 
-export default function BranchesPage() {
-  const branches = store.branches.filter((b) => b.active);
+export default async function BranchesPage() {
+  const branches = (await getBranches()).filter((b) => b.active);
 
   return (
     <main>

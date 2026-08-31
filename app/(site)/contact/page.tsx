@@ -1,8 +1,8 @@
-import { store } from "@/lib/store";
+import { getBranches } from "@/lib/db";
 import ContactForm from "@/components/site/ContactForm";
 
-export default function ContactPage() {
-  const branches = store.branches.filter((b) => b.active);
+export default async function ContactPage() {
+  const branches = (await getBranches()).filter((b) => b.active);
 
   return (
     <main className="grid-bg px-4 py-14 sm:px-6">

@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { store } from "@/lib/store";
+import { getLookups } from "@/lib/db";
 import { requireRole } from "@/lib/auth";
 import SettingsTabs from "@/components/SettingsTabs";
 import SimpleLookupTable from "@/components/SimpleLookupTable";
@@ -8,8 +8,9 @@ import { createLookup, toggleLookupActive, updateLookupLabel } from "@/lib/actio
 export default async function ServiceTypesPage() {
   if (!(await requireRole("owner_admin"))) redirect("/admin");
 
-  const serviceTypes = store.lookups.filter((l) => l.kind === "service_type").sort((a, b) => a.order - b.order);
-  const sources = store.lookups.filter((l) => l.kind === "customer_source").sort((a, b) => a.order - b.order);
+  const lookups = await getLookups();
+  const serviceTypes = lookups.filter((l) => l.kind === "service_type").sort((a, b) => a.order - b.order);
+  const sources = lookups.filter((l) => l.kind === "customer_source").sort((a, b) => a.order - b.order);
 
   return (
     <div className="space-y-6">

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { store } from "@/lib/store";
+import { getBranches, getZones, getTechnicians, getLookups, getUsers } from "@/lib/db";
 import { requireRole } from "@/lib/auth";
 
 const GROUPS = [
@@ -37,29 +37,26 @@ const GROUPS = [
   },
 ];
 
-function countFor(href: string) {
-  switch (href) {
-    case "/admin/branches":
-      return store.branches.filter((b) => b.active).length;
-    case "/admin/zones":
-      return store.zones.filter((z) => z.active).length;
-    case "/admin/technicians":
-      return store.technicians.filter((t) => t.active).length;
-    case "/admin/device-catalog":
-      return store.lookups.filter((l) => l.kind === "device_brand" && l.active).length;
-    case "/admin/service-types":
-      return store.lookups.filter((l) => l.kind === "service_type" && l.active).length;
-    case "/admin/statuses":
-      return store.lookups.filter((l) => (l.kind === "lead_status" || l.kind === "request_status") && l.active).length;
-    case "/admin/users":
-      return store.users.filter((u) => u.active).length;
-    default:
-      return null;
-  }
-}
-
 export default async function SettingsHubPage() {
   if (!(await requireRole("owner_admin"))) redirect("/admin");
+
+  const [branches, zones, technicians, lookups, users] = await Promise.all([
+    getBranches(),
+    getZones(),
+    getTechnicians(),
+    getLookups(),
+    getUsers(),
+  ]);
+  const counts: Record<string, number> = {
+    "/admin/branches": branches.filter((b) => b.active).length,
+    "/admin/zones": zones.filter((z) => z.active).length,
+    "/admin/technicians": technicians.filter((t) => t.active).length,
+    "/admin/device-catalog": lookups.filter((l) => l.kind === "device_brand" && l.active).length,
+    "/admin/service-types": lookups.filter((l) => l.kind === "service_type" && l.active).length,
+    "/admin/statuses": lookups.filter((l) => (l.kind === "lead_status" || l.kind === "request_status") && l.active).length,
+    "/admin/users": users.filter((u) => u.active).length,
+  };
+  const countFor = (href: string) => counts[href] ?? null;
 
   return (
     <div className="space-y-8">

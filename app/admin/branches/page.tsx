@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { store } from "@/lib/store";
+import { getBranches } from "@/lib/db";
 import { requireRole } from "@/lib/auth";
 import SettingsTabs from "@/components/SettingsTabs";
 import BranchManager from "@/components/BranchManager";
@@ -7,7 +7,7 @@ import BranchManager from "@/components/BranchManager";
 export default async function BranchesPage() {
   if (!(await requireRole("owner_admin"))) redirect("/admin");
 
-  const branches = store.branches.map((b) => ({
+  const branches = (await getBranches()).map((b) => ({
     id: b.id,
     name: b.name,
     address: b.address,

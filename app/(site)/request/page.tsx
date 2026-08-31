@@ -1,20 +1,25 @@
-import { store } from "@/lib/store";
+import { getLookups, getDeviceModels, getRequestFormContent, getCustomFormFields } from "@/lib/db";
 import HomeServiceForm from "@/components/HomeServiceForm";
 
-export default function RequestPage() {
-  const brands = store.lookups
+export default async function RequestPage() {
+  const [lookups, deviceModels, content, customFormFields] = await Promise.all([
+    getLookups(),
+    getDeviceModels(),
+    getRequestFormContent(),
+    getCustomFormFields(),
+  ]);
+  const brands = lookups
     .filter((l) => l.kind === "device_brand" && l.active)
     .sort((a, b) => a.order - b.order)
     .map((l) => ({ id: l.id, label: l.label }));
-  const models = store.deviceModels
+  const models = deviceModels
     .filter((m) => m.active)
     .map((m) => ({ id: m.id, brandId: m.brandId, name: m.name }));
-  const serviceTypes = store.lookups
+  const serviceTypes = lookups
     .filter((l) => l.kind === "service_type" && l.active)
     .sort((a, b) => a.order - b.order)
     .map((l) => ({ id: l.id, label: l.label }));
-  const content = store.requestFormContent;
-  const fields = store.customFormFields.filter((f) => f.active).sort((a, b) => a.order - b.order);
+  const fields = customFormFields.filter((f) => f.active).sort((a, b) => a.order - b.order);
 
   return (
     <main className="grid-bg px-4 py-10 sm:px-6">

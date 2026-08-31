@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
-import { store } from "@/lib/store";
+import { getNotifications } from "@/lib/db";
 import AdminNav from "@/components/AdminNav";
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -8,7 +8,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   if (!user) redirect("/login");
   if (user.role === "technician") redirect("/technician");
 
-  const unreadCount = store.notifications.filter((n) => !n.readAt).length;
+  const unreadCount = (await getNotifications()).filter((n) => !n.readAt).length;
 
   return (
     <div className="min-h-screen md:flex">

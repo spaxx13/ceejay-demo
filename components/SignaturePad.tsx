@@ -11,18 +11,32 @@ export default function SignaturePad({ name, label }: { name: string; label: str
   const [dataUrl, setDataUrl] = useState("");
   const [hasDrawn, setHasDrawn] = useState(false);
 
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
+  // Sizes the canvas's backing bitmap to match its current CSS layout size.
+  // Re-checked (not just run once on mount) because if this component
+  // mounts before layout has settled — e.g. a still-hidden/backgrounded
+  // tab — clientWidth/clientHeight can read 0 at mount time, permanently
+  // leaving the bitmap at 0px wide with no later recovery otherwise.
+  function ensureSized(canvas: HTMLCanvasElement) {
     const ratio = window.devicePixelRatio || 1;
-    canvas.width = canvas.clientWidth * ratio;
-    canvas.height = canvas.clientHeight * ratio;
+    const targetWidth = Math.round(canvas.clientWidth * ratio);
+    const targetHeight = Math.round(canvas.clientHeight * ratio);
+    if (targetWidth === 0 || targetHeight === 0) return false;
+    if (canvas.width === targetWidth && canvas.height === targetHeight) return true;
+    canvas.width = targetWidth;
+    canvas.height = targetHeight;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return false;
     ctx.scale(ratio, ratio);
     ctx.lineWidth = 2;
     ctx.lineCap = "round";
     ctx.strokeStyle = "#1d1d1f";
+    return true;
+  }
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    ensureSized(canvas);
   }, []);
 
   function pointFromEvent(e: React.PointerEvent<HTMLCanvasElement>) {
@@ -31,7 +45,10 @@ export default function SignaturePad({ name, label }: { name: string; label: str
   }
 
   function start(e: React.PointerEvent<HTMLCanvasElement>) {
-    const ctx = canvasRef.current?.getContext("2d");
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    ensureSized(canvas);
+    const ctx = canvas.getContext("2d");
     if (!ctx) return;
     drawing.current = true;
     const { x, y } = pointFromEvent(e);

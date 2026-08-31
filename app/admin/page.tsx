@@ -1,25 +1,35 @@
 import Link from "next/link";
-import { store } from "@/lib/store";
+import { getRequests, getZones, getTechnicians, getLeads, getCustomers, getLookups, getSales, getInventory } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import StatusBadge from "@/components/StatusBadge";
 
 export default async function AdminDashboard() {
-  const user = await getCurrentUser();
-  const totalRequests = store.requests.length;
-  const unassigned = store.requests.filter((r) => !r.assignedTechnicianId);
-  const unzoned = store.requests.filter((r) => r.unzoned).length;
-  const activeZones = store.zones.filter((z) => z.active).length;
-  const activeTechs = store.technicians.filter((t) => t.active).length;
-  const totalLeads = store.leads.length;
-  const totalCustomers = store.customers.length;
-  const statuses = store.lookups.filter((l) => l.kind === "request_status");
+  const [user, requests, zones, technicians, leads, customers, lookups, sales, inventory] = await Promise.all([
+    getCurrentUser(),
+    getRequests(),
+    getZones(),
+    getTechnicians(),
+    getLeads(),
+    getCustomers(),
+    getLookups(),
+    getSales(),
+    getInventory(),
+  ]);
+  const totalRequests = requests.length;
+  const unassigned = requests.filter((r) => !r.assignedTechnicianId);
+  const unzoned = requests.filter((r) => r.unzoned).length;
+  const activeZones = zones.filter((z) => z.active).length;
+  const activeTechs = technicians.filter((t) => t.active).length;
+  const totalLeads = leads.length;
+  const totalCustomers = customers.length;
+  const statuses = lookups.filter((l) => l.kind === "request_status");
 
   const today = new Date().toISOString().slice(0, 10);
-  const todaySales = store.sales.filter((s) => s.createdAt.startsWith(today));
+  const todaySales = sales.filter((s) => s.createdAt.startsWith(today));
   const todayRevenue = todaySales.reduce((sum, s) => sum + s.total, 0);
-  const lowStock = store.inventory.filter((i) => i.active && i.quantityOnHand <= i.reorderLevel).length;
+  const lowStock = inventory.filter((i) => i.active && i.quantityOnHand <= i.reorderLevel).length;
 
-  const recent = [...store.requests].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)).slice(0, 6);
+  const recent = [...requests].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)).slice(0, 6);
 
   const stats = [
     { label: "Today's Revenue", value: `₱${todayRevenue.toLocaleString()}`, href: "/admin/pos" },

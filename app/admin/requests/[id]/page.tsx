@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { store } from "@/lib/store";
+import { getRequestById, getLookups, getDeviceModels, getZones, getTechnicians, getActivity, getCustomFormFields, getServiceAgreements } from "@/lib/db";
 import StatusBadge from "@/components/StatusBadge";
 import { reassignRequest, changeRequestStatus, updateRequestNotes } from "@/lib/actions";
 import type { ServiceAgreement } from "@/lib/types";
@@ -68,25 +68,34 @@ function AgreementCard({ agreement, title }: { agreement: ServiceAgreement; titl
 
 export default async function RequestDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const req = store.requests.find((r) => r.id === id);
+  const req = await getRequestById(id);
   if (!req) notFound();
 
-  const statuses = store.lookups.filter((l) => l.kind === "request_status").sort((a, b) => a.order - b.order);
-  const serviceType = store.lookups.find((l) => l.id === req.serviceTypeId);
-  const brand = store.lookups.find((l) => l.id === req.deviceBrandId);
-  const model = store.deviceModels.find((m) => m.id === req.deviceModelId);
-  const zone = store.zones.find((z) => z.id === req.zoneId);
-  const eligibleTechs = zone ? store.technicians.filter((t) => t.active && t.zoneIds.includes(zone.id)) : [];
-  const allTechs = store.technicians.filter((t) => t.active);
+  const [lookups, deviceModels, zones, technicians, activityLog, customFormFields, agreements] = await Promise.all([
+    getLookups(),
+    getDeviceModels(),
+    getZones(),
+    getTechnicians(),
+    getActivity(),
+    getCustomFormFields(),
+    getServiceAgreements(),
+  ]);
+  const statuses = lookups.filter((l) => l.kind === "request_status").sort((a, b) => a.order - b.order);
+  const serviceType = lookups.find((l) => l.id === req.serviceTypeId);
+  const brand = lookups.find((l) => l.id === req.deviceBrandId);
+  const model = deviceModels.find((m) => m.id === req.deviceModelId);
+  const zone = zones.find((z) => z.id === req.zoneId);
+  const eligibleTechs = zone ? technicians.filter((t) => t.active && t.zoneIds.includes(zone.id)) : [];
+  const allTechs = technicians.filter((t) => t.active);
   const currentStatus = statuses.find((s) => s.id === req.statusId);
-  const activity = store.activity
+  const activity = activityLog
     .filter((a) => a.entityType === "home_service_request" && a.entityId === req.id)
     .sort((a, b) => (a.at < b.at ? 1 : -1));
   const customFieldEntries = Object.entries(req.customFields)
-    .map(([key, value]) => ({ field: store.customFormFields.find((f) => f.key === key), value }))
+    .map(([key, value]) => ({ field: customFormFields.find((f) => f.key === key), value }))
     .filter((e) => e.field);
-  const preAgreement = store.serviceAgreements.find((a) => a.requestId === req.id && a.phase === "pre_repair");
-  const postAgreement = store.serviceAgreements.find((a) => a.requestId === req.id && a.phase === "post_repair");
+  const preAgreement = agreements.find((a) => a.requestId === req.id && a.phase === "pre_repair");
+  const postAgreement = agreements.find((a) => a.requestId === req.id && a.phase === "post_repair");
 
   return (
     <div className="space-y-6">

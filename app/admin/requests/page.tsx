@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { store } from "@/lib/store";
+import { getLookups, getZones, getTechnicians, getRequests } from "@/lib/db";
 import StatusBadge from "@/components/StatusBadge";
 
 export default async function RequestsPage({
@@ -8,11 +8,10 @@ export default async function RequestsPage({
   searchParams: Promise<{ status?: string; zone?: string; technician?: string; date?: string; unassigned?: string }>;
 }) {
   const sp = await searchParams;
-  const statuses = store.lookups.filter((l) => l.kind === "request_status").sort((a, b) => a.order - b.order);
-  const zones = store.zones;
-  const technicians = store.technicians;
+  const [lookups, zones, technicians, allRequests] = await Promise.all([getLookups(), getZones(), getTechnicians(), getRequests()]);
+  const statuses = lookups.filter((l) => l.kind === "request_status").sort((a, b) => a.order - b.order);
 
-  let requests = [...store.requests];
+  let requests = [...allRequests];
   if (sp.status) requests = requests.filter((r) => r.statusId === sp.status);
   if (sp.zone) requests = requests.filter((r) => r.zoneId === sp.zone);
   if (sp.technician) requests = requests.filter((r) => r.assignedTechnicianId === sp.technician);
@@ -20,7 +19,7 @@ export default async function RequestsPage({
   if (sp.unassigned === "1") requests = requests.filter((r) => !r.assignedTechnicianId);
   requests.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
 
-  const unassignedCount = store.requests.filter((r) => !r.assignedTechnicianId).length;
+  const unassignedCount = allRequests.filter((r) => !r.assignedTechnicianId).length;
 
   function labelFor(id: string | null, list: { id: string; label?: string; name?: string }[]) {
     if (!id) return "—";

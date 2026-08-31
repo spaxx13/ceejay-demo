@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { store } from "@/lib/store";
+import { getLookups } from "@/lib/db";
 import { requireRole } from "@/lib/auth";
 import SettingsTabs from "@/components/SettingsTabs";
 import StatusTable from "@/components/StatusTable";
@@ -8,8 +8,9 @@ import { createLookup, toggleLookupActive, reorderLookup } from "@/lib/actions";
 export default async function StatusesPage() {
   if (!(await requireRole("owner_admin"))) redirect("/admin");
 
-  const leadStatuses = store.lookups.filter((l) => l.kind === "lead_status").sort((a, b) => a.order - b.order);
-  const requestStatuses = store.lookups.filter((l) => l.kind === "request_status").sort((a, b) => a.order - b.order);
+  const lookups = await getLookups();
+  const leadStatuses = lookups.filter((l) => l.kind === "lead_status").sort((a, b) => a.order - b.order);
+  const requestStatuses = lookups.filter((l) => l.kind === "request_status").sort((a, b) => a.order - b.order);
 
   return (
     <div className="space-y-6">

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { store } from "@/lib/store";
+import { getBranches, getSales } from "@/lib/db";
 
 const peso = (n: number) => `₱${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
@@ -9,15 +9,15 @@ export default async function PosPage({
   searchParams: Promise<{ branch?: string; date?: string }>;
 }) {
   const sp = await searchParams;
-  const branches = store.branches;
+  const [branches, allSales] = await Promise.all([getBranches(), getSales()]);
 
-  let sales = [...store.sales];
+  let sales = [...allSales];
   if (sp.branch) sales = sales.filter((s) => s.branchId === sp.branch);
   if (sp.date) sales = sales.filter((s) => s.createdAt.startsWith(sp.date!));
   sales.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
 
   const today = new Date().toISOString().slice(0, 10);
-  const todaySales = store.sales.filter((s) => s.createdAt.startsWith(today));
+  const todaySales = allSales.filter((s) => s.createdAt.startsWith(today));
   const todayTotal = todaySales.reduce((sum, s) => sum + s.total, 0);
 
   function branchName(id: string) {
@@ -47,7 +47,7 @@ export default async function PosPage({
         </div>
         <div className="card">
           <p className="text-xs text-slate-400">All-Time Sales</p>
-          <p className="mt-1 text-2xl font-bold text-slate-900">{store.sales.length}</p>
+          <p className="mt-1 text-2xl font-bold text-slate-900">{allSales.length}</p>
         </div>
       </div>
 

@@ -1,18 +1,21 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { store } from "@/lib/store";
+import { getLeadById, getCustomerById, getLookups, getActivity, getRequests, getZones } from "@/lib/db";
 import StatusBadge from "@/components/StatusBadge";
 import { updateLeadStatus, addLeadNote, convertLeadToCustomer, addCustomerNote } from "@/lib/actions";
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export default async function CrmDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  if (!UUID_RE.test(id)) notFound();
 
-  if (id.startsWith("lead-")) {
-    const lead = store.leads.find((l) => l.id === id);
-    if (!lead) notFound();
-    const leadStatuses = store.lookups.filter((l) => l.kind === "lead_status").sort((a, b) => a.order - b.order);
+  const lead = await getLeadById(id);
+  if (lead) {
+    const [lookups, activityLog] = await Promise.all([getLookups(), getActivity()]);
+    const leadStatuses = lookups.filter((l) => l.kind === "lead_status").sort((a, b) => a.order - b.order);
     const currentStatus = leadStatuses.find((s) => s.id === lead.statusId);
-    const activity = store.activity.filter((a) => a.entityType === "lead" && a.entityId === lead.id).sort((a, b) => (a.at < b.at ? 1 : -1));
+    const activity = activityLog.filter((a) => a.entityType === "lead" && a.entityId === lead.id).sort((a, b) => (a.at < b.at ? 1 : -1));
 
     return (
       <div className="space-y-6">
@@ -104,12 +107,13 @@ export default async function CrmDetailPage({ params }: { params: Promise<{ id: 
     );
   }
 
-  const customer = store.customers.find((c) => c.id === id);
+  const customer = await getCustomerById(id);
   if (!customer) notFound();
-  const requests = store.requests.filter((r) => r.customerId === customer.id).sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
-  const requestStatuses = store.lookups.filter((l) => l.kind === "request_status");
-  const zone = store.zones.find((z) => z.id === customer.zoneId);
-  const activity = store.activity.filter((a) => a.entityType === "customer" && a.entityId === customer.id).sort((a, b) => (a.at < b.at ? 1 : -1));
+  const [lookups, activityLog, allRequests, zones] = await Promise.all([getLookups(), getActivity(), getRequests(), getZones()]);
+  const requests = allRequests.filter((r) => r.customerId === customer.id).sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+  const requestStatuses = lookups.filter((l) => l.kind === "request_status");
+  const zone = zones.find((z) => z.id === customer.zoneId);
+  const activity = activityLog.filter((a) => a.entityType === "customer" && a.entityId === customer.id).sort((a, b) => (a.at < b.at ? 1 : -1));
 
   return (
     <div className="space-y-6">

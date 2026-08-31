@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { store } from "@/lib/store";
+import { getLookups, getDeviceModels } from "@/lib/db";
 import { requireRole } from "@/lib/auth";
 import SettingsTabs from "@/components/SettingsTabs";
 import SimpleLookupTable from "@/components/SimpleLookupTable";
@@ -9,8 +9,8 @@ import { createDeviceBrand, toggleLookupActive, updateLookupLabel } from "@/lib/
 export default async function DeviceCatalogPage() {
   if (!(await requireRole("owner_admin"))) redirect("/admin");
 
-  const brands = store.lookups.filter((l) => l.kind === "device_brand").sort((a, b) => a.order - b.order);
-  const models = store.deviceModels;
+  const [lookups, models] = await Promise.all([getLookups(), getDeviceModels()]);
+  const brands = lookups.filter((l) => l.kind === "device_brand").sort((a, b) => a.order - b.order);
 
   return (
     <div className="space-y-6">

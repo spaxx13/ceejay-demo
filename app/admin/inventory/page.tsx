@@ -1,20 +1,25 @@
-import { store } from "@/lib/store";
+import { getLookups, getBranches, getInventory, getStockMovements } from "@/lib/db";
 import SimpleLookupTable from "@/components/SimpleLookupTable";
 import InventoryItemManager from "@/components/InventoryItemManager";
 import { createLookup, toggleLookupActive, updateLookupLabel } from "@/lib/actions";
 
-export default function InventoryPage() {
-  const categories = store.lookups.filter((l) => l.kind === "inventory_category").sort((a, b) => a.order - b.order);
-  const branches = store.branches.filter((b) => b.active).map((b) => ({ id: b.id, label: b.name }));
-  const items = store.inventory;
+export default async function InventoryPage() {
+  const [lookups, allBranches, items, stockMovements] = await Promise.all([
+    getLookups(),
+    getBranches(),
+    getInventory(),
+    getStockMovements(),
+  ]);
+  const categories = lookups.filter((l) => l.kind === "inventory_category").sort((a, b) => a.order - b.order);
+  const branches = allBranches.filter((b) => b.active).map((b) => ({ id: b.id, label: b.name }));
   const lowStock = items.filter((i) => i.active && i.quantityOnHand <= i.reorderLevel);
-  const recentMovements = [...store.stockMovements].sort((a, b) => (a.at < b.at ? 1 : -1)).slice(0, 8);
+  const recentMovements = [...stockMovements].sort((a, b) => (a.at < b.at ? 1 : -1)).slice(0, 8);
 
   function itemName(id: string) {
     return items.find((i) => i.id === id)?.name ?? "—";
   }
   function branchName(id: string) {
-    return store.branches.find((b) => b.id === id)?.name ?? "—";
+    return allBranches.find((b) => b.id === id)?.name ?? "—";
   }
 
   return (

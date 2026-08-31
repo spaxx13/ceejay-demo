@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { store } from "@/lib/store";
+import { getBranches, getTechnicians } from "@/lib/db";
 
 const VALUES = [
   { title: "Apple Specialists", body: "Our technicians train specifically on Apple hardware, alongside broad multi-brand experience." },
@@ -8,9 +8,10 @@ const VALUES = [
   { title: "Genuine-Quality Parts", body: "We use quality-tested replacement parts and stand behind every repair we complete." },
 ];
 
-export default function AboutPage() {
-  const branchCount = store.branches.filter((b) => b.active).length;
-  const techCount = store.technicians.filter((t) => t.active).length;
+export default async function AboutPage() {
+  const [branches, technicians] = await Promise.all([getBranches(), getTechnicians()]);
+  const branchCount = branches.filter((b) => b.active).length;
+  const techCount = technicians.filter((t) => t.active).length;
 
   return (
     <main>

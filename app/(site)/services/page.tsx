@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { store } from "@/lib/store";
+import { getLookups } from "@/lib/db";
 
 const DESCRIPTIONS: Record<string, string> = {
   "Screen Repair": "Cracked, unresponsive, or discolored screens replaced with precision — most units done same-day.",
@@ -12,8 +12,9 @@ const DESCRIPTIONS: Record<string, string> = {
 
 const FALLBACK = "Professional service to get your device back to perfect condition, backed by our technicians.";
 
-export default function ServicesPage() {
-  const serviceTypes = store.lookups.filter((l) => l.kind === "service_type" && l.active).sort((a, b) => a.order - b.order);
+export default async function ServicesPage() {
+  const lookups = await getLookups();
+  const serviceTypes = lookups.filter((l) => l.kind === "service_type" && l.active).sort((a, b) => a.order - b.order);
 
   return (
     <main>

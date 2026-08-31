@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { store, CHECKLIST_TEMPLATE, SERVICE_AGREEMENT_TERMS } from "@/lib/store";
+import { CHECKLIST_TEMPLATE, SERVICE_AGREEMENT_TERMS } from "@/lib/checklist";
+import { getRequestById, getLookups, getDeviceModels, getServiceAgreements } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import ChecklistForm from "@/components/ChecklistForm";
 import type { ServiceAgreement } from "@/lib/types";
@@ -64,18 +65,18 @@ function AgreementSummary({ agreement, title }: { agreement: ServiceAgreement; t
 
 export default async function TechnicianChecklistPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const user = await getCurrentUser();
-  const req = store.requests.find((r) => r.id === id);
+  const [user, req] = await Promise.all([getCurrentUser(), getRequestById(id)]);
   if (!req) notFound();
   if (!user || req.assignedTechnicianId !== user.technicianId) redirect("/technician");
 
-  const brand = store.lookups.find((l) => l.id === req.deviceBrandId);
-  const model = store.deviceModels.find((m) => m.id === req.deviceModelId);
+  const [lookups, deviceModels, agreements] = await Promise.all([getLookups(), getDeviceModels(), getServiceAgreements()]);
+  const brand = lookups.find((l) => l.id === req.deviceBrandId);
+  const model = deviceModels.find((m) => m.id === req.deviceModelId);
   const deviceLabel = brand ? `${brand.label} ${model?.name ?? ""}`.trim() : req.deviceOther || "Device";
   const address = [req.street, req.city, req.province].filter(Boolean).join(", ") + (req.landmark ? ` (near ${req.landmark})` : "");
 
-  const pre = store.serviceAgreements.find((a) => a.requestId === req.id && a.phase === "pre_repair");
-  const post = store.serviceAgreements.find((a) => a.requestId === req.id && a.phase === "post_repair");
+  const pre = agreements.find((a) => a.requestId === req.id && a.phase === "pre_repair");
+  const post = agreements.find((a) => a.requestId === req.id && a.phase === "post_repair");
 
   const commonProps = {
     requestId: req.id,
