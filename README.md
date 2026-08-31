@@ -7,6 +7,9 @@ Inventory (Phase 2 of the roadmap), pulled forward into this demo.
 ## Running the demo
 
 ```bash
+cp .env.example .env.local   # fill in SEED_ADMIN_PASSWORD etc., or leave
+                              # blank to get a random one printed to the
+                              # console on first run
 npm install
 npm run dev
 ```
@@ -16,13 +19,12 @@ Open [http://localhost:3000](http://localhost:3000).
 - **Public home service form:** `/request` — no login required.
 - **Staff / Admin login:** `/login`
 
-Demo accounts (seeded, plaintext for demo purposes only — see assumptions below):
-
-| Role          | Email              | Password           |
-| ------------- | ------------------ | ------------------ |
-| Owner Admin   | admin@ceejay.ph    | HarborNectar3039!  |
-| Branch Admin  | branch@ceejay.ph   | IndigoQuartz7379!  |
-| Technician    | marco@ceejay.ph    | IndigoHarbor9815!  |
+Demo accounts are seeded in `lib/store.ts` (plaintext in-memory auth, no DB —
+see assumptions below). Passwords come from the `SEED_ADMIN_PASSWORD` /
+`SEED_BRANCH_PASSWORD` / `SEED_TECH_PASSWORD` env vars (see `.env.example`)
+rather than being committed, since this repo is public — set them in
+`.env.local` for local dev and in your Vercel project settings for the
+deployed instance.
 
 ### Suggested demo flow
 

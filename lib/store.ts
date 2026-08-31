@@ -119,6 +119,22 @@ function id(store: Store, prefix: string) {
   return `${prefix}-${store.seq}`;
 }
 
+// This repo is public, so seeded account passwords can't be hardcoded in
+// source. Each reads from an env var (set these in Vercel's dashboard, or
+// in a local .env.local — both are gitignored) and falls back to a
+// randomly generated one-time password printed to the server console, so
+// the demo still works out of the box without ever committing a real
+// credential.
+function seedPassword(envVar: string, label: string): string {
+  const fromEnv = process.env[envVar];
+  if (fromEnv) return fromEnv;
+  const words = ["Coral", "Ember", "Falcon", "Granite", "Harbor", "Indigo", "Juniper", "Kestrel", "Lumen", "Meadow", "Nectar", "Onyx", "Pixel", "Quartz", "Ripple", "Solstice", "Thicket", "Umber", "Violet", "Willow"];
+  const pick = () => words[Math.floor(Math.random() * words.length)];
+  const generated = `${pick()}${pick()}${Math.floor(1000 + Math.random() * 9000)}!`;
+  console.log(`[seed] No ${envVar} set — generated a one-time ${label} password: ${generated}`);
+  return generated;
+}
+
 function seed(): Store {
   const store: Store = {
     users: [],
@@ -198,9 +214,9 @@ function seed(): Store {
   ];
 
   store.users = [
-    { id: id(store, "user"), name: "Ceejay Owner", email: "admin@ceejay.ph", password: "HarborNectar3039!", role: "owner_admin", technicianId: null, active: true },
-    { id: id(store, "user"), name: "Branch Admin", email: "branch@ceejay.ph", password: "IndigoQuartz7379!", role: "branch_admin", technicianId: null, active: true },
-    { id: id(store, "user"), name: "Marco Reyes", email: "marco@ceejay.ph", password: "IndigoHarbor9815!", role: "technician", technicianId: store.technicians[0].id, active: true },
+    { id: id(store, "user"), name: "Ceejay Owner", email: "admin@ceejay.ph", password: seedPassword("SEED_ADMIN_PASSWORD", "owner admin"), role: "owner_admin", technicianId: null, active: true },
+    { id: id(store, "user"), name: "Branch Admin", email: "branch@ceejay.ph", password: seedPassword("SEED_BRANCH_PASSWORD", "branch admin"), role: "branch_admin", technicianId: null, active: true },
+    { id: id(store, "user"), name: "Marco Reyes", email: "marco@ceejay.ph", password: seedPassword("SEED_TECH_PASSWORD", "technician"), role: "technician", technicianId: store.technicians[0].id, active: true },
   ];
 
   // Parts inventory: categories are admin-editable lookups like everything
