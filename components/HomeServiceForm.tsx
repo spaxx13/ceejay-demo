@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useMemo, useRef, useState } from "react";
-import { submitHomeServiceRequest } from "@/lib/actions";
+import { submitHomeServiceRequest, sendHomeServiceOtp, verifyHomeServiceOtp } from "@/lib/actions";
 import PhotoUpload from "./PhotoUpload";
 import DynamicFormField from "./DynamicFormField";
 import type { RequestFormContent, CustomFormField } from "@/lib/types";
@@ -55,8 +55,45 @@ export default function HomeServiceForm({
   const [lng, setLng] = useState<number | null>(null);
   const streetRef = useRef<HTMLInputElement>(null);
 
+  // Email OTP verification — anti-spam gate. Changing the email after
+  // verifying resets it, since the code was only ever proof of control
+  // over that one address.
+  const [emailValue, setEmailValue] = useState("");
+  const [otpSent, setOtpSent] = useState(false);
+  const [otpVerified, setOtpVerified] = useState(false);
+  const [otpCode, setOtpCode] = useState("");
+  const [sendingOtp, setSendingOtp] = useState(false);
+  const [verifyingOtp, setVerifyingOtp] = useState(false);
+  const [otpError, setOtpError] = useState("");
+
+  async function handleSendOtp() {
+    setOtpError("");
+    setSendingOtp(true);
+    const res = await sendHomeServiceOtp(emailValue);
+    setSendingOtp(false);
+    if (res.ok) {
+      setOtpSent(true);
+    } else {
+      setOtpError(res.error);
+    }
+  }
+
+  async function handleVerifyOtp() {
+    setOtpError("");
+    setVerifyingOtp(true);
+    const res = await verifyHomeServiceOtp(emailValue, otpCode);
+    setVerifyingOtp(false);
+    if (res.ok) {
+      setOtpVerified(true);
+    } else {
+      setOtpError(res.error);
+    }
+  }
+
   const modelsForBrand = useMemo(() => models.filter((m) => m.brandId === brandId), [models, brandId]);
   const streetActive = fields.some((f) => f.systemKey === "street");
+  const emailField = fields.find((f) => f.systemKey === "email");
+  const emailGateActive = emailField?.active ?? false;
 
   useEffect(() => {
     if (!GOOGLE_MAPS_KEY || !streetActive) return;
@@ -167,7 +204,68 @@ export default function HomeServiceForm({
       case "phone":
         return renderGenericField(field, "phone");
       case "email":
-        return renderGenericField(field, "email", "email");
+        return (
+          <div key={field.id} className="space-y-1.5">
+            <label className="text-xs font-medium text-slate-500">
+              {field.label} {asterisk}
+            </label>
+            <div className="flex gap-2">
+              <input
+                type="email"
+                name="email"
+                required={req}
+                value={emailValue}
+                onChange={(e) => {
+                  setEmailValue(e.target.value);
+                  setOtpVerified(false);
+                  setOtpSent(false);
+                  setOtpCode("");
+                  setOtpError("");
+                }}
+                disabled={otpVerified}
+                className="input flex-1 disabled:bg-slate-50 disabled:text-slate-400"
+                placeholder={field.placeholder}
+              />
+              {!otpVerified && (
+                <button
+                  type="button"
+                  onClick={handleSendOtp}
+                  disabled={sendingOtp || !emailValue}
+                  className="btn-secondary shrink-0 whitespace-nowrap !px-3 text-xs"
+                >
+                  {sendingOtp ? "Sending..." : otpSent ? "Resend" : "Send Code"}
+                </button>
+              )}
+            </div>
+            {otpVerified && <p className="text-xs text-green-700">✓ Email verified</p>}
+            {otpSent && !otpVerified && (
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  maxLength={6}
+                  value={otpCode}
+                  onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ""))}
+                  placeholder="6-digit code"
+                  className="input flex-1"
+                />
+                <button
+                  type="button"
+                  onClick={handleVerifyOtp}
+                  disabled={verifyingOtp || otpCode.length !== 6}
+                  className="btn-primary shrink-0 !px-4 text-xs"
+                >
+                  {verifyingOtp ? "Verifying..." : "Verify"}
+                </button>
+              </div>
+            )}
+            {otpSent && !otpVerified && !otpError && (
+              <p className="text-[11px] text-slate-400">We sent a 6-digit code to {emailValue} — check your inbox (and spam folder).</p>
+            )}
+            {otpError && <p className="text-xs text-red-600">{otpError}</p>}
+          </div>
+        );
       case "issue":
         return renderGenericField(field, "issueDescription");
       case "landmark":
@@ -307,9 +405,12 @@ export default function HomeServiceForm({
 
       {state && !state.ok && <p className="text-sm text-red-600">{state.error}</p>}
 
-      <button type="submit" disabled={pending} className="btn-primary w-full">
+      <button type="submit" disabled={pending || (emailGateActive && !otpVerified)} className="btn-primary w-full">
         {pending ? "Submitting..." : content.submitButtonLabel}
       </button>
+      {emailGateActive && !otpVerified && (
+        <p className="text-center text-xs text-slate-400">Verify your email above to enable submission.</p>
+      )}
     </form>
   );
 }

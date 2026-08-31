@@ -21,6 +21,7 @@ import {
   notifyAdmins,
 } from "./db";
 import { getCurrentUser, setSession, clearSession, requireRole } from "./auth";
+import { sendOtpEmail } from "./email";
 import type {
   Role,
   LookupKind,
@@ -668,6 +669,77 @@ export async function createSale(_prev: CreateSaleResult | undefined, formData: 
   return { ok: true, saleId, reference };
 }
 
+// ---------- Home Service Request: Email OTP Verification ----------
+// Anti-spam gate — a customer must prove they control the email address
+// they typed before the Home Service Request form can be submitted at
+// all. One row per email in otp_codes; a fresh send overwrites whatever
+// was there before rather than accumulating history.
+
+const OTP_TTL_MS = 10 * 60_000;
+const OTP_RESEND_COOLDOWN_MS = 60_000;
+const OTP_MAX_ATTEMPTS = 5;
+
+function isValidEmail(email: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+function generateOtpCode() {
+  return String(Math.floor(100000 + Math.random() * 900000));
+}
+
+export type SendOtpResult = { ok: true } | { ok: false; error: string };
+
+export async function sendHomeServiceOtp(emailInput: string): Promise<SendOtpResult> {
+  const email = emailInput.trim().toLowerCase();
+  if (!isValidEmail(email)) return { ok: false, error: "Enter a valid email address first." };
+
+  const existing = await queryOne<{ created_at: Date }>("select created_at from otp_codes where email=$1", [email]);
+  if (existing && Date.now() - new Date(existing.created_at).getTime() < OTP_RESEND_COOLDOWN_MS) {
+    return { ok: false, error: "Please wait a moment before requesting another code." };
+  }
+
+  const code = generateOtpCode();
+  const codeHash = await bcrypt.hash(code, 10);
+  const expiresAt = new Date(Date.now() + OTP_TTL_MS).toISOString();
+
+  await query(
+    `insert into otp_codes (email, code_hash, attempts, verified, expires_at, created_at)
+     values ($1,$2,0,false,$3,now())
+     on conflict (email) do update set code_hash=$2, attempts=0, verified=false, expires_at=$3, created_at=now()`,
+    [email, codeHash, expiresAt]
+  );
+
+  try {
+    await sendOtpEmail(email, code);
+  } catch {
+    return { ok: false, error: "Couldn't send the verification email — please try again in a moment." };
+  }
+  return { ok: true };
+}
+
+export type VerifyOtpResult = { ok: true } | { ok: false; error: string };
+
+export async function verifyHomeServiceOtp(emailInput: string, codeInput: string): Promise<VerifyOtpResult> {
+  const email = emailInput.trim().toLowerCase();
+  const code = codeInput.trim();
+  const row = await queryOne<{ code_hash: string; attempts: number; expires_at: Date; verified: boolean }>(
+    "select code_hash, attempts, expires_at, verified from otp_codes where email=$1",
+    [email]
+  );
+  if (!row) return { ok: false, error: "Send a verification code first." };
+  if (row.verified) return { ok: true };
+  if (new Date(row.expires_at).getTime() < Date.now()) return { ok: false, error: "That code expired — request a new one." };
+  if (row.attempts >= OTP_MAX_ATTEMPTS) return { ok: false, error: "Too many incorrect attempts — request a new code." };
+
+  const match = code.length === 6 && (await bcrypt.compare(code, row.code_hash));
+  if (!match) {
+    await query("update otp_codes set attempts = attempts + 1 where email=$1", [email]);
+    return { ok: false, error: "Incorrect code. Please try again." };
+  }
+  await query("update otp_codes set verified=true where email=$1", [email]);
+  return { ok: true };
+}
+
 // ---------- Public Home Service Request ----------
 
 export type SubmitResult = { ok: true; reference: string } | { ok: false; error: string };
@@ -727,6 +799,10 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
     return { ok: false, error: "Please enter a valid PH mobile number, e.g. 0917 123 4567." };
   }
   if (isRequired("email") && !email) return { ok: false, error: `${label("email")} is required.` };
+  if (isActive("email") && email) {
+    const otpRow = await queryOne<{ verified: boolean }>("select verified from otp_codes where email=$1", [email.trim().toLowerCase()]);
+    if (!otpRow?.verified) return { ok: false, error: "Please verify your email address before submitting." };
+  }
   if (isRequired("device_brand") && !deviceBrandId) return { ok: false, error: `${label("device_brand")} is required.` };
   if (isRequired("device_model") && !deviceModelId && !deviceOther) return { ok: false, error: `${label("device_model")} is required.` };
   if (isRequired("service_type") && !serviceTypeId) return { ok: false, error: `${label("service_type")} is required.` };
@@ -845,6 +921,8 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
       : `Request ${reference} submitted, no matching zone — flagged unzoned and sent to Unassigned queue`,
     "System"
   );
+
+  if (email) await query("delete from otp_codes where email=$1", [email.trim().toLowerCase()]);
 
   revalidatePath("/admin/requests");
   revalidatePath("/admin");

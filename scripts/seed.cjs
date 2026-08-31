@@ -36,7 +36,7 @@ async function main() {
     const systemFields = [
       ["name", "name", "Full Name", "Juan Dela Cruz", "text", true, [], 0],
       ["phone", "phone", "Mobile Number", "0917 123 4567", "text", true, [], 1],
-      ["email", "email", "Email (optional)", "juan@email.com", "text", false, [], 2],
+      ["email", "email", "Email", "juan@email.com", "text", true, [], 2],
       ["device_brand", "device_brand", "Device Brand", "", "select", true, [], 3],
       ["device_model", "device_model", "Device Model", "Specify brand & model", "select", false, [], 4],
       ["service_type", "service_type", "Service Type", "", "select", true, [], 5],
