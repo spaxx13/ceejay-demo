@@ -1,8 +1,10 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #f5f5f7;
+  --foreground: #1d1d1f;
+  --surface: #ffffff;
+  --surface-2: #fbfbfd;
 }
 
 @theme inline {
@@ -10,17 +12,85 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-}
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  /* Neutral surface ramp — light, Apple-style */
+  --color-slate-50: #f5f5f7;
+  --color-slate-100: #ffffff;
+  --color-slate-200: #d2d2d7;
+  --color-slate-300: #c7c7cc;
+  --color-slate-400: #86868b;
+  --color-slate-500: #6e6e73;
+  --color-slate-600: #515154;
+  --color-slate-700: #3a3a3c;
+  --color-slate-800: #1d1d1f;
+  --color-slate-900: #1d1d1f;
+
+  /* Brand accent — Apple blue */
+  --color-blue-50: #f0f7ff;
+  --color-blue-100: #e8f2fe;
+  --color-blue-200: #d8ebfe;
+  --color-blue-300: #0071e3;
+  --color-blue-400: #0077ed;
+  --color-blue-500: #0071e3;
+  --color-blue-600: #0068d1;
+  --color-blue-700: #147ce5;
+
+  --color-indigo-100: #e8f2fe;
+  --color-indigo-700: #0071e3;
+
+  --color-green-50: #eafbf1;
+  --color-green-100: #d8f5e3;
+  --color-green-200: #c2eed4;
+  --color-green-700: #1d7a41;
+  --color-green-800: #146530;
+
+  --color-red-50: #fdeeee;
+  --color-red-100: #fbdada;
+  --color-red-200: #f7c2c2;
+  --color-red-600: #d70015;
+  --color-red-700: #d70015;
+  --color-red-800: #b0000f;
+
+  --color-amber-50: #fff8ea;
+  --color-amber-100: #fef0cf;
+  --color-amber-200: #fde3a0;
+  --color-amber-700: #97620a;
+  --color-amber-800: #7a4f08;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+@layer components {
+  .input {
+    @apply w-full rounded-lg border border-slate-300 bg-slate-100 px-3 py-2 text-sm text-slate-900 shadow-none transition-colors placeholder:text-slate-400 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400;
+  }
+  .btn-primary {
+    @apply rounded-full bg-blue-500 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-blue-600 active:bg-blue-700 disabled:opacity-50;
+  }
+  .btn-secondary {
+    @apply rounded-full border border-slate-300 bg-slate-100 px-5 py-2.5 text-sm font-medium text-slate-800 transition-colors hover:border-slate-400 hover:bg-slate-50 disabled:opacity-50;
+  }
+  .card {
+    @apply relative rounded-2xl border border-slate-200 bg-slate-100 p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_1px_6px_rgba(0,0,0,0.04)] transition-colors;
+  }
+  .badge {
+    @apply inline-flex items-center gap-1 rounded-full border border-black/5 px-2.5 py-0.5 text-[11px] font-medium tracking-wide;
+  }
+  .glass {
+    @apply border-b border-slate-200 bg-white/80 backdrop-blur-md;
+  }
+  .brand-gradient-text {
+    color: var(--color-blue-500);
+  }
+  .grid-bg {
+    position: relative;
+    isolation: isolate;
+  }
+  .kicker {
+    @apply text-[13px] font-semibold uppercase tracking-[0.06em] text-blue-500;
+  }
 }
