@@ -42,6 +42,7 @@ function isValidPhone(phone: string) {
   const cleaned = phone.replace(/[\s-]/g, "");
   return /^(\+63|0)9\d{9}$/.test(cleaned);
 }
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // ---------- Auth ----------
 
@@ -785,6 +786,18 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
   const statusHistory = [{ statusId: initialStatus.id, at: now }];
   if (assignedTech) statusHistory.push({ statusId: assignedStatus.id, at: now });
 
+  // device_brand_id and service_type_id are foreign keys to the lookups
+  // table, but Admin > Request Form lets either field's type be switched
+  // away from "select" to a plain text input — a customer can then type
+  // anything (e.g. "apple" lowercase, a typo, a brand we don't stock) into
+  // what the DB expects to be a UUID. Fall back to storing that text where
+  // it's actually usable instead of failing the whole submission.
+  const validDeviceBrandId = UUID_RE.test(deviceBrandId) ? deviceBrandId : null;
+  const validDeviceModelId = UUID_RE.test(deviceModelId) ? deviceModelId : null;
+  const validServiceTypeId = UUID_RE.test(serviceTypeId) ? serviceTypeId : null;
+  const finalDeviceOther =
+    deviceBrandId && !validDeviceBrandId ? [deviceBrandId, deviceOther].filter(Boolean).join(" ") : deviceOther;
+
   const created = await queryOne<{ id: string }>(
     `insert into home_service_requests (
       reference, customer_id, customer_name, phone, email, device_brand_id, device_model_id, device_other, service_type_id,
@@ -798,10 +811,10 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
       name,
       phone,
       email,
-      deviceBrandId || null,
-      deviceModelId || null,
-      deviceOther,
-      serviceTypeId || null,
+      validDeviceBrandId,
+      validDeviceModelId,
+      finalDeviceOther,
+      validServiceTypeId,
       issueDescription,
       photoDataUrl,
       street,
