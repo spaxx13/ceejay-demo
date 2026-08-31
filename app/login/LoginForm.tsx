@@ -28,12 +28,6 @@ export default function LoginForm() {
       <button type="submit" disabled={pending} className="btn-primary w-full">
         {pending ? "Signing in..." : "Sign in"}
       </button>
-      <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-xs text-slate-400">
-        <p className="mb-1 font-semibold text-slate-500">Demo accounts</p>
-        <p>Owner admin: admin@ceejay.ph / admin123</p>
-        <p>Branch admin: branch@ceejay.ph / branch123</p>
-        <p>Technician: marco@ceejay.ph / tech123</p>
-      </div>
     </form>
   );
 }
