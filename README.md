@@ -7,10 +7,17 @@ Inventory (Phase 2 of the roadmap), pulled forward into this demo.
 ## Running the demo
 
 ```bash
-cp .env.example .env.local   # fill in SEED_ADMIN_PASSWORD etc., or leave
-                              # blank to get a random one printed to the
-                              # console on first run
+cp .env.example .env.local   # fill in POSTGRES_URL / POSTGRES_URL_NON_POOLING
+                              # (see below) and SEED_ADMIN_PASSWORD etc., or
+                              # leave the seed passwords blank to get random
+                              # ones printed to the console on first seed
 npm install
+
+# One-time: create a Supabase project, then run the migrations in
+# supabase/migrations/ against it (Supabase Studio's SQL editor, or the
+# Supabase CLI) and seed demo data:
+node --env-file=.env.local scripts/seed.cjs
+
 npm run dev
 ```
 
@@ -19,8 +26,9 @@ Open [http://localhost:3000](http://localhost:3000).
 - **Public home service form:** `/request` — no login required.
 - **Staff / Admin login:** `/login`
 
-Demo accounts are seeded in `lib/store.ts` (plaintext in-memory auth, no DB —
-see assumptions below). Passwords come from the `SEED_ADMIN_PASSWORD` /
+Data is stored in Supabase Postgres (`lib/db.ts`, schema in
+`supabase/migrations/`) — see assumptions below. Demo accounts are created by
+`scripts/seed.cjs`, with passwords coming from the `SEED_ADMIN_PASSWORD` /
 `SEED_BRANCH_PASSWORD` / `SEED_TECH_PASSWORD` env vars (see `.env.example`)
 rather than being committed, since this repo is public — set them in
 `.env.local` for local dev and in your Vercel project settings for the
@@ -57,20 +65,19 @@ deployed instance.
 
 ## Assumptions & notes for this demo build
 
-- **No database, by design for this demo.** All data lives in an in-memory
-  store (`lib/store.ts`) seeded on server start and kept alive across
-  Next.js dev hot-reloads via `globalThis`. **Restarting the dev server resets
-  all data** back to the seed (3 branches, Apple/Samsung device catalog, one
-  admin/branch-admin/technician user, zero zones). This trades persistence for
-  zero setup — there's nothing to install or migrate to try the demo. Moving
-  to Phase 2+ (or any real usage) should swap `lib/store.ts` for a real
-  database (Postgres + Prisma per the original spec) behind the same
-  function signatures in `lib/actions.ts`; the data model in `lib/types.ts`
-  was written to map directly onto normalized tables for that migration.
-- **Auth is intentionally minimal for the demo.** Login checks a plaintext
-  password against the in-memory `users` seed and sets an httpOnly session
-  cookie holding the user id — there's no hashing, rate limiting, or password
-  reset flow. This is not production-ready auth; it exists only to
+- **Backed by Supabase Postgres.** Data is persisted in a real Postgres
+  database (schema in `supabase/migrations/`, queried via `lib/db.ts` using
+  `pg` against Supabase's pooled connection string). `scripts/seed.cjs`
+  seeds demo data (3 branches, Apple/Samsung device catalog, one
+  admin/branch-admin/technician user, zero zones) once, and is safe to
+  re-run — it skips seeding if the `branches` table already has rows. This
+  replaced the project's original in-memory store; the data model in
+  `lib/types.ts` maps directly onto the normalized tables in the
+  migrations.
+- **Auth is intentionally minimal for the demo.** Login checks the submitted
+  password against a bcrypt hash stored in the `users` table and sets an
+  httpOnly session cookie holding the user id — there's no rate limiting or
+  password reset flow. This is not production-ready auth; it exists only to
   demonstrate role gating (`owner_admin` / `branch_admin` / `technician`)
   across the Admin Panel and Technician view.
 - **No Google Maps API key is configured in this environment.** The address
@@ -98,7 +105,7 @@ deployed instance.
   per branch with admin-editable categories (same generic `LookupItem`
   pattern as everything else), a reorder-level low-stock indicator, and a
   `StockMovement` audit trail for every in/out/adjustment, including sales.
-  This reuses the same in-memory store and Add/Edit/Deactivate conventions as
+  This reuses the same database and Add/Edit/Deactivate conventions as
   Phase 1 — no new architecture was introduced.
 - **Still not built:** walk-in technician rotation, digital waivers/
   e-signatures, QR payments, automated SMS/email reminders, and BIR tax
@@ -107,6 +114,5 @@ deployed instance.
 
 ## Tech stack
 
-Next.js (App Router) + TypeScript, Tailwind CSS, in-memory data layer (no
-database dependency). See assumptions above for the path back to
-Postgres + Prisma when this moves past demo stage.
+Next.js (App Router) + TypeScript, Tailwind CSS, Supabase Postgres (`pg`,
+schema in `supabase/migrations/`).
