@@ -146,7 +146,8 @@ export type LookupKind =
   | "service_type"
   | "customer_source"
   | "device_brand"
-  | "inventory_category";
+  | "inventory_category"
+  | "expense_category";
 
 export type LookupItem = {
   id: string;
@@ -314,6 +315,21 @@ export type ServiceAgreement = {
   receiptPhotoDataUrl: string | null; // only collected/required for phase === "post_repair"
   completedAt: string;
   sentToCustomerAt: string | null; // stubbed — no email/SMS provider in this demo
+  createdAt: string;
+};
+
+// Daily expense entry — recorded per calendar day (not just timestamped) so
+// admins can see and total what was spent on any given day, per branch.
+// Categories are a generic LookupItem (kind: expense_category), same
+// Add/Edit/Deactivate pattern as every other type/category list.
+export type Expense = {
+  id: string;
+  date: string; // YYYY-MM-DD, the day the expense was incurred
+  branchId: string | null;
+  categoryId: string | null; // LookupItem id (kind: expense_category)
+  amount: number;
+  description: string;
+  recordedBy: string;
   createdAt: string;
 };
 

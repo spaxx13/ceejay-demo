@@ -97,6 +97,10 @@ async function main() {
       const row = await client.query("insert into lookups (kind, label, order_num) values ('inventory_category',$1,$2) returning id", [categoryLabels[i], i]);
       categoryIds[categoryLabels[i]] = row.rows[0].id;
     }
+    const expenseCategories = ["Rent", "Utilities", "Supplies", "Salaries", "Miscellaneous"];
+    for (let i = 0; i < expenseCategories.length; i++) {
+      await client.query("insert into lookups (kind, label, order_num) values ('expense_category',$1,$2)", [expenseCategories[i], i]);
+    }
 
     // Technicians
     const techRows = await client.query(

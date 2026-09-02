@@ -20,6 +20,7 @@ import type {
   CustomFormField,
   ServiceAgreement,
   Notification,
+  Expense,
 } from "./types";
 
 // Single pooled connection, reused across invocations within the same
@@ -188,6 +189,14 @@ function mapNotification(r: NotificationRow): Notification {
   return { id: r.id, type: r.type, requestId: r.request_id, message: r.message, createdAt: toIso(r.created_at), readAt: toIsoOrNull(r.read_at) };
 }
 
+type ExpenseRow = { id: string; expense_date: Date | string; branch_id: string | null; category_id: string | null; amount: string; description: string; recorded_by: string; created_at: Date };
+function mapExpense(r: ExpenseRow): Expense {
+  return {
+    id: r.id, date: toDateStr(r.expense_date), branchId: r.branch_id, categoryId: r.category_id,
+    amount: Number(r.amount), description: r.description, recordedBy: r.recorded_by, createdAt: toIso(r.created_at),
+  };
+}
+
 // ---------- Bulk readers (fetch full table, mapped) ----------
 // This app is low-traffic; fetching full tables and filtering/sorting in
 // JS (same as the in-memory store always did) keeps every call site's
@@ -273,6 +282,9 @@ export async function getServiceAgreements() {
 }
 export async function getNotifications() {
   return (await query<NotificationRow>("select * from notifications order by created_at desc")).map(mapNotification);
+}
+export async function getExpenses() {
+  return (await query<ExpenseRow>("select * from expenses order by expense_date desc, created_at desc")).map(mapExpense);
 }
 
 export async function getUserById(id: string) {

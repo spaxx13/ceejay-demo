@@ -288,6 +288,7 @@ export async function toggleLookupActive(formData: FormData) {
   revalidatePath("/admin/service-types");
   revalidatePath("/admin/statuses");
   revalidatePath("/admin/inventory");
+  revalidatePath("/admin/expenses");
 }
 
 export async function updateLookupLabel(formData: FormData) {
@@ -299,6 +300,7 @@ export async function updateLookupLabel(formData: FormData) {
   revalidatePath("/admin/service-types");
   revalidatePath("/admin/statuses");
   revalidatePath("/admin/inventory");
+  revalidatePath("/admin/expenses");
 }
 
 export async function createDeviceModel(formData: FormData) {
@@ -327,6 +329,7 @@ export async function createLookup(formData: FormData) {
   revalidatePath("/admin/service-types");
   revalidatePath("/admin/statuses");
   revalidatePath("/admin/inventory");
+  revalidatePath("/admin/expenses");
 }
 
 export async function reorderLookup(formData: FormData) {
@@ -560,6 +563,45 @@ export async function adjustStock(formData: FormData) {
     user?.name ?? "Admin",
   ]);
   revalidatePath("/admin/inventory");
+}
+
+// ---------- Expenses ----------
+// Recorded per calendar day (expense_date), independent of when the entry
+// was actually keyed in — a shop day's expenses can be logged after close,
+// but they still land on that day for daily totals/reporting.
+
+function todayDateStr() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+export async function createExpense(formData: FormData) {
+  const user = await getCurrentUser();
+  const amount = Math.max(0, Number(str(formData, "amount")) || 0);
+  const date = str(formData, "date") || todayDateStr();
+  if (amount <= 0) return;
+  await query(
+    "insert into expenses (expense_date, branch_id, category_id, amount, description, recorded_by) values ($1,$2,$3,$4,$5,$6)",
+    [date, str(formData, "branchId") || null, str(formData, "categoryId") || null, amount, str(formData, "description"), user?.name ?? "Admin"]
+  );
+  revalidatePath("/admin/expenses");
+}
+
+export async function updateExpense(formData: FormData) {
+  const expenseId = str(formData, "id");
+  const amount = Math.max(0, Number(str(formData, "amount")) || 0);
+  const date = str(formData, "date") || todayDateStr();
+  if (!expenseId || amount <= 0) return;
+  await query(
+    "update expenses set expense_date=$1, branch_id=$2, category_id=$3, amount=$4, description=$5 where id=$6",
+    [date, str(formData, "branchId") || null, str(formData, "categoryId") || null, amount, str(formData, "description"), expenseId]
+  );
+  revalidatePath("/admin/expenses");
+}
+
+export async function deleteExpense(formData: FormData) {
+  const expenseId = str(formData, "id");
+  await query("delete from expenses where id=$1", [expenseId]);
+  revalidatePath("/admin/expenses");
 }
 
 // ---------- Point of Sale ----------
