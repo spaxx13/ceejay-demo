@@ -97,7 +97,7 @@ export default function InventoryItemManager({ items, branches, categories }: { 
               <input name="reorderLevel" type="number" min={0} defaultValue={editing?.reorderLevel ?? 3} className="input" />
             </div>
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-slate-500">Unit Cost (₱)</label>
+              <label className="text-xs font-medium text-slate-500">Unit Amount (₱)</label>
               <input name="unitCost" type="number" min={0} step="0.01" defaultValue={editing?.unitCost ?? 0} className="input" />
             </div>
             <div className="space-y-1.5">
