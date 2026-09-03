@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getBranches, getTechnicians } from "@/lib/db";
+import { getBranches } from "@/lib/db";
 
 const VALUES = [
   { title: "Apple Specialists", body: "Our technicians train specifically on Apple hardware, alongside broad multi-brand experience." },
@@ -9,9 +9,8 @@ const VALUES = [
 ];
 
 export default async function AboutPage() {
-  const [branches, technicians] = await Promise.all([getBranches(), getTechnicians()]);
+  const branches = await getBranches();
   const branchCount = branches.filter((b) => b.active).length;
-  const techCount = technicians.filter((t) => t.active).length;
 
   return (
     <main>
@@ -33,27 +32,6 @@ export default async function AboutPage() {
               <p className="mt-2 text-sm text-slate-400">{v.body}</p>
             </div>
           ))}
-        </div>
-      </section>
-
-      <section className="border-y border-slate-200 bg-slate-50 px-4 py-14 sm:px-6">
-        <div className="mx-auto grid max-w-3xl grid-cols-2 gap-4 text-center sm:grid-cols-4">
-          <div>
-            <p className="text-2xl font-bold text-slate-900">{branchCount}</p>
-            <p className="mt-1 text-xs text-slate-400">Branches</p>
-          </div>
-          <div>
-            <p className="text-2xl font-bold text-slate-900">{techCount}</p>
-            <p className="mt-1 text-xs text-slate-400">Technicians</p>
-          </div>
-          <div>
-            <p className="text-2xl font-bold text-slate-900">Apple</p>
-            <p className="mt-1 text-xs text-slate-400">Primary Focus</p>
-          </div>
-          <div>
-            <p className="text-2xl font-bold text-slate-900">Yes</p>
-            <p className="mt-1 text-xs text-slate-400">Home Service</p>
-          </div>
         </div>
       </section>
 
