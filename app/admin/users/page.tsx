@@ -26,10 +26,9 @@ export default async function UsersPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-xl font-bold text-slate-900">Staff Accounts</h1>
+        <h1 className="text-xl font-bold text-slate-900">Technicians</h1>
         <p className="mt-1 text-sm text-slate-400">
-          Create logins for owner admins, branch admins, and technicians. Technician logins should link to a Technician record so they only
-          see their own assigned jobs.
+          Create logins for owner admins, branch admins, and technicians. A technician login only sees jobs assigned to them.
         </p>
       </div>
       <SettingsTabs />

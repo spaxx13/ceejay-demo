@@ -22,8 +22,8 @@ export default async function TechniciansPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-xl font-bold text-slate-900">Technicians</h1>
-        <p className="mt-1 text-sm text-slate-400">Manage technicians and assign them to branches.</p>
+        <h1 className="text-xl font-bold text-slate-900">Technician Records</h1>
+        <p className="mt-1 text-sm text-slate-400">Manage technician records and their branch assignment. Logins are created under Access &gt; Technicians.</p>
       </div>
       <SettingsTabs />
       <TechnicianManager technicians={technicians} branches={branches} />

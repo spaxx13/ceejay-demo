@@ -8,12 +8,12 @@ const GROUPS = [
     label: "Business Setup",
     tabs: [
       { href: "/admin/branches", label: "Branches" },
-      { href: "/admin/technicians", label: "Technicians" },
+      { href: "/admin/technicians", label: "Technician Records" },
     ],
   },
   {
     label: "Access",
-    tabs: [{ href: "/admin/users", label: "Staff Accounts" }],
+    tabs: [{ href: "/admin/users", label: "Technicians" }],
   },
   {
     label: "Catalog & Workflow",
