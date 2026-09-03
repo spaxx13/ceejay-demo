@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Ceejay Cellphone Repair Shop",
   description:
-    "Ceejay Cellphone Repair Shop — home service booking, zone-based technician assignment, and CRM (Phase 1 demo).",
+    "Ceejay Cellphone Repair Shop — home service booking, technician assignment, and CRM (Phase 1 demo).",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

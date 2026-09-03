@@ -1,7 +1,19 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
-import { getRequestById, getLookups, getDeviceModels, getZones, getTechnicians, getActivity, getCustomFormFields, getServiceAgreements } from "@/lib/db";
+import { notFound, redirect } from "next/navigation";
+import {
+  getRequestById,
+  getLookups,
+  getDeviceModels,
+  getTechnicians,
+  getActivity,
+  getCustomFormFields,
+  getServiceAgreements,
+  getRepairProgressByRequestId,
+  canManageHomeServiceRequests,
+} from "@/lib/db";
+import { getCurrentUser } from "@/lib/auth";
 import StatusBadge from "@/components/StatusBadge";
+import ResendReceiptButton from "@/components/ResendReceiptButton";
 import { reassignRequest, changeRequestStatus, updateRequestNotes } from "@/lib/actions";
 import type { ServiceAgreement } from "@/lib/types";
 import { formatDate, formatDateTime } from "@/lib/format";
@@ -68,25 +80,26 @@ function AgreementCard({ agreement, title }: { agreement: ServiceAgreement; titl
 }
 
 export default async function RequestDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const user = await getCurrentUser();
+  if (!canManageHomeServiceRequests(user)) redirect("/admin");
+
   const { id } = await params;
   const req = await getRequestById(id);
   if (!req) notFound();
 
-  const [lookups, deviceModels, zones, technicians, activityLog, customFormFields, agreements] = await Promise.all([
+  const [lookups, deviceModels, technicians, activityLog, customFormFields, agreements, repairProgress] = await Promise.all([
     getLookups(),
     getDeviceModels(),
-    getZones(),
     getTechnicians(),
     getActivity(),
     getCustomFormFields(),
     getServiceAgreements(),
+    getRepairProgressByRequestId(req.id),
   ]);
   const statuses = lookups.filter((l) => l.kind === "request_status").sort((a, b) => a.order - b.order);
   const serviceType = lookups.find((l) => l.id === req.serviceTypeId);
   const brand = lookups.find((l) => l.id === req.deviceBrandId);
   const model = deviceModels.find((m) => m.id === req.deviceModelId);
-  const zone = zones.find((z) => z.id === req.zoneId);
-  const eligibleTechs = zone ? technicians.filter((t) => t.active && t.zoneIds.includes(zone.id)) : [];
   const allTechs = technicians.filter((t) => t.active);
   const currentStatus = statuses.find((s) => s.id === req.statusId);
   const activity = activityLog
@@ -132,10 +145,14 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
               {req.province ? `, ${req.province}` : ""}
               {req.landmark ? ` (near ${req.landmark})` : ""}
             </dd>
-            <dt className="text-slate-400">Zone</dt>
-            <dd className={zone ? "text-slate-800" : "text-amber-700"}>{zone?.name ?? "Unzoned — needs manual triage"}</dd>
             <dt className="text-slate-400">Preferred</dt>
             <dd className="text-slate-800">{formatDate(req.preferredDatetime)}</dd>
+            <dt className="text-slate-400">Vlog Consent</dt>
+            <dd className="text-slate-800">
+              {req.vlogConsent
+                ? `Yes — ${req.vlogBlurPreference === "blurred" ? "face blurred" : req.vlogBlurPreference === "not_blurred" ? "face not blurred" : "preference not set"}`
+                : "No"}
+            </dd>
             <dt className="text-slate-400">Submitted</dt>
             <dd className="text-slate-800">{formatDateTime(req.createdAt)}</dd>
           </dl>
@@ -164,29 +181,16 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
         <div className="space-y-6">
           <div className="card space-y-3">
             <h3 className="text-sm font-semibold text-slate-800">Assignment</h3>
-            <p className="text-xs text-slate-400">
-              {req.autoAssigned ? "Auto-assigned by zone round-robin." : req.assignedTechnicianId ? "Manually assigned." : "No technician assigned."}
-            </p>
+            <p className="text-xs text-slate-400">{req.assignedTechnicianId ? "Manually assigned." : "No technician assigned."}</p>
             <form action={reassignRequest} className="space-y-2">
               <input type="hidden" name="id" value={req.id} />
               <select name="technicianId" defaultValue={req.assignedTechnicianId ?? ""} className="input">
                 <option value="">Unassigned</option>
-                {eligibleTechs.length > 0 && (
-                  <optgroup label="Covers this zone">
-                    {eligibleTechs.map((t) => (
-                      <option key={t.id} value={t.id}>
-                        {t.name}
-                      </option>
-                    ))}
-                  </optgroup>
-                )}
-                <optgroup label="All technicians">
-                  {allTechs.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.name}
-                    </option>
-                  ))}
-                </optgroup>
+                {allTechs.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
               </select>
               <button type="submit" className="btn-primary w-full">
                 Save Assignment
@@ -213,8 +217,49 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
         </div>
       </div>
 
+      {repairProgress && (repairProgress.inspectionResults || repairProgress.progressNotes || repairProgress.partsReplaced || repairProgress.otherDetails) && (
+        <div className="card space-y-3">
+          <div>
+            <h3 className="text-sm font-semibold text-slate-800">Repair Progress Notes</h3>
+            <p className="text-xs text-slate-400">Last updated by {repairProgress.updatedBy || "—"} on {formatDateTime(repairProgress.updatedAt)}</p>
+          </div>
+          {repairProgress.inspectionResults && (
+            <div>
+              <p className="text-xs font-medium text-slate-400">Inspection Results</p>
+              <p className="mt-0.5 whitespace-pre-line text-sm text-slate-700">{repairProgress.inspectionResults}</p>
+            </div>
+          )}
+          {repairProgress.progressNotes && (
+            <div>
+              <p className="text-xs font-medium text-slate-400">Repair Progress</p>
+              <p className="mt-0.5 whitespace-pre-line text-sm text-slate-700">{repairProgress.progressNotes}</p>
+            </div>
+          )}
+          {repairProgress.partsReplaced && (
+            <div>
+              <p className="text-xs font-medium text-slate-400">Parts Replaced</p>
+              <p className="mt-0.5 whitespace-pre-line text-sm text-slate-700">{repairProgress.partsReplaced}</p>
+            </div>
+          )}
+          {repairProgress.otherDetails && (
+            <div>
+              <p className="text-xs font-medium text-slate-400">Other Details</p>
+              <p className="mt-0.5 whitespace-pre-line text-sm text-slate-700">{repairProgress.otherDetails}</p>
+            </div>
+          )}
+        </div>
+      )}
+
       {preAgreement && <AgreementCard agreement={preAgreement} title={`Pre-Repair Checklist — ${preAgreement.reference}`} />}
       {postAgreement && <AgreementCard agreement={postAgreement} title={`Post-Repair Checklist / Service Agreement — ${postAgreement.reference}`} />}
+
+      {postAgreement && (
+        <div className="card space-y-2">
+          <h3 className="text-sm font-semibold text-slate-800">Receipt</h3>
+          <p className="text-xs text-slate-500">If the customer asks for another copy, resend the same PDF receipt to their email.</p>
+          <ResendReceiptButton target={{ type: "request", id: req.id }} email={req.email} />
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <div className="card space-y-3">

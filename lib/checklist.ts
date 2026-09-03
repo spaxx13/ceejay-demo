@@ -25,4 +25,5 @@ export const SERVICE_AGREEMENT_TERMS = [
   "Timely Reporting of Issues: It is the customer's responsibility to report any issues promptly.",
   "LCD/OLED Replacement Warranty: LCD/OLED repair has a 3-day warranty for ghost touch or non-responsive issues only. Any bleeding, crack, lines, or physical damage is not covered under any warranty, as this is a result of the owner's mishandling.",
   "Battery Warranty: One-month warranty for quick discharge issue (3 hours or less at 100% charge). Bloated and other issues caused by misuse, over-charging, or use of chargers not intended for iPhone use are not covered.",
+  "Final Inspection and Release: By confirming that the device has been repaired to your satisfaction and is in working condition, you accept the device as jointly inspected with the technician. Once given, this confirmation releases Ceejay Apple Services and the technician from any obligation to return or recheck the device for issues that were not identified during that joint inspection.",
 ];

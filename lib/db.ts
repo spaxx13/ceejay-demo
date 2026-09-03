@@ -3,7 +3,6 @@ import { Pool, type QueryResultRow } from "pg";
 import type {
   User,
   Branch,
-  Zone,
   Technician,
   Customer,
   LookupItem,
@@ -11,15 +10,16 @@ import type {
   Lead,
   HomeServiceRequest,
   ActivityLog,
-  InventoryItem,
-  StockMovement,
   Sale,
+  RepairRecord,
   SaleLineItem,
   SiteContent,
   RequestFormContent,
   CustomFormField,
   ServiceAgreement,
+  RepairProgress,
   Notification,
+  Expense,
 } from "./types";
 
 // Single pooled connection, reused across invocations within the same
@@ -62,9 +62,55 @@ function toDateStr(v: Date | string | null): string {
   return d.toISOString().slice(0, 10);
 }
 
-type UserRow = { id: string; name: string; email: string; password_hash: string; role: User["role"]; technician_id: string | null; active: boolean };
+type UserRow = {
+  id: string;
+  name: string;
+  email: string;
+  password_hash: string;
+  role: User["role"];
+  technician_id: string | null;
+  assigned_branch_ids: string[];
+  can_manage_requests: boolean;
+  can_view_all_branches: boolean;
+  active: boolean;
+};
 function mapUser(r: UserRow): User {
-  return { id: r.id, name: r.name, email: r.email, role: r.role, technicianId: r.technician_id, active: r.active };
+  return {
+    id: r.id,
+    name: r.name,
+    email: r.email,
+    role: r.role,
+    technicianId: r.technician_id,
+    assignedBranchIds: r.assigned_branch_ids ?? [],
+    canManageRequests: r.can_manage_requests,
+    canViewAllBranches: r.can_view_all_branches,
+    active: r.active,
+  };
+}
+
+// True when a branch shouldn't be shown to this user (branch_admin scoping
+// — a branch admin only sees their assigned branch(es)). An account with no
+// assigned branches has no restriction and sees everything. A null user or
+// null branchId is never treated as hidden.
+export function isBranchHidden(user: Pick<User, "assignedBranchIds"> | null, branchId: string | null) {
+  if (!branchId || !user || user.assignedBranchIds.length === 0) return false;
+  return !user.assignedBranchIds.includes(branchId);
+}
+
+// True when this account is allowed to access/manage Home Service Requests.
+// Owner admins always can; branch admins are scoped by canManageRequests.
+export function canManageHomeServiceRequests(user: Pick<User, "role" | "canManageRequests"> | null) {
+  if (!user) return false;
+  return user.role === "owner_admin" || (user.role === "branch_admin" && user.canManageRequests);
+}
+
+// True when this account can see combined "All Branches" sales figures on
+// Branch Sales (the aggregate stat cards, All-Branches summary, and Owner
+// Deductions). Owner admins always can; branch admins are scoped by
+// canViewAllBranches and otherwise only see their own branch card(s).
+export function canViewAllBranchSales(user: Pick<User, "role" | "canViewAllBranches"> | null) {
+  if (!user) return false;
+  return user.role === "owner_admin" || (user.role === "branch_admin" && user.canViewAllBranches);
 }
 
 type BranchRow = { id: string; name: string; address: string; contact_number: string; active: boolean };
@@ -72,19 +118,14 @@ function mapBranch(r: BranchRow): Branch {
   return { id: r.id, name: r.name, address: r.address, contactNumber: r.contact_number, active: r.active };
 }
 
-type ZoneRow = { id: string; name: string; city: string; province: string; notes: string; active: boolean; round_robin_cursor: number };
-function mapZone(r: ZoneRow): Zone {
-  return { id: r.id, name: r.name, city: r.city, province: r.province, notes: r.notes, active: r.active, roundRobinCursor: r.round_robin_cursor };
-}
-
-type TechnicianRow = { id: string; name: string; contact_number: string; email: string; employment_status: Technician["employmentStatus"]; branch_ids: string[]; zone_ids: string[]; active: boolean };
+type TechnicianRow = { id: string; name: string; contact_number: string; email: string; employment_status: Technician["employmentStatus"]; branch_ids: string[]; active: boolean };
 function mapTechnician(r: TechnicianRow): Technician {
-  return { id: r.id, name: r.name, contactNumber: r.contact_number, email: r.email, employmentStatus: r.employment_status, branchIds: r.branch_ids ?? [], zoneIds: r.zone_ids ?? [], active: r.active };
+  return { id: r.id, name: r.name, contactNumber: r.contact_number, email: r.email, employmentStatus: r.employment_status, branchIds: r.branch_ids ?? [], active: r.active };
 }
 
-type CustomerRow = { id: string; name: string; phone: string; email: string; street: string; zone_id: string | null; province: string; landmark: string; source: string; notes: string; created_at: Date };
+type CustomerRow = { id: string; name: string; phone: string; email: string; street: string; province: string; landmark: string; source: string; notes: string; created_at: Date };
 function mapCustomer(r: CustomerRow): Customer {
-  return { id: r.id, name: r.name, phone: r.phone, email: r.email, street: r.street, zoneId: r.zone_id, province: r.province, landmark: r.landmark, source: r.source, notes: r.notes, createdAt: toIso(r.created_at) };
+  return { id: r.id, name: r.name, phone: r.phone, email: r.email, street: r.street, province: r.province, landmark: r.landmark, source: r.source, notes: r.notes, createdAt: toIso(r.created_at) };
 }
 
 type LookupRow = { id: string; kind: LookupItem["kind"]; label: string; order_num: number; active: boolean };
@@ -92,9 +133,9 @@ function mapLookup(r: LookupRow): LookupItem {
   return { id: r.id, kind: r.kind, label: r.label, order: r.order_num, active: r.active };
 }
 
-type DeviceModelRow = { id: string; brand_id: string; name: string; active: boolean };
+type DeviceModelRow = { id: string; brand_id: string; name: string; order_num: number; active: boolean };
 function mapDeviceModel(r: DeviceModelRow): DeviceModel {
-  return { id: r.id, brandId: r.brand_id, name: r.name, active: r.active };
+  return { id: r.id, brandId: r.brand_id, name: r.name, order: r.order_num, active: r.active };
 }
 
 type LeadRow = { id: string; customer_id: string | null; name: string; phone: string; email: string; source: string; status_id: string; assigned_to: string | null; follow_up_date: Date | string | null; notes: string; created_at: Date };
@@ -106,34 +147,26 @@ type RequestRow = {
   id: string; reference: string; customer_id: string | null; customer_name: string; phone: string; email: string;
   device_brand_id: string | null; device_model_id: string | null; device_other: string; service_type_id: string;
   issue_description: string; photo_data_url: string | null; street: string; landmark: string; province: string; city: string;
-  lat: number | null; lng: number | null; zone_id: string | null; unzoned: boolean; preferred_datetime: Date | string | null;
+  lat: number | null; lng: number | null; preferred_datetime: Date | string | null;
   status_id: string; assigned_technician_id: string | null; auto_assigned: boolean; branch_id: string | null; admin_notes: string;
   status_history: { statusId: string; at: string }[]; custom_fields: Record<string, string | boolean>; created_at: Date;
+  vlog_consent: boolean; vlog_blur_preference: HomeServiceRequest["vlogBlurPreference"];
 };
 function mapRequest(r: RequestRow): HomeServiceRequest {
   return {
     id: r.id, reference: r.reference, customerId: r.customer_id, customerName: r.customer_name, phone: r.phone, email: r.email,
     deviceBrandId: r.device_brand_id, deviceModelId: r.device_model_id, deviceOther: r.device_other, serviceTypeId: r.service_type_id,
     issueDescription: r.issue_description, photoDataUrl: r.photo_data_url, street: r.street, landmark: r.landmark, province: r.province, city: r.city,
-    lat: r.lat, lng: r.lng, zoneId: r.zone_id, unzoned: r.unzoned, preferredDatetime: toDateStr(r.preferred_datetime),
+    lat: r.lat, lng: r.lng, preferredDatetime: toDateStr(r.preferred_datetime),
     statusId: r.status_id, assignedTechnicianId: r.assigned_technician_id, autoAssigned: r.auto_assigned, branchId: r.branch_id, adminNotes: r.admin_notes,
     createdAt: toIso(r.created_at), statusHistory: r.status_history ?? [], customFields: r.custom_fields ?? {},
+    vlogConsent: r.vlog_consent, vlogBlurPreference: r.vlog_blur_preference || "",
   };
 }
 
 type ActivityRow = { id: string; entity_type: ActivityLog["entityType"]; entity_id: string; message: string; actor: string; at: Date };
 function mapActivity(r: ActivityRow): ActivityLog {
   return { id: r.id, entityType: r.entity_type, entityId: r.entity_id, message: r.message, actor: r.actor, at: toIso(r.at) };
-}
-
-type InventoryRow = { id: string; sku: string; name: string; category_id: string | null; branch_id: string; quantity_on_hand: number; reorder_level: number; unit_cost: string; unit_price: string; active: boolean };
-function mapInventory(r: InventoryRow): InventoryItem {
-  return { id: r.id, sku: r.sku, name: r.name, categoryId: r.category_id ?? "", branchId: r.branch_id, quantityOnHand: r.quantity_on_hand, reorderLevel: r.reorder_level, unitCost: Number(r.unit_cost), unitPrice: Number(r.unit_price), active: r.active };
-}
-
-type StockMovementRow = { id: string; item_id: string; branch_id: string; type: StockMovement["type"]; quantity: number; reason: string; reference_sale_id: string | null; actor: string; at: Date };
-function mapStockMovement(r: StockMovementRow): StockMovement {
-  return { id: r.id, itemId: r.item_id, branchId: r.branch_id, type: r.type, quantity: r.quantity, reason: r.reason, referenceSaleId: r.reference_sale_id, actor: r.actor, at: toIso(r.at) };
 }
 
 type SaleRow = { id: string; reference: string; branch_id: string; customer_id: string | null; customer_name: string; customer_phone: string; home_service_request_id: string | null; discount: string; subtotal: string; total: string; payment_method: Sale["paymentMethod"]; cashier_name: string; created_at: Date };
@@ -144,6 +177,23 @@ function mapSale(r: SaleRow, lineItems: SaleLineItem[]): Sale {
 type SaleLineItemRow = { id: string; sale_id: string; kind: SaleLineItem["kind"]; item_id: string | null; description: string; quantity: string; unit_price: string };
 function mapSaleLineItem(r: SaleLineItemRow): SaleLineItem {
   return { id: r.id, kind: r.kind, itemId: r.item_id, description: r.description, quantity: Number(r.quantity), unitPrice: Number(r.unit_price) };
+}
+
+type RepairRecordRow = {
+  id: string; reference: string; branch_id: string | null; customer_id: string | null; customer_name: string; contact_number: string; email: string; device_model: string;
+  reported_problem: string; service_performed: string; parts_used: string; cost: string; parts_cost: string; labor_cost: string; other_expenses: string; technician_name: string;
+  service_date: Date | string; notes: string; logged_by: string; created_at: Date;
+  cancelled: boolean; cancellation_reason: string; cancelled_at: Date | null;
+};
+function mapRepairRecord(r: RepairRecordRow): RepairRecord {
+  return {
+    id: r.id, reference: r.reference, branchId: r.branch_id, customerId: r.customer_id, customerName: r.customer_name, contactNumber: r.contact_number, email: r.email,
+    deviceModel: r.device_model, reportedProblem: r.reported_problem, servicePerformed: r.service_performed, partsUsed: r.parts_used,
+    cost: Number(r.cost), partsCost: Number(r.parts_cost ?? 0), laborCost: Number(r.labor_cost ?? 0), otherExpenses: Number(r.other_expenses ?? 0),
+    technicianName: r.technician_name, serviceDate: toDateStr(r.service_date), notes: r.notes,
+    loggedBy: r.logged_by, createdAt: toIso(r.created_at),
+    cancelled: r.cancelled, cancellationReason: r.cancellation_reason, cancelledAt: toIsoOrNull(r.cancelled_at),
+  };
 }
 
 type SiteContentRow = {
@@ -169,23 +219,70 @@ function mapCustomField(r: CustomFieldRow): CustomFormField {
 }
 
 type ServiceAgreementRow = {
-  id: string; request_id: string; phase: ServiceAgreement["phase"]; reference: string; customer_name: string; device_label: string;
+  id: string; request_id: string | null; repair_record_id: string | null; phase: ServiceAgreement["phase"]; reference: string; customer_name: string; device_label: string;
   branch_id: string | null; technician_id: string | null; technician_name: string; items: ServiceAgreement["items"]; summary_notes: string;
   agreed_to_terms: boolean; customer_signature_data_url: string | null; technician_signature_data_url: string | null; receipt_photo_data_url: string | null;
-  completed_at: Date; sent_to_customer_at: Date | null; created_at: Date;
+  warranty_coverage: string; cost: string; parts_cost: string; labor_cost: string; other_expenses: string; completed_at: Date; sent_to_customer_at: Date | null; created_at: Date;
 };
 function mapServiceAgreement(r: ServiceAgreementRow): ServiceAgreement {
   return {
-    id: r.id, requestId: r.request_id, phase: r.phase, reference: r.reference, customerName: r.customer_name, deviceLabel: r.device_label,
+    id: r.id, requestId: r.request_id, repairRecordId: r.repair_record_id, phase: r.phase, reference: r.reference, customerName: r.customer_name, deviceLabel: r.device_label,
     branchId: r.branch_id, technicianId: r.technician_id, technicianName: r.technician_name, items: r.items ?? [], summaryNotes: r.summary_notes,
     agreedToTerms: r.agreed_to_terms, customerSignatureDataUrl: r.customer_signature_data_url, technicianSignatureDataUrl: r.technician_signature_data_url,
-    receiptPhotoDataUrl: r.receipt_photo_data_url, completedAt: toIso(r.completed_at), sentToCustomerAt: toIsoOrNull(r.sent_to_customer_at), createdAt: toIso(r.created_at),
+    receiptPhotoDataUrl: r.receipt_photo_data_url, warrantyCoverage: r.warranty_coverage ?? "", cost: Number(r.cost ?? 0), partsCost: Number(r.parts_cost ?? 0),
+    laborCost: Number(r.labor_cost ?? 0), otherExpenses: Number(r.other_expenses ?? 0), completedAt: toIso(r.completed_at), sentToCustomerAt: toIsoOrNull(r.sent_to_customer_at), createdAt: toIso(r.created_at),
+  };
+}
+
+// Derives a repair record's workflow status from its cancelled flag and
+// which checklist phases exist for it — there is no separate status column,
+// so this stays the single source of truth every page uses.
+export type RepairRecordStatus = "pending" | "completed" | "cancelled";
+export function getRepairRecordStatus(record: RepairRecord, agreements: ServiceAgreement[]): RepairRecordStatus {
+  if (record.cancelled) return "cancelled";
+  const hasPost = agreements.some((a) => a.repairRecordId === record.id && a.phase === "post_repair");
+  return hasPost ? "completed" : "pending";
+}
+
+type RepairProgressRow = {
+  id: string; request_id: string; inspection_results: string; progress_notes: string; parts_replaced: string;
+  other_details: string; updated_by: string; updated_at: Date;
+};
+function mapRepairProgress(r: RepairProgressRow): RepairProgress {
+  return {
+    id: r.id, requestId: r.request_id, inspectionResults: r.inspection_results, progressNotes: r.progress_notes,
+    partsReplaced: r.parts_replaced, otherDetails: r.other_details, updatedBy: r.updated_by, updatedAt: toIso(r.updated_at),
   };
 }
 
 type NotificationRow = { id: string; type: Notification["type"]; request_id: string; message: string; created_at: Date; read_at: Date | null };
 function mapNotification(r: NotificationRow): Notification {
   return { id: r.id, type: r.type, requestId: r.request_id, message: r.message, createdAt: toIso(r.created_at), readAt: toIsoOrNull(r.read_at) };
+}
+
+type ExpenseRow = {
+  id: string;
+  description: string;
+  amount: string;
+  target: Expense["target"];
+  technician_name: string | null;
+  branch_id: string | null;
+  expense_date: Date | string;
+  created_by: string;
+  created_at: Date;
+};
+function mapExpense(r: ExpenseRow): Expense {
+  return {
+    id: r.id,
+    description: r.description,
+    amount: Number(r.amount),
+    target: r.target,
+    technicianName: r.technician_name,
+    branchId: r.branch_id,
+    expenseDate: toDateStr(r.expense_date),
+    createdBy: r.created_by,
+    createdAt: toIso(r.created_at),
+  };
 }
 
 // ---------- Bulk readers (fetch full table, mapped) ----------
@@ -198,9 +295,6 @@ export async function getUsers() {
 }
 export async function getBranches() {
   return (await query<BranchRow>("select * from branches order by name")).map(mapBranch);
-}
-export async function getZones() {
-  return (await query<ZoneRow>("select * from zones order by name")).map(mapZone);
 }
 export async function getTechnicians() {
   return (await query<TechnicianRow>("select * from technicians order by name")).map(mapTechnician);
@@ -216,7 +310,7 @@ export async function getLookups() {
   return (await query<LookupRow>("select * from lookups order by kind, order_num")).map(mapLookup);
 }
 export async function getDeviceModels() {
-  return (await query<DeviceModelRow>("select * from device_models order by name")).map(mapDeviceModel);
+  return (await query<DeviceModelRow>("select * from device_models order by brand_id, order_num, name")).map(mapDeviceModel);
 }
 export async function getLeads() {
   return (await query<LeadRow>("select * from leads order by created_at desc")).map(mapLead);
@@ -235,12 +329,6 @@ export async function getRequestById(id: string) {
 export async function getActivity() {
   return (await query<ActivityRow>("select * from activity_log order by at desc")).map(mapActivity);
 }
-export async function getInventory() {
-  return (await query<InventoryRow>("select * from inventory_items order by name")).map(mapInventory);
-}
-export async function getStockMovements() {
-  return (await query<StockMovementRow>("select * from stock_movements order by at desc")).map(mapStockMovement);
-}
 export async function getSales() {
   const [saleRows, lineRows] = await Promise.all([
     query<SaleRow>("select * from sales order by created_at desc"),
@@ -254,6 +342,13 @@ export async function getSales() {
     linesBySale.set(lr.sale_id, list);
   }
   return saleRows.map((r) => mapSale(r, linesBySale.get(r.id) ?? []));
+}
+export async function getRepairRecords() {
+  return (await query<RepairRecordRow>("select * from repair_records order by created_at desc")).map(mapRepairRecord);
+}
+export async function getRepairRecordById(id: string) {
+  const row = await queryOne<RepairRecordRow>("select * from repair_records where id = $1", [id]);
+  return row ? mapRepairRecord(row) : null;
 }
 export async function getSiteContent(): Promise<SiteContent> {
   const row = await queryOne<SiteContentRow>("select * from site_content where id = 1");
@@ -271,8 +366,15 @@ export async function getCustomFormFields() {
 export async function getServiceAgreements() {
   return (await query<ServiceAgreementRow>("select * from service_agreements order by created_at desc")).map(mapServiceAgreement);
 }
+export async function getRepairProgressByRequestId(requestId: string): Promise<RepairProgress | null> {
+  const row = await queryOne<RepairProgressRow>("select * from repair_progress where request_id = $1", [requestId]);
+  return row ? mapRepairProgress(row) : null;
+}
 export async function getNotifications() {
   return (await query<NotificationRow>("select * from notifications order by created_at desc")).map(mapNotification);
+}
+export async function getExpenses() {
+  return (await query<ExpenseRow>("select * from expenses order by expense_date desc, created_at desc")).map(mapExpense);
 }
 
 export async function getUserById(id: string) {

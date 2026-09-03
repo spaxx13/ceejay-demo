@@ -18,11 +18,11 @@ export default function LoginForm() {
       </div>
       <div className="space-y-1.5">
         <label className="text-xs font-medium text-slate-500">Email</label>
-        <input name="email" type="email" required className="input" placeholder="you@example.com" />
+        <input name="email" type="email" autoComplete="username" required className="input" placeholder="you@example.com" />
       </div>
       <div className="space-y-1.5">
         <label className="text-xs font-medium text-slate-500">Password</label>
-        <input name="password" type="password" required className="input" placeholder="••••••••" />
+        <input name="password" type="password" autoComplete="current-password" required className="input" placeholder="••••••••" />
       </div>
       {state?.error && <p className="text-sm text-red-600">{state.error}</p>}
       <button type="submit" disabled={pending} className="btn-primary w-full">

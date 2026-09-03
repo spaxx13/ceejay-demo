@@ -1,20 +1,24 @@
 import Link from "next/link";
-import { getLookups, getZones, getTechnicians, getRequests } from "@/lib/db";
+import { redirect } from "next/navigation";
+import { getLookups, getTechnicians, getRequests, canManageHomeServiceRequests } from "@/lib/db";
+import { getCurrentUser } from "@/lib/auth";
 import StatusBadge from "@/components/StatusBadge";
 import { formatDate } from "@/lib/format";
 
 export default async function RequestsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string; zone?: string; technician?: string; date?: string; unassigned?: string }>;
+  searchParams: Promise<{ status?: string; technician?: string; date?: string; unassigned?: string }>;
 }) {
+  const user = await getCurrentUser();
+  if (!canManageHomeServiceRequests(user)) redirect("/admin");
+
   const sp = await searchParams;
-  const [lookups, zones, technicians, allRequests] = await Promise.all([getLookups(), getZones(), getTechnicians(), getRequests()]);
+  const [lookups, technicians, allRequests] = await Promise.all([getLookups(), getTechnicians(), getRequests()]);
   const statuses = lookups.filter((l) => l.kind === "request_status").sort((a, b) => a.order - b.order);
 
   let requests = [...allRequests];
   if (sp.status) requests = requests.filter((r) => r.statusId === sp.status);
-  if (sp.zone) requests = requests.filter((r) => r.zoneId === sp.zone);
   if (sp.technician) requests = requests.filter((r) => r.assignedTechnicianId === sp.technician);
   if (sp.date) requests = requests.filter((r) => r.preferredDatetime.startsWith(sp.date!));
   if (sp.unassigned === "1") requests = requests.filter((r) => !r.assignedTechnicianId);
@@ -59,14 +63,6 @@ export default async function RequestsPage({
             </option>
           ))}
         </select>
-        <select name="zone" defaultValue={sp.zone ?? ""} className="input w-44">
-          <option value="">All zones</option>
-          {zones.map((z) => (
-            <option key={z.id} value={z.id}>
-              {z.name}
-            </option>
-          ))}
-        </select>
         <select name="technician" defaultValue={sp.technician ?? ""} className="input w-44">
           <option value="">All technicians</option>
           {technicians.map((t) => (
@@ -90,7 +86,6 @@ export default async function RequestsPage({
             <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-400">
               <th className="pb-2 pr-3">Reference</th>
               <th className="pb-2 pr-3">Customer</th>
-              <th className="pb-2 pr-3">Zone</th>
               <th className="pb-2 pr-3">Technician</th>
               <th className="pb-2 pr-3">Preferred</th>
               <th className="pb-2 pr-3">Status</th>
@@ -100,7 +95,7 @@ export default async function RequestsPage({
           <tbody>
             {requests.length === 0 && (
               <tr>
-                <td colSpan={7} className="py-6 text-center text-slate-400">
+                <td colSpan={6} className="py-6 text-center text-slate-400">
                   No requests match these filters.
                 </td>
               </tr>
@@ -109,9 +104,6 @@ export default async function RequestsPage({
               <tr key={r.id} className="border-b border-slate-200 last:border-0">
                 <td className="py-3 pr-3 font-mono text-xs text-blue-300">{r.reference}</td>
                 <td className="py-3 pr-3 text-slate-800">{r.customerName}</td>
-                <td className="py-3 pr-3 text-slate-500">
-                  {r.zoneId ? labelFor(r.zoneId, zones) : <span className="text-amber-700">Unzoned</span>}
-                </td>
                 <td className="py-3 pr-3 text-slate-500">{r.assignedTechnicianId ? labelFor(r.assignedTechnicianId, technicians) : <span className="text-amber-700">Unassigned</span>}</td>
                 <td className="py-3 pr-3 text-slate-500">{formatDate(r.preferredDatetime)}</td>
                 <td className="py-3 pr-3">

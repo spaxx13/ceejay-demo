@@ -12,12 +12,12 @@ type Item = { key: string; label: string; helpText: string };
 const RESULT_OPTIONS: { value: ChecklistResult; label: string; activeClass: string }[] = [
   { value: "pass", label: "Pass", activeClass: "border-green-200 bg-green-50 text-green-700" },
   { value: "fail", label: "Fail", activeClass: "border-red-200 bg-red-50 text-red-700" },
-  { value: "na", label: "N/A", activeClass: "border-slate-300 bg-slate-100 text-slate-600" },
+  { value: "na", label: "N/A", activeClass: "border-blue-300 bg-blue-50 text-blue-700" },
 ];
 
 export default function ChecklistForm({
   phase,
-  requestId,
+  target,
   reference,
   customerName,
   phone,
@@ -26,19 +26,22 @@ export default function ChecklistForm({
   address,
   items,
   terms,
+  backHref,
 }: {
   phase: ChecklistPhase;
-  requestId: string;
+  target: { type: "request"; id: string } | { type: "repairRecord"; id: string };
   reference: string;
   customerName: string;
   phone: string;
   email: string;
   deviceLabel: string;
-  address: string;
+  address?: string;
   items: Item[];
   terms: string[];
+  backHref: string;
 }) {
   const isPost = phase === "post_repair";
+  const isRequestFlow = target.type === "request";
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
   const wasPending = useRef(false);
@@ -48,6 +51,9 @@ export default function ChecklistForm({
 
   const allAnswered = items.every((i) => results[i.key]);
   const canSubmit = allAnswered && (!isPost || agreed);
+
+  const [warrantyCoverage, setWarrantyCoverage] = useState("");
+  const [cost, setCost] = useState("");
 
   // React resets a <form action={...}> element's native DOM state (radio
   // "checked", checkbox "checked") after every action settles, success or
@@ -69,7 +75,21 @@ export default function ChecklistForm({
     wasPending.current = pending;
   }, [pending, results, agreed, items]);
 
+  // For repair-record tickets, this form is typically opened as a pop-up
+  // window from the ticket's detail/list page — refresh whichever window
+  // opened this one once the checklist is saved, so its status updates.
+  useEffect(() => {
+    if (state?.ok && window.opener) {
+      try {
+        window.opener.location.reload();
+      } catch {
+        // opener may be cross-origin or already closed — ignore
+      }
+    }
+  }, [state]);
+
   if (state?.ok) {
+    const hasOpener = typeof window !== "undefined" && !!window.opener;
     return (
       <div className="card mx-auto max-w-md space-y-3 text-center">
         <p className="text-3xl">✅</p>
@@ -77,23 +97,34 @@ export default function ChecklistForm({
         <p className="text-sm text-slate-400">
           {isPost ? (
             <>
-              The job has been marked <span className="text-slate-600">Completed</span>. Both checklists were saved to the system and sent to
-              the customer at <span className="text-slate-600">{email || phone}</span>.
+              The job has been marked <span className="text-slate-600">Completed</span>. Both checklists were saved to the system, and a
+              receipt was emailed to <span className="text-slate-600">{email || "the customer (no email on file)"}</span>.
             </>
           ) : (
-            "The post-repair checklist is now available for this job."
+            "The post-repair checklist is now available for this job — it can be finished now, or left pending and completed later."
           )}
         </p>
-        <button onClick={() => router.push("/technician")} className="btn-primary">
-          Back to My Jobs
-        </button>
+        <div className="flex flex-wrap justify-center gap-2">
+          <button onClick={() => router.push(backHref)} className="btn-primary">
+            Back
+          </button>
+          {hasOpener && (
+            <button type="button" onClick={() => window.close()} className="btn-secondary">
+              Close Window
+            </button>
+          )}
+        </div>
       </div>
     );
   }
 
   return (
     <form ref={formRef} action={formAction} className="space-y-6">
-      <input type="hidden" name="requestId" value={requestId} />
+      {target.type === "request" ? (
+        <input type="hidden" name="requestId" value={target.id} />
+      ) : (
+        <input type="hidden" name="repairRecordId" value={target.id} />
+      )}
       <input type="hidden" name="phase" value={phase} />
 
       <div className="card space-y-2">
@@ -106,8 +137,12 @@ export default function ChecklistForm({
           <dd className="text-slate-800">{phone || email || "—"}</dd>
           <dt className="text-slate-400">Device</dt>
           <dd className="text-slate-800">{deviceLabel}</dd>
-          <dt className="text-slate-400">Address</dt>
-          <dd className="text-slate-800">{address}</dd>
+          {address && (
+            <>
+              <dt className="text-slate-400">Address</dt>
+              <dd className="text-slate-800">{address}</dd>
+            </>
+          )}
         </dl>
       </div>
 
@@ -222,21 +257,89 @@ export default function ChecklistForm({
 
       {isPost && (
         <div className="card space-y-2">
-          <h3 className="text-sm font-semibold text-slate-800">Receipt</h3>
-          <p className="text-xs text-slate-500">Attach a photo of the receipt — required to complete and close this case.</p>
-          <PhotoUpload name="receiptPhotoDataUrl" label="Photo of Receipt" required />
+          <h3 className="text-sm font-semibold text-slate-800">Warranty Coverage</h3>
+          <p className="text-xs text-slate-500">What warranty applies to this specific repair — this is included on the customer&apos;s emailed receipt.</p>
+          <textarea
+            name="warrantyCoverage"
+            rows={2}
+            required
+            value={warrantyCoverage}
+            onChange={(e) => setWarrantyCoverage(e.target.value)}
+            className="input"
+            placeholder="e.g. 3-day warranty on LCD replacement for ghost touch/non-responsive issues only"
+          />
+        </div>
+      )}
+
+      {isPost && isRequestFlow && (
+        <div className="card space-y-3">
+          <div className="space-y-2">
+            <h3 className="text-sm font-semibold text-slate-800">Repair Price</h3>
+            <p className="text-xs text-slate-500">The amount to charge for this repair — this is included on the customer&apos;s emailed receipt.</p>
+            <input
+              name="cost"
+              type="number"
+              min={0}
+              step="0.01"
+              required
+              value={cost}
+              onChange={(e) => setCost(e.target.value)}
+              className="input"
+              placeholder="0.00"
+            />
+          </div>
+          <div className="space-y-2">
+            <h3 className="text-sm font-semibold text-slate-800">Expenses</h3>
+            <p className="text-xs text-slate-500">If any — used to calculate net profit on the Sales reports.</p>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-slate-500">Parts/Material Cost (₱)</label>
+                <input name="partsCost" type="number" min={0} step="0.01" className="input" placeholder="0.00" />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-slate-500">Labor/Service Cost (₱)</label>
+                <input name="laborCost" type="number" min={0} step="0.01" className="input" placeholder="0.00" />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-slate-500">Other Expenses (₱)</label>
+                <input name="otherExpenses" type="number" min={0} step="0.01" className="input" placeholder="0.00" />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isPost && (
+        <div className="card space-y-2">
+          <h3 className="text-sm font-semibold text-slate-800">{isRequestFlow ? "Device Photo" : "Receipt"}</h3>
+          <p className="text-xs text-slate-500">
+            {isRequestFlow
+              ? "Attach a photo of the repaired device — required to complete and close this case."
+              : "Attach a photo of the receipt, if there is one — optional."}
+          </p>
+          <PhotoUpload name="receiptPhotoDataUrl" label={isRequestFlow ? "Photo of Device" : "Photo of Receipt"} required={isRequestFlow} />
         </div>
       )}
 
       {state && !state.ok && <p className="text-sm text-red-600">{state.error}</p>}
 
-      <button type="submit" disabled={pending || !canSubmit} className="btn-primary w-full">
-        {pending ? "Saving..." : isPost ? "Complete Checklist & Send to Customer" : "Save Pre-Repair Checklist"}
+      <button
+        type="submit"
+        disabled={pending || !canSubmit || (isPost && (!warrantyCoverage.trim() || (isRequestFlow && !cost)))}
+        className="btn-primary w-full"
+      >
+        {pending ? "Saving..." : isPost ? "Complete Checklist & Email Receipt" : "Save Pre-Repair Checklist"}
       </button>
       {!canSubmit && (
         <p className="text-center text-xs text-slate-400">
           {!allAnswered ? "Mark every checklist item to continue." : "Check the customer acknowledgement to continue."}
         </p>
+      )}
+      {canSubmit && isPost && !warrantyCoverage.trim() && (
+        <p className="text-center text-xs text-slate-400">Enter the warranty coverage for this repair to continue.</p>
+      )}
+      {canSubmit && isPost && warrantyCoverage.trim() && isRequestFlow && !cost && (
+        <p className="text-center text-xs text-slate-400">Enter the repair price to continue.</p>
       )}
     </form>
   );

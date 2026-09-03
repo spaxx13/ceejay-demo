@@ -1,68 +1,11 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { CHECKLIST_TEMPLATE, SERVICE_AGREEMENT_TERMS } from "@/lib/checklist";
-import { getRequestById, getLookups, getDeviceModels, getServiceAgreements } from "@/lib/db";
+import { getRequestById, getLookups, getDeviceModels, getServiceAgreements, getRepairProgressByRequestId } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import ChecklistForm from "@/components/ChecklistForm";
-import type { ServiceAgreement } from "@/lib/types";
-import { formatDateTime } from "@/lib/format";
-
-const RESULT_LABEL: Record<string, string> = { pass: "Pass", fail: "Fail", na: "N/A" };
-
-function AgreementSummary({ agreement, title }: { agreement: ServiceAgreement; title: string }) {
-  return (
-    <div className="space-y-4">
-      <div className="card space-y-1 text-center">
-        <p className="text-2xl">✅</p>
-        <p className="text-sm font-semibold text-slate-800">{title}</p>
-        <p className="text-xs text-slate-400">
-          Completed {formatDateTime(agreement.completedAt)}
-          {agreement.sentToCustomerAt && " — sent to customer"}
-        </p>
-      </div>
-      <div className="card space-y-3">
-        {agreement.items.map((item) => (
-          <div key={item.key} className="flex items-start justify-between gap-3 border-b border-slate-100 pb-2 last:border-0 last:pb-0">
-            <div>
-              <p className="text-sm text-slate-800">{item.label}</p>
-              {item.notes && <p className="text-xs text-slate-400">{item.notes}</p>}
-            </div>
-            <span className="badge shrink-0 border border-slate-300 bg-slate-100 text-slate-600">
-              {RESULT_LABEL[item.result ?? ""] ?? "—"}
-            </span>
-          </div>
-        ))}
-      </div>
-      {agreement.summaryNotes && (
-        <div className="card space-y-1">
-          <h3 className="text-sm font-semibold text-slate-800">Technician Summary</h3>
-          <p className="whitespace-pre-line text-sm text-slate-600">{agreement.summaryNotes}</p>
-        </div>
-      )}
-      <div className={`card grid grid-cols-1 gap-4 ${agreement.customerSignatureDataUrl ? "sm:grid-cols-2" : ""}`}>
-        {agreement.customerSignatureDataUrl && (
-          <div>
-            <p className="mb-1 text-xs font-medium text-slate-500">Customer Signature</p>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={agreement.customerSignatureDataUrl} alt="Customer signature" className="h-24 w-full rounded-lg border border-slate-200 bg-white object-contain" />
-          </div>
-        )}
-        <div>
-          <p className="mb-1 text-xs font-medium text-slate-500">Technician Signature</p>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={agreement.technicianSignatureDataUrl ?? ""} alt="Technician signature" className="h-24 w-full rounded-lg border border-slate-200 bg-white object-contain" />
-        </div>
-      </div>
-      {agreement.receiptPhotoDataUrl && (
-        <div className="card space-y-1">
-          <p className="text-xs font-medium text-slate-500">Receipt</p>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={agreement.receiptPhotoDataUrl} alt="Receipt" className="max-h-56 rounded-lg border border-slate-200 object-contain" />
-        </div>
-      )}
-    </div>
-  );
-}
+import RepairProgressForm from "@/components/RepairProgressForm";
+import AgreementSummary from "@/components/AgreementSummary";
 
 export default async function TechnicianChecklistPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -70,7 +13,12 @@ export default async function TechnicianChecklistPage({ params }: { params: Prom
   if (!req) notFound();
   if (!user || req.assignedTechnicianId !== user.technicianId) redirect("/technician");
 
-  const [lookups, deviceModels, agreements] = await Promise.all([getLookups(), getDeviceModels(), getServiceAgreements()]);
+  const [lookups, deviceModels, agreements, repairProgress] = await Promise.all([
+    getLookups(),
+    getDeviceModels(),
+    getServiceAgreements(),
+    getRepairProgressByRequestId(id),
+  ]);
   const brand = lookups.find((l) => l.id === req.deviceBrandId);
   const model = deviceModels.find((m) => m.id === req.deviceModelId);
   const deviceLabel = brand ? `${brand.label} ${model?.name ?? ""}`.trim() : req.deviceOther || "Device";
@@ -80,7 +28,7 @@ export default async function TechnicianChecklistPage({ params }: { params: Prom
   const post = agreements.find((a) => a.requestId === req.id && a.phase === "post_repair");
 
   const commonProps = {
-    requestId: req.id,
+    target: { type: "request" as const, id: req.id },
     reference: req.reference,
     customerName: req.customerName,
     phone: req.phone,
@@ -89,6 +37,7 @@ export default async function TechnicianChecklistPage({ params }: { params: Prom
     address,
     items: CHECKLIST_TEMPLATE.map((t) => ({ key: t.key, label: t.label, helpText: t.helpText })),
     terms: SERVICE_AGREEMENT_TERMS,
+    backHref: "/technician",
   };
 
   return (
@@ -108,6 +57,8 @@ export default async function TechnicianChecklistPage({ params }: { params: Prom
           ✅ This job is Completed — both checklists were saved and sent to the customer.
         </div>
       )}
+
+      <RepairProgressForm requestId={req.id} progress={repairProgress} />
 
       {pre && <AgreementSummary agreement={pre} title={`Pre-Repair Checklist completed — ${pre.reference}`} />}
 

@@ -31,14 +31,58 @@ type Req = {
 
 export default function TechnicianBoard({ requests, statuses }: { requests: Req[]; statuses: Status[] }) {
   const [openId, setOpenId] = useState<string | null>(null);
+  const [tab, setTab] = useState<"pending" | "completed">("pending");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
 
   if (requests.length === 0) {
     return <p className="card text-center text-sm text-slate-400">No requests assigned to you right now.</p>;
   }
 
+  const completedStatusId = statuses.find((s) => s.label === "Completed")?.id;
+  const pending = requests.filter((r) => r.statusId !== completedStatusId);
+  const completed = requests.filter((r) => r.statusId === completedStatusId);
+  const tabbed = tab === "pending" ? pending : completed;
+  const visible = [...tabbed].sort((a, b) =>
+    sortOrder === "asc" ? (a.preferredDatetime < b.preferredDatetime ? -1 : 1) : a.preferredDatetime < b.preferredDatetime ? 1 : -1
+  );
+
   return (
     <div className="space-y-4">
-      {requests.map((r) => {
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex gap-2">
+          <button
+            className={`badge cursor-pointer border px-3 py-1.5 text-sm ${
+              tab === "pending" ? "border-blue-300 bg-blue-50 text-blue-700" : "border-slate-300 bg-slate-100 text-slate-500"
+            }`}
+            onClick={() => setTab("pending")}
+          >
+            Pending ({pending.length})
+          </button>
+          <button
+            className={`badge cursor-pointer border px-3 py-1.5 text-sm ${
+              tab === "completed" ? "border-green-300 bg-green-50 text-green-700" : "border-slate-300 bg-slate-100 text-slate-500"
+            }`}
+            onClick={() => setTab("completed")}
+          >
+            Completed ({completed.length})
+          </button>
+        </div>
+        <label className="flex items-center gap-2 text-xs text-slate-500">
+          Sort by date
+          <select value={sortOrder} onChange={(e) => setSortOrder(e.target.value as "asc" | "desc")} className="input w-auto !py-1.5 text-xs">
+            <option value="asc">Soonest first</option>
+            <option value="desc">Latest first</option>
+          </select>
+        </label>
+      </div>
+
+      {visible.length === 0 && (
+        <p className="card text-center text-sm text-slate-400">
+          {tab === "pending" ? "No pending jobs right now." : "No completed jobs yet."}
+        </p>
+      )}
+
+      {visible.map((r) => {
         const status = statuses.find((s) => s.id === r.statusId);
         const open = openId === r.id;
         return (

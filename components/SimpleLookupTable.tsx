@@ -8,7 +8,7 @@ export default function SimpleLookupTable({
   title,
   items,
   createAction,
-  toggleAction,
+  deleteAction,
   updateAction,
   hiddenFields,
   placeholder = "Add new...",
@@ -16,7 +16,7 @@ export default function SimpleLookupTable({
   title: string;
   items: Item[];
   createAction: (formData: FormData) => void;
-  toggleAction: (formData: FormData) => void;
+  deleteAction: (formData: FormData) => void;
   updateAction?: (formData: FormData) => void;
   hiddenFields?: Record<string, string>;
   placeholder?: string;
@@ -55,22 +55,19 @@ export default function SimpleLookupTable({
                 }}
               >
                 <input type="hidden" name="id" value={item.id} />
-                <input
-                  name="label"
-                  defaultValue={item.label}
-                  className={`input flex-1 !py-1 text-sm ${item.active ? "" : "opacity-50"}`}
-                />
+                <input name="label" defaultValue={item.label} className="input flex-1 !py-1 text-sm" />
               </form>
             ) : (
-              <span className={`text-sm ${item.active ? "text-slate-800" : "text-slate-400 line-through"}`}>{item.label}</span>
+              <span className="text-sm text-slate-800">{item.label}</span>
             )}
-            <form action={toggleAction}>
+            <form
+              action={(fd) => {
+                if (confirm(`Delete "${item.label}"? This can't be undone.`)) deleteAction(fd);
+              }}
+            >
               <input type="hidden" name="id" value={item.id} />
-              <button
-                type="submit"
-                className={`badge border ${item.active ? "border-green-200 bg-green-50 text-green-700" : "border-slate-300 bg-slate-100 text-slate-500"}`}
-              >
-                {item.active ? "Active" : "Inactive"}
+              <button type="submit" className="btn-secondary !px-3 !py-1 text-xs !text-red-600">
+                Delete
               </button>
             </form>
           </li>

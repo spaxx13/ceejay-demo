@@ -3,14 +3,14 @@ import { getLookups } from "@/lib/db";
 import { requireRole } from "@/lib/auth";
 import SettingsTabs from "@/components/SettingsTabs";
 import SimpleLookupTable from "@/components/SimpleLookupTable";
-import { createLookup, toggleLookupActive, updateLookupLabel } from "@/lib/actions";
+import { createLookup, deleteLookup, updateLookupLabel } from "@/lib/actions";
 
 export default async function ServiceTypesPage() {
   if (!(await requireRole("owner_admin"))) redirect("/admin");
 
   const lookups = await getLookups();
-  const serviceTypes = lookups.filter((l) => l.kind === "service_type").sort((a, b) => a.order - b.order);
-  const sources = lookups.filter((l) => l.kind === "customer_source").sort((a, b) => a.order - b.order);
+  const serviceTypes = lookups.filter((l) => l.kind === "service_type" && l.active).sort((a, b) => a.order - b.order);
+  const sources = lookups.filter((l) => l.kind === "customer_source" && l.active).sort((a, b) => a.order - b.order);
 
   return (
     <div className="space-y-6">
@@ -25,7 +25,7 @@ export default async function ServiceTypesPage() {
           items={serviceTypes}
           createAction={createLookup}
           hiddenFields={{ kind: "service_type" }}
-          toggleAction={toggleLookupActive}
+          deleteAction={deleteLookup}
           updateAction={updateLookupLabel}
           placeholder="Add service type..."
         />
@@ -34,7 +34,7 @@ export default async function ServiceTypesPage() {
           items={sources}
           createAction={createLookup}
           hiddenFields={{ kind: "customer_source" }}
-          toggleAction={toggleLookupActive}
+          deleteAction={deleteLookup}
           updateAction={updateLookupLabel}
           placeholder="Add source..."
         />

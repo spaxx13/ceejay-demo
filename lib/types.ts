@@ -6,7 +6,27 @@ export type User = {
   email: string;
   role: Role;
   technicianId: string | null; // set when role === "technician"
+  assignedBranchIds: string[]; // branches this account is allowed to access (branch_admin scoping) — empty means no restriction, sees all
+  canManageRequests: boolean; // whether this account can access/manage Home Service Requests (branch_admin scoping)
+  canViewAllBranches: boolean; // whether this account can see combined "All Branches" sales figures (branch_admin scoping) — false means own branch(es) only
   active: boolean;
+};
+
+// Owner-managed business expenses (rent, utilities, tools, etc.) — separate
+// from the per-ticket parts/labor/other cost fields on repair records and
+// service agreements. Each expense is deducted from exactly one Sales total.
+export type ExpenseTarget = "owner_final_total_sales" | "owner_total_sales" | "technician_final_total_sales";
+
+export type Expense = {
+  id: string;
+  description: string;
+  amount: number;
+  target: ExpenseTarget;
+  technicianName: string | null; // required when target === "technician_final_total_sales"
+  branchId: string | null; // optional: ties an owner-level expense to one branch's card instead of every visible branch
+  expenseDate: string; // YYYY-MM-DD
+  createdBy: string;
+  createdAt: string;
 };
 
 // Singleton record backing the editable copy on the public landing page
@@ -98,16 +118,6 @@ export type Branch = {
   active: boolean;
 };
 
-export type Zone = {
-  id: string;
-  name: string;
-  city: string;
-  province: string;
-  notes: string;
-  active: boolean;
-  roundRobinCursor: number;
-};
-
 export type EmploymentStatus = "full_time" | "part_time" | "contractor";
 
 export type Technician = {
@@ -117,7 +127,6 @@ export type Technician = {
   email: string;
   employmentStatus: EmploymentStatus;
   branchIds: string[];
-  zoneIds: string[];
   active: boolean;
 };
 
@@ -129,7 +138,6 @@ export type Customer = {
   phone: string;
   email: string;
   street: string;
-  zoneId: string | null;
   province: string;
   landmark: string;
   source: CustomerSource;
@@ -146,7 +154,7 @@ export type LookupKind =
   | "service_type"
   | "customer_source"
   | "device_brand"
-  | "inventory_category";
+  | "payment_method";
 
 export type LookupItem = {
   id: string;
@@ -161,6 +169,7 @@ export type DeviceModel = {
   id: string;
   brandId: string;
   name: string;
+  order: number;
   active: boolean;
 };
 
@@ -197,8 +206,6 @@ export type HomeServiceRequest = {
   city: string; // raw city/municipality text as typed/selected by the customer
   lat: number | null;
   lng: number | null;
-  zoneId: string | null; // matched zone, null if unzoned
-  unzoned: boolean;
   preferredDatetime: string;
   statusId: string; // LookupItem id (request_status)
   assignedTechnicianId: string | null;
@@ -208,33 +215,8 @@ export type HomeServiceRequest = {
   createdAt: string;
   statusHistory: { statusId: string; at: string }[];
   customFields: Record<string, string | boolean>; // keyed by CustomFormField.key
-};
-
-export type InventoryItem = {
-  id: string;
-  sku: string;
-  name: string;
-  categoryId: string; // LookupItem id (kind: inventory_category)
-  branchId: string;
-  quantityOnHand: number;
-  reorderLevel: number;
-  unitCost: number;
-  unitPrice: number;
-  active: boolean;
-};
-
-export type StockMovementType = "in" | "out" | "adjustment";
-
-export type StockMovement = {
-  id: string;
-  itemId: string;
-  branchId: string;
-  type: StockMovementType;
-  quantity: number; // positive delta actually applied to quantityOnHand (signed by type for "adjustment")
-  reason: string;
-  referenceSaleId: string | null;
-  actor: string;
-  at: string;
+  vlogConsent: boolean;
+  vlogBlurPreference: "blurred" | "not_blurred" | ""; // only meaningful when vlogConsent is true
 };
 
 export type SaleLineItem = {
@@ -246,7 +228,7 @@ export type SaleLineItem = {
   unitPrice: number;
 };
 
-export type PaymentMethod = "cash" | "card" | "gcash";
+export type PaymentMethod = string; // free-form label, from lookups (kind: "payment_method")
 
 export type Sale = {
   id: string;
@@ -263,6 +245,34 @@ export type Sale = {
   paymentMethod: PaymentMethod;
   cashierName: string;
   createdAt: string;
+};
+
+// Flat repair-log record — the simple replacement for the old checkout-style
+// Sale/SaleLineItem model. No branch, no payment method, no itemized pricing.
+export type RepairRecord = {
+  id: string;
+  reference: string;
+  branchId: string | null;
+  customerId: string | null;
+  customerName: string;
+  contactNumber: string;
+  email: string;
+  deviceModel: string;
+  reportedProblem: string;
+  servicePerformed: string;
+  partsUsed: string;
+  cost: number;
+  partsCost: number; // what the parts cost the shop — deducted from cost on Branch Sales to show net profit
+  laborCost: number; // labor/service cost paid out for this job — deducted alongside partsCost
+  otherExpenses: number; // any other expense tied to this job (e.g. transportation) — deducted alongside partsCost
+  technicianName: string;
+  serviceDate: string;
+  notes: string;
+  loggedBy: string;
+  createdAt: string;
+  cancelled: boolean;
+  cancellationReason: string;
+  cancelledAt: string | null;
 };
 
 export type ActivityLog = {
@@ -298,7 +308,8 @@ export type ChecklistItem = {
 
 export type ServiceAgreement = {
   id: string;
-  requestId: string; // HomeServiceRequest.id
+  requestId: string | null; // HomeServiceRequest.id — set for the technician/home-service flow
+  repairRecordId: string | null; // RepairRecord.id — set for the admin/POS flow. Exactly one of these two is set.
   phase: ChecklistPhase;
   reference: string; // e.g. PRC-2026-0001 (pre-repair) or SA-2026-0001 (post-repair)
   customerName: string;
@@ -312,9 +323,28 @@ export type ServiceAgreement = {
   customerSignatureDataUrl: string | null;
   technicianSignatureDataUrl: string | null;
   receiptPhotoDataUrl: string | null; // only collected/required for phase === "post_repair"
+  warrantyCoverage: string; // only collected/required for phase === "post_repair"
+  cost: number; // only collected for phase === "post_repair" on the technician/home-service flow; 0/unused for repair-record checklists
+  partsCost: number; // same scope as cost — what the parts cost the shop, deducted on Branch Sales for net profit
+  laborCost: number; // same scope as cost — labor/service cost paid out for this job
+  otherExpenses: number; // same scope as cost — any other expense tied to this job
   completedAt: string;
-  sentToCustomerAt: string | null; // stubbed — no email/SMS provider in this demo
+  sentToCustomerAt: string | null; // set once the receipt email actually sends successfully
   createdAt: string;
+};
+
+// Free-form work-in-progress notes a technician can update repeatedly while
+// a job is "In Progress" — one row per request, distinct from the one-shot
+// signed ServiceAgreement checklist.
+export type RepairProgress = {
+  id: string;
+  requestId: string;
+  inspectionResults: string;
+  progressNotes: string;
+  partsReplaced: string;
+  otherDetails: string;
+  updatedBy: string;
+  updatedAt: string;
 };
 
 // In-app admin notification — stands in for the push/SMS/email alert a real

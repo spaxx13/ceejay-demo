@@ -11,26 +11,22 @@ type Tech = {
   email: string;
   employmentStatus: string;
   branchIds: string[];
-  zoneIds: string[];
   active: boolean;
 };
 
-export default function TechnicianManager({ technicians, branches, zones }: { technicians: Tech[]; branches: Opt[]; zones: Opt[] }) {
+export default function TechnicianManager({ technicians, branches }: { technicians: Tech[]; branches: Opt[] }) {
   const formRef = useRef<HTMLFormElement>(null);
   const [branchSel, setBranchSel] = useState<string[]>([]);
-  const [zoneSel, setZoneSel] = useState<string[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const editing = technicians.find((t) => t.id === editingId);
 
   function startEdit(t: Tech) {
     setEditingId(t.id);
     setBranchSel(t.branchIds);
-    setZoneSel(t.zoneIds);
   }
   function reset() {
     setEditingId(null);
     setBranchSel([]);
-    setZoneSel([]);
     formRef.current?.reset();
   }
 
@@ -96,30 +92,6 @@ export default function TechnicianManager({ technicians, branches, zones }: { te
               ))}
             </div>
           </div>
-          <div className="space-y-1.5">
-            <label className="text-xs font-medium text-slate-500">Zone(s) covered</label>
-            <div className="flex flex-wrap gap-2">
-              {zones.length === 0 && <p className="text-xs text-slate-400">No zones yet — add zones first.</p>}
-              {zones.map((z) => (
-                <label
-                  key={z.id}
-                  className={`badge cursor-pointer border ${
-                    zoneSel.includes(z.id) ? "border-blue-300 bg-blue-100 text-blue-300" : "border-slate-300 bg-slate-100 text-slate-500"
-                  }`}
-                >
-                  <input
-                    type="checkbox"
-                    name="zoneIds"
-                    value={z.id}
-                    checked={zoneSel.includes(z.id)}
-                    onChange={() => setZoneSel((s) => (s.includes(z.id) ? s.filter((x) => x !== z.id) : [...s, z.id]))}
-                    className="sr-only"
-                  />
-                  {z.name}
-                </label>
-              ))}
-            </div>
-          </div>
           <div className="flex gap-2">
             <button type="submit" className="btn-primary">
               {editingId ? "Save Changes" : "Add Technician"}
@@ -140,7 +112,6 @@ export default function TechnicianManager({ technicians, branches, zones }: { te
               <th className="pb-2 pr-3">Name</th>
               <th className="pb-2 pr-3">Contact</th>
               <th className="pb-2 pr-3">Branch(es)</th>
-              <th className="pb-2 pr-3">Zone(s)</th>
               <th className="pb-2 pr-3">Status</th>
               <th className="pb-2">Actions</th>
             </tr>
@@ -151,7 +122,6 @@ export default function TechnicianManager({ technicians, branches, zones }: { te
                 <td className="py-3 pr-3 font-medium text-slate-800">{t.name}</td>
                 <td className="py-3 pr-3 text-slate-500">{t.contactNumber}</td>
                 <td className="py-3 pr-3 text-slate-500">{branches.filter((b) => t.branchIds.includes(b.id)).map((b) => b.name).join(", ") || "—"}</td>
-                <td className="py-3 pr-3 text-slate-500">{zones.filter((z) => t.zoneIds.includes(z.id)).map((z) => z.name).join(", ") || "—"}</td>
                 <td className="py-3 pr-3">
                   <form action={toggleTechnicianActive}>
                     <input type="hidden" name="id" value={t.id} />

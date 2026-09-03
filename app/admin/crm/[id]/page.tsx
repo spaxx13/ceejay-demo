@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getLeadById, getCustomerById, getLookups, getActivity, getRequests, getZones } from "@/lib/db";
+import { getLeadById, getCustomerById, getLookups, getActivity, getRequests, getRepairRecords, getUsers, getServiceAgreements, getRepairRecordStatus } from "@/lib/db";
 import StatusBadge from "@/components/StatusBadge";
-import { updateLeadStatus, addLeadNote, convertLeadToCustomer, addCustomerNote } from "@/lib/actions";
+import { updateLeadStatus, addLeadNote, convertLeadToCustomer, addCustomerNote, assignLead } from "@/lib/actions";
 import { formatDate, formatDateTime } from "@/lib/format";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -13,10 +13,12 @@ export default async function CrmDetailPage({ params }: { params: Promise<{ id: 
 
   const lead = await getLeadById(id);
   if (lead) {
-    const [lookups, activityLog] = await Promise.all([getLookups(), getActivity()]);
+    const [lookups, activityLog, users] = await Promise.all([getLookups(), getActivity(), getUsers()]);
     const leadStatuses = lookups.filter((l) => l.kind === "lead_status").sort((a, b) => a.order - b.order);
     const currentStatus = leadStatuses.find((s) => s.id === lead.statusId);
     const activity = activityLog.filter((a) => a.entityType === "lead" && a.entityId === lead.id).sort((a, b) => (a.at < b.at ? 1 : -1));
+    const staff = users.filter((u) => u.active);
+    const assignee = staff.find((u) => u.id === lead.assignedTo);
 
     return (
       <div className="space-y-6">
@@ -41,6 +43,8 @@ export default async function CrmDetailPage({ params }: { params: Promise<{ id: 
               <dd className="text-slate-800">{lead.source || "—"}</dd>
               <dt className="text-slate-400">Follow-up</dt>
               <dd className="text-slate-800">{lead.followUpDate ?? "—"}</dd>
+              <dt className="text-slate-400">Assigned to</dt>
+              <dd className="text-slate-800">{assignee?.name ?? "Unassigned"}</dd>
               <dt className="text-slate-400">Created</dt>
               <dd className="text-slate-800">{formatDateTime(lead.createdAt)}</dd>
             </dl>
@@ -70,6 +74,23 @@ export default async function CrmDetailPage({ params }: { params: Promise<{ id: 
                   {leadStatuses.map((s) => (
                     <option key={s.id} value={s.id}>
                       {s.label}
+                    </option>
+                  ))}
+                </select>
+                <button type="submit" className="btn-secondary w-full">
+                  Update
+                </button>
+              </form>
+            </div>
+            <div className="card space-y-2">
+              <h3 className="text-sm font-semibold text-slate-800">Assign To</h3>
+              <form action={assignLead} className="space-y-2">
+                <input type="hidden" name="id" value={lead.id} />
+                <select name="assignedTo" defaultValue={lead.assignedTo ?? ""} className="input">
+                  <option value="">Unassigned</option>
+                  {staff.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.name} ({u.role.replace("_", " ")})
                     </option>
                   ))}
                 </select>
@@ -110,11 +131,19 @@ export default async function CrmDetailPage({ params }: { params: Promise<{ id: 
 
   const customer = await getCustomerById(id);
   if (!customer) notFound();
-  const [lookups, activityLog, allRequests, zones] = await Promise.all([getLookups(), getActivity(), getRequests(), getZones()]);
+  const [lookups, activityLog, allRequests, allRepairRecords, agreements] = await Promise.all([
+    getLookups(),
+    getActivity(),
+    getRequests(),
+    getRepairRecords(),
+    getServiceAgreements(),
+  ]);
   const requests = allRequests.filter((r) => r.customerId === customer.id).sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+  const repairRecords = allRepairRecords.filter((r) => r.customerId === customer.id).sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+  const totalSpent = repairRecords.filter((r) => !r.cancelled).reduce((sum, r) => sum + r.cost, 0);
   const requestStatuses = lookups.filter((l) => l.kind === "request_status");
-  const zone = zones.find((z) => z.id === customer.zoneId);
   const activity = activityLog.filter((a) => a.entityType === "customer" && a.entityId === customer.id).sort((a, b) => (a.at < b.at ? 1 : -1));
+  const peso = (n: number) => `₱${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
   return (
     <div className="space-y-6">
@@ -135,7 +164,6 @@ export default async function CrmDetailPage({ params }: { params: Promise<{ id: 
             <dt className="text-slate-400">Address</dt>
             <dd className="text-slate-800">
               {customer.street || "—"}
-              {zone ? `, ${zone.name}` : ""}
               {customer.province ? `, ${customer.province}` : ""}
             </dd>
             <dt className="text-slate-400">Source</dt>
@@ -173,6 +201,34 @@ export default async function CrmDetailPage({ params }: { params: Promise<{ id: 
             })}
           </ul>
         </div>
+      </div>
+
+      <div className="card space-y-3">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-slate-800">Repair History ({repairRecords.length})</h3>
+          {repairRecords.length > 0 && <p className="text-xs text-slate-400">Total spent: {peso(totalSpent)}</p>}
+        </div>
+        <ul className="space-y-2">
+          {repairRecords.length === 0 && <li className="text-sm text-slate-400">No repairs on record yet.</li>}
+          {repairRecords.map((r) => {
+            const status = getRepairRecordStatus(r, agreements);
+            return (
+              <li key={r.id} className={`flex items-center justify-between border-b border-slate-200 pb-2 last:border-0 ${status === "cancelled" ? "opacity-60" : ""}`}>
+                <div>
+                  <Link href={`/admin/pos/${r.id}`} className="font-mono text-xs text-blue-300 hover:underline">
+                    {r.reference}
+                  </Link>
+                  <p className="text-xs text-slate-400">
+                    {formatDate(r.serviceDate)} · {r.deviceModel || "—"} · {r.technicianName || "no technician"}
+                    {status === "cancelled" && <span className="ml-1.5 badge border border-red-200 bg-red-50 text-red-700">Cancelled</span>}
+                    {status === "pending" && <span className="ml-1.5 badge border border-amber-200 bg-amber-50 text-amber-700">Pending</span>}
+                  </p>
+                </div>
+                <span className="text-sm font-medium text-slate-800">{peso(r.cost)}</span>
+              </li>
+            );
+          })}
+        </ul>
       </div>
 
       <div className="card space-y-3">

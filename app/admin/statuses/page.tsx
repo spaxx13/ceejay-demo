@@ -3,14 +3,14 @@ import { getLookups } from "@/lib/db";
 import { requireRole } from "@/lib/auth";
 import SettingsTabs from "@/components/SettingsTabs";
 import StatusTable from "@/components/StatusTable";
-import { createLookup, toggleLookupActive, reorderLookup } from "@/lib/actions";
+import { createLookup, deleteLookup, reorderLookup } from "@/lib/actions";
 
 export default async function StatusesPage() {
   if (!(await requireRole("owner_admin"))) redirect("/admin");
 
   const lookups = await getLookups();
-  const leadStatuses = lookups.filter((l) => l.kind === "lead_status").sort((a, b) => a.order - b.order);
-  const requestStatuses = lookups.filter((l) => l.kind === "request_status").sort((a, b) => a.order - b.order);
+  const leadStatuses = lookups.filter((l) => l.kind === "lead_status" && l.active).sort((a, b) => a.order - b.order);
+  const requestStatuses = lookups.filter((l) => l.kind === "request_status" && l.active).sort((a, b) => a.order - b.order);
 
   return (
     <div className="space-y-6">
@@ -22,8 +22,8 @@ export default async function StatusesPage() {
       </div>
       <SettingsTabs />
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <StatusTable title="Lead Statuses" kind="lead_status" items={leadStatuses} createAction={createLookup} toggleAction={toggleLookupActive} reorderAction={reorderLookup} />
-        <StatusTable title="Home Service Request Statuses" kind="request_status" items={requestStatuses} createAction={createLookup} toggleAction={toggleLookupActive} reorderAction={reorderLookup} />
+        <StatusTable title="Lead Statuses" kind="lead_status" items={leadStatuses} createAction={createLookup} deleteAction={deleteLookup} reorderAction={reorderLookup} />
+        <StatusTable title="Home Service Request Statuses" kind="request_status" items={requestStatuses} createAction={createLookup} deleteAction={deleteLookup} reorderAction={reorderLookup} />
       </div>
     </div>
   );

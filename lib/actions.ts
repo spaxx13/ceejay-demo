@@ -3,34 +3,35 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import bcrypt from "bcryptjs";
+import { OTP_GATE_ENABLED } from "@/lib/config";
 import { CHECKLIST_TEMPLATE } from "./checklist";
 import {
   query,
   queryOne,
   getUserAuthByEmail,
   getUsers,
-  getZones,
   getTechnicians,
   getLookups,
   getCustomers,
   getRequestById,
+  getRepairRecordById,
   getServiceAgreements,
-  getInventory,
+  getRepairRecordStatus,
   getCustomFormFields,
   logActivity,
   notifyAdmins,
+  canManageHomeServiceRequests,
 } from "./db";
 import { getCurrentUser, setSession, clearSession, requireRole } from "./auth";
-import { sendOtpEmail } from "./email";
+import { sendOtpEmail, sendRepairReceiptEmail } from "./email";
 import type {
   Role,
   LookupKind,
-  StockMovementType,
-  PaymentMethod,
   CustomFieldType,
   ChecklistItem,
   ChecklistResult,
   ChecklistPhase,
+  Expense,
 } from "./types";
 
 function str(fd: FormData, key: string) {
@@ -74,19 +75,19 @@ export async function createUser(formData: FormData) {
   const password = str(formData, "password");
   const role = str(formData, "role") as Role;
   const technicianId = str(formData, "technicianId") || null;
+  const assignedBranchIds = role === "branch_admin" ? formData.getAll("assignedBranchIds").map(String) : [];
+  const canManageRequests = role === "branch_admin" ? formData.get("canManageRequests") === "on" : true;
+  const canViewAllBranches = role === "branch_admin" ? formData.get("canViewAllBranches") === "on" : true;
   if (!name || !email || !password || !role) return;
 
   const existing = await getUserAuthByEmail(email);
   if (existing) return;
 
   const passwordHash = await bcrypt.hash(password, 10);
-  await query("insert into users (name, email, password_hash, role, technician_id) values ($1,$2,$3,$4,$5)", [
-    name,
-    email,
-    passwordHash,
-    role,
-    role === "technician" ? technicianId : null,
-  ]);
+  await query(
+    "insert into users (name, email, password_hash, role, technician_id, assigned_branch_ids, can_manage_requests, can_view_all_branches) values ($1,$2,$3,$4,$5,$6,$7,$8)",
+    [name, email, passwordHash, role, role === "technician" ? technicianId : null, assignedBranchIds, canManageRequests, canViewAllBranches]
+  );
   revalidatePath("/admin/users");
 }
 
@@ -109,25 +110,31 @@ export async function updateUser(formData: FormData) {
   const role = (str(formData, "role") || user.role) as Role;
   const technicianId = str(formData, "technicianId") || null;
   const password = str(formData, "password");
+  const assignedBranchIds = role === "branch_admin" ? formData.getAll("assignedBranchIds").map(String) : [];
+  const canManageRequests = role === "branch_admin" ? formData.get("canManageRequests") === "on" : true;
+  const canViewAllBranches = role === "branch_admin" ? formData.get("canViewAllBranches") === "on" : true;
 
   if (password) {
     const passwordHash = await bcrypt.hash(password, 10);
-    await query("update users set name=$1, email=$2, password_hash=$3, role=$4, technician_id=$5 where id=$6", [
-      name,
-      email || user.email,
-      passwordHash,
-      role,
-      role === "technician" ? technicianId : null,
-      userId,
-    ]);
+    await query(
+      "update users set name=$1, email=$2, password_hash=$3, role=$4, technician_id=$5, assigned_branch_ids=$6, can_manage_requests=$7, can_view_all_branches=$8 where id=$9",
+      [
+        name,
+        email || user.email,
+        passwordHash,
+        role,
+        role === "technician" ? technicianId : null,
+        assignedBranchIds,
+        canManageRequests,
+        canViewAllBranches,
+        userId,
+      ]
+    );
   } else {
-    await query("update users set name=$1, email=$2, role=$3, technician_id=$4 where id=$5", [
-      name,
-      email || user.email,
-      role,
-      role === "technician" ? technicianId : null,
-      userId,
-    ]);
+    await query(
+      "update users set name=$1, email=$2, role=$3, technician_id=$4, assigned_branch_ids=$5, can_manage_requests=$6, can_view_all_branches=$7 where id=$8",
+      [name, email || user.email, role, role === "technician" ? technicianId : null, assignedBranchIds, canManageRequests, canViewAllBranches, userId]
+    );
   }
   revalidatePath("/admin/users");
 }
@@ -174,74 +181,22 @@ export async function toggleBranchActive(formData: FormData) {
   revalidatePath("/admin/branches");
 }
 
-// ---------- Zones ----------
-
-export async function createZone(formData: FormData) {
-  const name = str(formData, "name");
-  if (!name) return;
-  const zone = await queryOne<{ id: string }>(
-    "insert into zones (name, city, province, notes) values ($1,$2,$3,$4) returning id",
-    [name, str(formData, "city"), str(formData, "province"), str(formData, "notes")]
-  );
-  const techIds = listStr(formData, "technicianIds");
-  if (zone && techIds.length > 0) {
-    await query("update technicians set zone_ids = array(select distinct unnest(zone_ids || $1::uuid[])) where id = any($2::uuid[])", [
-      [zone.id],
-      techIds,
-    ]);
-  }
-  revalidatePath("/admin/zones");
-}
-
-export async function updateZone(formData: FormData) {
-  const zoneId = str(formData, "id");
-  const name = str(formData, "name");
-  if (!name) return;
-  await query("update zones set name=$1, city=$2, province=$3, notes=$4 where id=$5", [
-    name,
-    str(formData, "city"),
-    str(formData, "province"),
-    str(formData, "notes"),
-    zoneId,
-  ]);
-  const techIds = new Set(listStr(formData, "technicianIds"));
-  const technicians = await getTechnicians();
-  for (const t of technicians) {
-    const shouldCover = techIds.has(t.id);
-    const covers = t.zoneIds.includes(zoneId);
-    if (shouldCover && !covers) {
-      await query("update technicians set zone_ids = array_append(zone_ids, $1::uuid) where id=$2", [zoneId, t.id]);
-    } else if (!shouldCover && covers) {
-      await query("update technicians set zone_ids = array_remove(zone_ids, $1::uuid) where id=$2", [zoneId, t.id]);
-    }
-  }
-  revalidatePath("/admin/zones");
-}
-
-export async function toggleZoneActive(formData: FormData) {
-  const zoneId = str(formData, "id");
-  await query("update zones set active = not active where id=$1", [zoneId]);
-  revalidatePath("/admin/zones");
-}
-
 // ---------- Technicians ----------
 
 export async function createTechnician(formData: FormData) {
   const name = str(formData, "name");
   if (!name) return;
   await query(
-    "insert into technicians (name, contact_number, email, employment_status, branch_ids, zone_ids) values ($1,$2,$3,$4,$5,$6)",
+    "insert into technicians (name, contact_number, email, employment_status, branch_ids) values ($1,$2,$3,$4,$5)",
     [
       name,
       str(formData, "contactNumber"),
       str(formData, "email"),
       str(formData, "employmentStatus") || "full_time",
       listStr(formData, "branchIds"),
-      listStr(formData, "zoneIds"),
     ]
   );
   revalidatePath("/admin/technicians");
-  revalidatePath("/admin/zones");
 }
 
 export async function updateTechnician(formData: FormData) {
@@ -249,19 +204,17 @@ export async function updateTechnician(formData: FormData) {
   const name = str(formData, "name");
   if (!name) return;
   await query(
-    "update technicians set name=$1, contact_number=$2, email=$3, employment_status=$4, branch_ids=$5, zone_ids=$6 where id=$7",
+    "update technicians set name=$1, contact_number=$2, email=$3, employment_status=$4, branch_ids=$5 where id=$6",
     [
       name,
       str(formData, "contactNumber"),
       str(formData, "email"),
       str(formData, "employmentStatus") || "full_time",
       listStr(formData, "branchIds"),
-      listStr(formData, "zoneIds"),
       techId,
     ]
   );
   revalidatePath("/admin/technicians");
-  revalidatePath("/admin/zones");
 }
 
 export async function toggleTechnicianActive(formData: FormData) {
@@ -281,13 +234,24 @@ export async function createDeviceBrand(formData: FormData) {
   revalidatePath("/admin/device-catalog");
 }
 
-export async function toggleLookupActive(formData: FormData) {
+export async function deleteLookup(formData: FormData) {
   const itemId = str(formData, "id");
-  await query("update lookups set active = not active where id=$1", [itemId]);
+  try {
+    await query("delete from lookups where id=$1", [itemId]);
+  } catch (e) {
+    // Still referenced elsewhere (e.g. a status/service type used by existing
+    // leads or requests) — deactivate instead of losing that history.
+    const code = e && typeof e === "object" && "code" in e ? (e as { code: string }).code : "";
+    if (code === "23503") {
+      await query("update lookups set active=false where id=$1", [itemId]);
+    } else {
+      throw e;
+    }
+  }
   revalidatePath("/admin/device-catalog");
   revalidatePath("/admin/service-types");
   revalidatePath("/admin/statuses");
-  revalidatePath("/admin/inventory");
+  revalidatePath("/admin/pos");
 }
 
 export async function updateLookupLabel(formData: FormData) {
@@ -298,20 +262,29 @@ export async function updateLookupLabel(formData: FormData) {
   revalidatePath("/admin/device-catalog");
   revalidatePath("/admin/service-types");
   revalidatePath("/admin/statuses");
-  revalidatePath("/admin/inventory");
 }
 
 export async function createDeviceModel(formData: FormData) {
   const name = str(formData, "name");
   const brandId = str(formData, "brandId");
   if (!name || !brandId) return;
-  await query("insert into device_models (brand_id, name) values ($1,$2)", [brandId, name]);
+  const count = await queryOne<{ n: number }>("select count(*)::int as n from device_models where brand_id=$1", [brandId]);
+  await query("insert into device_models (brand_id, name, order_num) values ($1,$2,$3)", [brandId, name, count?.n ?? 0]);
   revalidatePath("/admin/device-catalog");
 }
 
-export async function toggleDeviceModelActive(formData: FormData) {
+export async function deleteDeviceModel(formData: FormData) {
   const modelId = str(formData, "id");
-  await query("update device_models set active = not active where id=$1", [modelId]);
+  try {
+    await query("delete from device_models where id=$1", [modelId]);
+  } catch (e) {
+    const code = e && typeof e === "object" && "code" in e ? (e as { code: string }).code : "";
+    if (code === "23503") {
+      await query("update device_models set active=false where id=$1", [modelId]);
+    } else {
+      throw e;
+    }
+  }
   revalidatePath("/admin/device-catalog");
 }
 
@@ -326,7 +299,6 @@ export async function createLookup(formData: FormData) {
   await query("insert into lookups (kind, label, order_num) values ($1,$2,$3)", [kind, label, order]);
   revalidatePath("/admin/service-types");
   revalidatePath("/admin/statuses");
-  revalidatePath("/admin/inventory");
 }
 
 export async function reorderLookup(formData: FormData) {
@@ -476,197 +448,204 @@ export async function reorderCustomField(formData: FormData) {
   revalidatePath("/admin/request-form");
 }
 
-// ---------- Inventory ----------
+// ---------- Point of Sale (simple repair-record log) ----------
 
-export async function createInventoryItem(formData: FormData) {
-  const name = str(formData, "name");
+export type CreateRepairRecordResult = { ok: true; recordId: string; reference: string } | { ok: false; error: string };
+
+// Creates a repair record together with its Pre-Repair checklist in one
+// atomic submission — nothing is saved unless the pre-repair checklist is
+// fully filled out (all items, both signatures). The record is then left
+// in "pending" status (derived: no post-repair checklist yet, not
+// cancelled) until someone completes the post-repair checklist from
+// /admin/pos/[id]/checklist — which may happen right away or "at a later
+// time," per the shop's request to be able to save a ticket mid-job and
+// come back to close it.
+export async function createRepairRecordDraft(
+  _prev: CreateRepairRecordResult | undefined,
+  formData: FormData
+): Promise<CreateRepairRecordResult> {
+  const user = await getCurrentUser();
+  if (!user || (user.role !== "owner_admin" && user.role !== "branch_admin")) {
+    return { ok: false, error: "You must be signed in as an admin." };
+  }
+
+  const customerName = str(formData, "customerName");
+  if (!customerName) return { ok: false, error: "Customer name is required." };
   const branchId = str(formData, "branchId");
-  if (!name || !branchId) return;
-  const quantityOnHand = Math.max(0, Number(str(formData, "quantityOnHand")) || 0);
-  const item = await queryOne<{ id: string }>(
-    "insert into inventory_items (sku, name, category_id, branch_id, quantity_on_hand, reorder_level, unit_cost, unit_price) values ($1,$2,$3,$4,$5,$6,$7,$8) returning id",
+  if (!branchId) return { ok: false, error: "Branch is required." };
+  const contactNumber = str(formData, "contactNumber");
+  const email = str(formData, "email");
+  const deviceModel = str(formData, "deviceModel");
+  const technicianName = str(formData, "technicianName");
+
+  const preItems: ChecklistItem[] = CHECKLIST_TEMPLATE.map((t) => {
+    const result = str(formData, `pre_result_${t.key}`) as ChecklistResult;
+    return { ...t, result: result === "pass" || result === "fail" || result === "na" ? result : null, notes: str(formData, `pre_notes_${t.key}`) };
+  });
+  if (preItems.some((i) => !i.result)) return { ok: false, error: "Please mark every Pre-Repair checklist item as Pass, Fail, or N/A." };
+  const preCustomerSignature = str(formData, "preCustomerSignature");
+  if (!preCustomerSignature.startsWith("data:image/")) return { ok: false, error: "Pre-repair customer signature is required." };
+  const preTechnicianSignature = str(formData, "preTechnicianSignature");
+  if (!preTechnicianSignature.startsWith("data:image/")) return { ok: false, error: "Pre-repair technician signature is required." };
+
+  // Every repair record links to a CRM customer — matched by phone, then
+  // email, and created if neither matches — so nothing falls through
+  // without showing up in that customer's CRM history.
+  const customers = await getCustomers();
+  const normalizedPhone = contactNumber.replace(/[\s-]/g, "");
+  const existing =
+    (normalizedPhone && customers.find((c) => c.phone.replace(/[\s-]/g, "") === normalizedPhone)) ||
+    (email && customers.find((c) => c.email.toLowerCase() === email.toLowerCase())) ||
+    null;
+
+  let customerId: string;
+  if (existing) {
+    customerId = existing.id;
+  } else {
+    const created = await queryOne<{ id: string }>(
+      "insert into customers (name, phone, email, source) values ($1,$2,$3,'Walk-in') returning id",
+      [customerName, contactNumber, email]
+    );
+    customerId = created!.id;
+    await logActivity("customer", customerId, "Customer created from a repair record", user.name);
+  }
+
+  const count = await queryOne<{ n: number }>("select count(*)::int as n from repair_records");
+  const reference = `REPAIR-${new Date().getFullYear()}-${String((count?.n ?? 0) + 1).padStart(4, "0")}`;
+  const cost = Math.max(0, Number(str(formData, "cost")) || 0);
+  const partsCost = Math.max(0, Number(str(formData, "partsCost")) || 0);
+  const laborCost = Math.max(0, Number(str(formData, "laborCost")) || 0);
+  const otherExpenses = Math.max(0, Number(str(formData, "otherExpenses")) || 0);
+  const serviceDate = str(formData, "serviceDate") || new Date().toISOString().slice(0, 10);
+
+  const record = await queryOne<{ id: string }>(
+    `insert into repair_records
+       (reference, branch_id, customer_id, customer_name, contact_number, email, device_model, reported_problem, service_performed, parts_used, cost, parts_cost, labor_cost, other_expenses, technician_name, service_date, notes, logged_by)
+     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) returning id`,
     [
-      str(formData, "sku"),
-      name,
-      str(formData, "categoryId") || null,
+      reference,
       branchId,
-      quantityOnHand,
-      Math.max(0, Number(str(formData, "reorderLevel")) || 0),
-      Math.max(0, Number(str(formData, "unitCost")) || 0),
-      Math.max(0, Number(str(formData, "unitPrice")) || 0),
+      customerId,
+      customerName,
+      contactNumber,
+      email,
+      deviceModel,
+      str(formData, "reportedProblem"),
+      str(formData, "servicePerformed"),
+      str(formData, "partsUsed"),
+      cost,
+      partsCost,
+      laborCost,
+      otherExpenses,
+      technicianName,
+      serviceDate,
+      str(formData, "notes"),
+      user.name,
     ]
   );
-  if (item && quantityOnHand > 0) {
-    const user = await getCurrentUser();
-    await query("insert into stock_movements (item_id, branch_id, type, quantity, reason, actor) values ($1,$2,'in',$3,'Initial stock',$4)", [
-      item.id,
-      branchId,
-      quantityOnHand,
-      user?.name ?? "Admin",
-    ]);
-  }
-  revalidatePath("/admin/inventory");
-}
+  const recordId = record!.id;
 
-export async function updateInventoryItem(formData: FormData) {
-  const itemId = str(formData, "id");
-  const name = str(formData, "name");
-  if (!name) return;
+  const preCount = await queryOne<{ n: number }>("select count(*)::int as n from service_agreements where phase='pre_repair'");
+  const preReference = `PRC-${new Date().getFullYear()}-${String((preCount?.n ?? 0) + 1).padStart(4, "0")}`;
   await query(
-    "update inventory_items set sku=$1, name=$2, category_id=$3, branch_id=$4, reorder_level=$5, unit_cost=$6, unit_price=$7 where id=$8",
-    [
-      str(formData, "sku"),
-      name,
-      str(formData, "categoryId") || null,
-      str(formData, "branchId") || null,
-      Math.max(0, Number(str(formData, "reorderLevel")) || 0),
-      Math.max(0, Number(str(formData, "unitCost")) || 0),
-      Math.max(0, Number(str(formData, "unitPrice")) || 0),
-      itemId,
-    ]
+    `insert into service_agreements (repair_record_id, phase, reference, customer_name, device_label, technician_name, items, summary_notes, customer_signature_data_url, technician_signature_data_url)
+     values ($1,'pre_repair',$2,$3,$4,$5,$6,$7,$8,$9)`,
+    [recordId, preReference, customerName, deviceModel || "Device", technicianName, JSON.stringify(preItems), str(formData, "preSummaryNotes"), preCustomerSignature, preTechnicianSignature]
   );
-  revalidatePath("/admin/inventory");
-}
 
-export async function toggleInventoryItemActive(formData: FormData) {
-  const itemId = str(formData, "id");
-  await query("update inventory_items set active = not active where id=$1", [itemId]);
-  revalidatePath("/admin/inventory");
-}
-
-export async function adjustStock(formData: FormData) {
-  const user = await getCurrentUser();
-  const itemId = str(formData, "itemId");
-  const type = str(formData, "type") as StockMovementType;
-  const rawQty = Math.max(0, Number(str(formData, "quantity")) || 0);
-  const reason = str(formData, "reason");
-  const inventory = await getInventory();
-  const item = inventory.find((i) => i.id === itemId);
-  if (!item || rawQty <= 0) return;
-
-  let delta = 0;
-  if (type === "in") delta = rawQty;
-  else if (type === "out") delta = -Math.min(rawQty, item.quantityOnHand);
-  else delta = rawQty - item.quantityOnHand; // adjustment: rawQty is the new counted total
-
-  const newQty = Math.max(0, item.quantityOnHand + delta);
-  await query("update inventory_items set quantity_on_hand=$1 where id=$2", [newQty, itemId]);
-  await query("insert into stock_movements (item_id, branch_id, type, quantity, reason, actor) values ($1,$2,$3,$4,$5,$6)", [
-    itemId,
-    item.branchId,
-    type,
-    delta,
-    reason || (type === "adjustment" ? "Stock count correction" : type === "in" ? "Restock" : "Manual deduction"),
-    user?.name ?? "Admin",
-  ]);
-  revalidatePath("/admin/inventory");
-}
-
-// ---------- Point of Sale ----------
-
-export type CreateSaleResult = { ok: true; saleId: string; reference: string } | { ok: false; error: string };
-
-type SaleLineInput = { kind: "inventory" | "service"; itemId?: string; description: string; quantity: number; unitPrice: number };
-
-export async function createSale(_prev: CreateSaleResult | undefined, formData: FormData): Promise<CreateSaleResult> {
-  const user = await getCurrentUser();
-  if (!user) return { ok: false, error: "You must be logged in to record a sale." };
-
-  const branchId = str(formData, "branchId");
-  const paymentMethod = (str(formData, "paymentMethod") || "cash") as PaymentMethod;
-  const discount = Math.max(0, Number(str(formData, "discount")) || 0);
-  const customerName = str(formData, "customerName") || "Walk-in Customer";
-  const customerPhone = str(formData, "customerPhone");
-  const homeServiceRequestId = str(formData, "homeServiceRequestId") || null;
-  const linesRaw = str(formData, "lines");
-
-  if (!branchId) return { ok: false, error: "Select a branch." };
-
-  let lines: SaleLineInput[] = [];
-  try {
-    lines = JSON.parse(linesRaw || "[]");
-  } catch {
-    lines = [];
-  }
-  lines = lines.filter((l) => l.description && l.quantity > 0 && l.unitPrice >= 0);
-  if (lines.length === 0) return { ok: false, error: "Add at least one item or service line before charging." };
-
-  const inventory = await getInventory();
-  for (const line of lines) {
-    if (line.kind === "inventory" && line.itemId) {
-      const item = inventory.find((i) => i.id === line.itemId);
-      if (!item) return { ok: false, error: `Item no longer available: ${line.description}` };
-      if (item.quantityOnHand < line.quantity) {
-        return { ok: false, error: `Not enough stock for ${item.name} (${item.quantityOnHand} on hand).` };
-      }
-    }
-  }
-
-  let customerId: string | null = null;
-  let isNewCustomer = false;
-  if (customerPhone) {
-    const customers = await getCustomers();
-    const existing = customers.find((c) => c.phone.replace(/[\s-]/g, "") === customerPhone.replace(/[\s-]/g, ""));
-    if (existing) {
-      customerId = existing.id;
-    } else {
-      const created = await queryOne<{ id: string }>(
-        "insert into customers (name, phone, source) values ($1,$2,'Walk-in') returning id",
-        [customerName, customerPhone]
-      );
-      customerId = created!.id;
-      isNewCustomer = true;
-      await logActivity("customer", customerId, "Customer created from a POS sale", user.name);
-    }
-  }
-
-  const subtotal = lines.reduce((sum, l) => sum + l.quantity * l.unitPrice, 0);
-  const total = Math.max(0, subtotal - discount);
-  const salesCount = await queryOne<{ n: string }>("select count(*)::int as n from sales");
-  const reference = `SALE-${new Date().getFullYear()}-${String(Number(salesCount!.n) + 1).padStart(4, "0")}`;
-
-  const sale = await queryOne<{ id: string }>(
-    `insert into sales (reference, branch_id, customer_id, customer_name, customer_phone, home_service_request_id, discount, subtotal, total, payment_method, cashier_name)
-     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) returning id`,
-    [reference, branchId, customerId, customerName, customerPhone, homeServiceRequestId, discount, subtotal, total, paymentMethod, user.name]
+  await logActivity(
+    "customer",
+    customerId,
+    `Repair ${reference} opened with Pre-Repair checklist (${preReference}) by ${user.name} — pending post-repair checklist (declared cost ₱${cost.toLocaleString()})`,
+    user.name
   );
-  const saleId = sale!.id;
-
-  for (const line of lines) {
-    await query("insert into sale_line_items (sale_id, kind, item_id, description, quantity, unit_price) values ($1,$2,$3,$4,$5,$6)", [
-      saleId,
-      line.kind,
-      line.itemId ?? null,
-      line.description,
-      line.quantity,
-      line.unitPrice,
-    ]);
-    if (line.kind === "inventory" && line.itemId) {
-      const item = inventory.find((i) => i.id === line.itemId)!;
-      await query("update inventory_items set quantity_on_hand = quantity_on_hand - $1 where id=$2", [line.quantity, line.itemId]);
-      await query("insert into stock_movements (item_id, branch_id, type, quantity, reason, reference_sale_id, actor) values ($1,$2,'out',$3,$4,$5,$6)", [
-        line.itemId,
-        item.branchId,
-        -line.quantity,
-        `Sold on ${reference}`,
-        saleId,
-        user.name,
-      ]);
-    }
-  }
-
-  if (customerId) {
-    await logActivity("customer", customerId, `Sale ${reference} recorded (₱${total.toLocaleString()}) by ${user.name}`, user.name);
-  }
-  if (homeServiceRequestId) {
-    await logActivity("home_service_request", homeServiceRequestId, `Sale ${reference} recorded for this job (₱${total.toLocaleString()}) by ${user.name}`, user.name);
-  }
-  void isNewCustomer;
 
   revalidatePath("/admin/pos");
-  revalidatePath("/admin/inventory");
   revalidatePath("/admin");
-  return { ok: true, saleId, reference };
+  return { ok: true, recordId, reference };
+}
+
+// Marks a repair record cancelled — e.g. the repair turned out to be
+// unsuccessful and the device couldn't be fixed. The record and its
+// checklists stay for history, just flagged and excluded from revenue
+// totals; nothing is deleted.
+export async function cancelRepairRecord(formData: FormData) {
+  const user = await getCurrentUser();
+  if (!user || (user.role !== "owner_admin" && user.role !== "branch_admin")) return;
+
+  const recordId = str(formData, "id");
+  const reason = str(formData, "reason");
+  const record = await getRepairRecordById(recordId);
+  if (!record || record.cancelled) return;
+
+  await query("update repair_records set cancelled=true, cancellation_reason=$1, cancelled_at=now() where id=$2", [reason, recordId]);
+
+  if (record.customerId) {
+    await logActivity(
+      "customer",
+      record.customerId,
+      `Repair ${record.reference} cancelled by ${user.name}${reason ? ` — ${reason}` : ""}`,
+      user.name
+    );
+  }
+
+  revalidatePath("/admin/pos");
+  revalidatePath(`/admin/pos/${recordId}`);
+  revalidatePath("/admin");
+}
+
+// Lets a ticket's customer/repair details be filled in or corrected — while
+// pending (e.g. a phone number that wasn't captured at intake) or after
+// it's been marked Completed (e.g. a typo noticed later). Only locked once
+// the ticket is cancelled, a closed/void state. Note this only updates the
+// repair_records fields, not the signed checklists — if a corrected detail
+// should reach the customer, resend the receipt separately.
+export async function updateRepairRecordDetails(formData: FormData) {
+  const user = await getCurrentUser();
+  if (!user || (user.role !== "owner_admin" && user.role !== "branch_admin")) return;
+
+  const recordId = str(formData, "id");
+  const record = await getRepairRecordById(recordId);
+  if (!record) return;
+  const agreements = await getServiceAgreements();
+  // Editable while pending or after completion (to fix incorrect/missing
+  // info) — only locked once cancelled, which is a closed/void state.
+  if (getRepairRecordStatus(record, agreements) === "cancelled") return;
+
+  const customerName = str(formData, "customerName");
+  if (!customerName) return;
+  const branchId = str(formData, "branchId") || null;
+  const contactNumber = str(formData, "contactNumber");
+  const email = str(formData, "email");
+  const deviceModel = str(formData, "deviceModel");
+  const reportedProblem = str(formData, "reportedProblem");
+  const servicePerformed = str(formData, "servicePerformed");
+  const partsUsed = str(formData, "partsUsed");
+  const cost = Math.max(0, Number(str(formData, "cost")) || 0);
+  const partsCost = Math.max(0, Number(str(formData, "partsCost")) || 0);
+  const laborCost = Math.max(0, Number(str(formData, "laborCost")) || 0);
+  const otherExpenses = Math.max(0, Number(str(formData, "otherExpenses")) || 0);
+  const technicianName = str(formData, "technicianName");
+  const serviceDate = str(formData, "serviceDate") || record.serviceDate;
+  const notes = str(formData, "notes");
+
+  await query(
+    `update repair_records set
+       branch_id=$1, customer_name=$2, contact_number=$3, email=$4, device_model=$5, reported_problem=$6,
+       service_performed=$7, parts_used=$8, cost=$9, parts_cost=$10, labor_cost=$11, other_expenses=$12, technician_name=$13, service_date=$14, notes=$15
+     where id=$16`,
+    [branchId, customerName, contactNumber, email, deviceModel, reportedProblem, servicePerformed, partsUsed, cost, partsCost, laborCost, otherExpenses, technicianName, serviceDate, notes, recordId]
+  );
+
+  if (record.customerId) {
+    await query("update customers set name=$1, phone=$2, email=$3 where id=$4", [customerName, contactNumber, email, record.customerId]);
+    await logActivity("customer", record.customerId, `Repair ${record.reference} details updated by ${user.name}`, user.name);
+  }
+
+  revalidatePath("/admin/pos");
+  revalidatePath(`/admin/pos/${recordId}`);
+  revalidatePath(`/admin/pos/${recordId}/checklist`);
+  revalidatePath("/admin/crm");
 }
 
 // ---------- Home Service Request: Email OTP Verification ----------
@@ -744,27 +723,6 @@ export async function verifyHomeServiceOtp(emailInput: string, codeInput: string
 
 export type SubmitResult = { ok: true; reference: string } | { ok: false; error: string };
 
-type ZoneRow = Awaited<ReturnType<typeof getZones>>[number];
-
-function matchZone(zones: ZoneRow[], cityInput: string): ZoneRow | null {
-  const norm = cityInput.trim().toLowerCase();
-  if (!norm) return null;
-  return (
-    zones.find((z) => z.active && z.city.trim().toLowerCase() === norm) ??
-    zones.find((z) => z.active && (z.city.toLowerCase().includes(norm) || norm.includes(z.city.toLowerCase()))) ??
-    null
-  );
-}
-
-async function pickTechnicianRoundRobin(zone: ZoneRow) {
-  const technicians = await getTechnicians();
-  const eligible = technicians.filter((t) => t.active && t.zoneIds.includes(zone.id));
-  if (eligible.length === 0) return null;
-  const idx = zone.roundRobinCursor % eligible.length;
-  await query("update zones set round_robin_cursor = round_robin_cursor + 1 where id=$1", [zone.id]);
-  return eligible[idx];
-}
-
 // System fields carry fixed input names (independent of the admin's chosen
 // display order) so this reads the same regardless of how fields are
 // arranged — only whether each one is active/required, from the
@@ -785,6 +743,11 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
   const deviceOther = str(formData, "deviceOther");
   const email = str(formData, "email");
   const landmark = str(formData, "landmark");
+  const vlogConsent = formData.has("vlogConsent");
+  const vlogBlurPreference = vlogConsent ? str(formData, "vlogBlurPreference") : "";
+  if (vlogConsent && vlogBlurPreference !== "blurred" && vlogBlurPreference !== "not_blurred") {
+    return { ok: false, error: "Please choose whether your face should be blurred if we vlog this visit." };
+  }
 
   const customFormFields = await getCustomFormFields();
   const systemFields = customFormFields.filter((f) => f.systemKey);
@@ -799,7 +762,7 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
     return { ok: false, error: "Please enter a valid PH mobile number, e.g. 0917 123 4567." };
   }
   if (isRequired("email") && !email) return { ok: false, error: `${label("email")} is required.` };
-  if (isActive("email") && email) {
+  if (OTP_GATE_ENABLED && isActive("email") && email) {
     const otpRow = await queryOne<{ verified: boolean }>("select verified from otp_codes where email=$1", [email.trim().toLowerCase()]);
     if (!otpRow?.verified) return { ok: false, error: "Please verify your email address before submitting." };
   }
@@ -836,13 +799,11 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
   let customerId: string | null = phone
     ? customers.find((c) => c.phone.replace(/[\s-]/g, "") === phone.replace(/[\s-]/g, ""))?.id ?? null
     : null;
-  const zones = await getZones();
-  const zone = isActive("city") ? matchZone(zones, city) : null;
 
   if (!customerId && (name || phone)) {
     const created = await queryOne<{ id: string }>(
-      "insert into customers (name, phone, email, street, zone_id, province, landmark, source) values ($1,$2,$3,$4,$5,$6,$7,'Home Service') returning id",
-      [name, phone, email, street, zone?.id ?? null, province, landmark]
+      "insert into customers (name, phone, email, street, province, landmark, source) values ($1,$2,$3,$4,$5,$6,'Home Service') returning id",
+      [name, phone, email, street, province, landmark]
     );
     customerId = created!.id;
     await logActivity("customer", customerId, "Customer created from Home Service Request form", "System");
@@ -852,15 +813,11 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
   const requestStatuses = allLookups.filter((l) => l.kind === "request_status").sort((a, b) => a.order - b.order);
   const initialStatus = requestStatuses[0];
 
-  const assignedTech = zone ? await pickTechnicianRoundRobin(zone) : null;
-  const assignedStatus = assignedTech ? requestStatuses.find((s) => s.label === "Assigned") ?? initialStatus : initialStatus;
-
   const requestsCount = await queryOne<{ n: string }>("select count(*)::int as n from home_service_requests");
   const reference = `HSR-${new Date().getFullYear()}-${String(Number(requestsCount!.n) + 1).padStart(4, "0")}`;
 
   const now = new Date().toISOString();
   const statusHistory = [{ statusId: initialStatus.id, at: now }];
-  if (assignedTech) statusHistory.push({ statusId: assignedStatus.id, at: now });
 
   // device_brand_id and service_type_id are foreign keys to the lookups
   // table, but Admin > Request Form lets either field's type be switched
@@ -877,9 +834,9 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
   const created = await queryOne<{ id: string }>(
     `insert into home_service_requests (
       reference, customer_id, customer_name, phone, email, device_brand_id, device_model_id, device_other, service_type_id,
-      issue_description, photo_data_url, street, landmark, province, city, lat, lng, zone_id, unzoned, preferred_datetime,
-      status_id, assigned_technician_id, auto_assigned, branch_id, status_history, custom_fields
-    ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26)
+      issue_description, photo_data_url, street, landmark, province, city, lat, lng, preferred_datetime,
+      status_id, status_history, custom_fields, vlog_consent, vlog_blur_preference
+    ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)
     returning id`,
     [
       reference,
@@ -899,28 +856,16 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
       city,
       str(formData, "lat") ? Number(str(formData, "lat")) : null,
       str(formData, "lng") ? Number(str(formData, "lng")) : null,
-      zone?.id ?? null,
-      !zone,
       preferredDatetime || null,
-      assignedStatus.id,
-      assignedTech?.id ?? null,
-      !!assignedTech,
-      assignedTech?.branchIds[0] ?? null,
+      initialStatus.id,
       JSON.stringify(statusHistory),
       JSON.stringify(customFields),
+      vlogConsent,
+      vlogBlurPreference,
     ]
   );
 
-  await logActivity(
-    "home_service_request",
-    created!.id,
-    assignedTech
-      ? `Request ${reference} submitted and auto-assigned to ${assignedTech.name} (zone: ${zone!.name})`
-      : zone
-      ? `Request ${reference} submitted, matched to zone ${zone.name} but no technician covers it — sent to Unassigned queue`
-      : `Request ${reference} submitted, no matching zone — flagged unzoned and sent to Unassigned queue`,
-    "System"
-  );
+  await logActivity("home_service_request", created!.id, `Request ${reference} submitted and sent to the Unassigned queue for triage`, "System");
 
   if (email) await query("delete from otp_codes where email=$1", [email.trim().toLowerCase()]);
 
@@ -961,6 +906,7 @@ export async function submitContactInquiry(_prev: ContactResult | undefined, for
 
 export async function reassignRequest(formData: FormData) {
   const user = await getCurrentUser();
+  if (!canManageHomeServiceRequests(user)) return;
   const requestId = str(formData, "id");
   const technicianId = str(formData, "technicianId") || null;
   const req = await getRequestById(requestId);
@@ -999,6 +945,7 @@ export async function reassignRequest(formData: FormData) {
 
 export async function changeRequestStatus(formData: FormData) {
   const user = await getCurrentUser();
+  if (!canManageHomeServiceRequests(user)) return;
   const requestId = str(formData, "id");
   const statusId = str(formData, "statusId");
   const req = await getRequestById(requestId);
@@ -1014,10 +961,47 @@ export async function changeRequestStatus(formData: FormData) {
 }
 
 export async function updateRequestNotes(formData: FormData) {
+  const user = await getCurrentUser();
+  if (!canManageHomeServiceRequests(user)) return;
   const requestId = str(formData, "id");
   const notes = str(formData, "adminNotes");
   await query("update home_service_requests set admin_notes=$1 where id=$2", [notes, requestId]);
   revalidatePath(`/admin/requests/${requestId}`);
+}
+
+// ---------- Sales: Business Expenses ----------
+
+export async function createExpense(formData: FormData) {
+  const actor = await requireRole("owner_admin", "branch_admin");
+  if (!actor) return;
+
+  const description = str(formData, "description");
+  const amount = Math.max(0, Number(str(formData, "amount")) || 0);
+  const target = str(formData, "target") as Expense["target"];
+  const technicianName = target === "technician_final_total_sales" ? str(formData, "technicianName") || null : null;
+  const branchId = str(formData, "branchId") || null;
+  const expenseDate = new Date().toISOString().slice(0, 10); // always today — expenses are recorded on the day they happen, never backdated
+  if (!description || amount <= 0 || !target || !branchId) return;
+  if (target === "technician_final_total_sales" && !technicianName) return;
+
+  await query(
+    "insert into expenses (description, amount, target, technician_name, branch_id, expense_date, created_by) values ($1,$2,$3,$4,$5,$6,$7)",
+    [description, amount, target, technicianName, branchId, expenseDate, actor.name]
+  );
+  revalidatePath("/admin/sales");
+  revalidatePath("/admin/sales/technicians");
+  revalidatePath("/admin/sales/expenses");
+}
+
+export async function deleteExpense(formData: FormData) {
+  const actor = await requireRole("owner_admin", "branch_admin");
+  if (!actor) return;
+
+  const id = str(formData, "id");
+  await query("delete from expenses where id = $1", [id]);
+  revalidatePath("/admin/sales");
+  revalidatePath("/admin/sales/technicians");
+  revalidatePath("/admin/sales/expenses");
 }
 
 // ---------- CRM: Leads & Customers ----------
@@ -1054,6 +1038,18 @@ export async function updateLeadStatus(formData: FormData) {
   if (!status) return;
   await query("update leads set status_id=$1 where id=$2", [statusId, leadId]);
   await logActivity("lead", leadId, `Status changed to "${status.label}" by ${user?.name ?? "Admin"}`, user?.name ?? "Admin");
+  revalidatePath("/admin/crm");
+  revalidatePath(`/admin/crm/${leadId}`);
+}
+
+export async function assignLead(formData: FormData) {
+  const user = await getCurrentUser();
+  const leadId = str(formData, "id");
+  const assignedTo = str(formData, "assignedTo") || null;
+  const users = await getUsers();
+  const assignee = users.find((u) => u.id === assignedTo);
+  await query("update leads set assigned_to=$1 where id=$2", [assignedTo, leadId]);
+  await logActivity("lead", leadId, assignee ? `Assigned to ${assignee.name} by ${user?.name ?? "Admin"}` : `Unassigned by ${user?.name ?? "Admin"}`, user?.name ?? "Admin");
   revalidatePath("/admin/crm");
   revalidatePath(`/admin/crm/${leadId}`);
 }
@@ -1106,13 +1102,12 @@ export async function createCustomer(formData: FormData) {
   const name = str(formData, "name");
   if (!name) return;
   const customer = await queryOne<{ id: string }>(
-    "insert into customers (name, phone, email, street, zone_id, province, landmark, source, notes) values ($1,$2,$3,$4,$5,$6,$7,$8,$9) returning id",
+    "insert into customers (name, phone, email, street, province, landmark, source, notes) values ($1,$2,$3,$4,$5,$6,$7,$8) returning id",
     [
       name,
       str(formData, "phone"),
       str(formData, "email"),
       str(formData, "street"),
-      str(formData, "zoneId") || null,
       str(formData, "province"),
       str(formData, "landmark"),
       str(formData, "source") || "Walk-in",
@@ -1172,29 +1167,90 @@ export async function technicianUpdateStatus(formData: FormData) {
   revalidatePath("/admin");
 }
 
+// Free-form work-in-progress notes — the technician can save this repeatedly
+// while the job is open, unlike the one-shot signed checklist below.
+export async function saveRepairProgress(formData: FormData) {
+  const user = await getCurrentUser();
+  if (!user || user.role !== "technician") return;
+
+  const requestId = str(formData, "requestId");
+  const req = await getRequestById(requestId);
+  if (!req || req.assignedTechnicianId !== user.technicianId) return;
+
+  await query(
+    `insert into repair_progress (request_id, inspection_results, progress_notes, parts_replaced, other_details, updated_by, updated_at)
+     values ($1,$2,$3,$4,$5,$6,now())
+     on conflict (request_id) do update set
+       inspection_results=$2, progress_notes=$3, parts_replaced=$4, other_details=$5, updated_by=$6, updated_at=now()`,
+    [requestId, str(formData, "inspectionResults"), str(formData, "progressNotes"), str(formData, "partsReplaced"), str(formData, "otherDetails"), user.name]
+  );
+
+  await logActivity("home_service_request", requestId, `Repair progress notes updated by ${user.name}`, user.name);
+
+  revalidatePath(`/technician/requests/${requestId}/checklist`);
+  revalidatePath(`/admin/requests/${requestId}`);
+}
+
 // ---------- Pre-Repair / Post-Repair Checklists ----------
 
 export type SubmitChecklistResult = { ok: true; agreementId: string; phase: ChecklistPhase } | { ok: false; error: string };
 
 export async function submitChecklist(_prev: SubmitChecklistResult | undefined, formData: FormData): Promise<SubmitChecklistResult> {
   const user = await getCurrentUser();
-  if (!user || user.role !== "technician") return { ok: false, error: "You must be signed in as the assigned technician." };
+  if (!user) return { ok: false, error: "You must be signed in to submit a checklist." };
 
-  const requestId = str(formData, "requestId");
+  const requestId = str(formData, "requestId") || null;
+  const repairRecordId = str(formData, "repairRecordId") || null;
   const phase = str(formData, "phase") as ChecklistPhase;
   if (phase !== "pre_repair" && phase !== "post_repair") return { ok: false, error: "Invalid checklist phase." };
+  if (!requestId && !repairRecordId) return { ok: false, error: "Missing target for this checklist." };
 
-  const req = await getRequestById(requestId);
-  if (!req) return { ok: false, error: "Request not found." };
-  if (req.assignedTechnicianId !== user.technicianId) {
-    return { ok: false, error: "This job isn't assigned to you." };
+  let req: Awaited<ReturnType<typeof getRequestById>> = null;
+  let record: Awaited<ReturnType<typeof getRepairRecordById>> = null;
+  let customerName: string;
+  let deviceLabel: string;
+  let branchId: string | null;
+  let technicianId: string | null;
+  let technicianName: string;
+
+  if (requestId) {
+    if (user.role !== "technician") return { ok: false, error: "You must be signed in as the assigned technician." };
+    req = await getRequestById(requestId);
+    if (!req) return { ok: false, error: "Request not found." };
+    if (req.assignedTechnicianId !== user.technicianId) {
+      return { ok: false, error: "This job isn't assigned to you." };
+    }
+    const technicians = await getTechnicians();
+    const technician = technicians.find((t) => t.id === user.technicianId);
+    const lookups = await getLookups();
+    const brand = lookups.find((l) => l.id === req!.deviceBrandId);
+    const deviceModels = await query<{ id: string; name: string }>("select id, name from device_models where id=$1", [req.deviceModelId]);
+    const model = deviceModels[0];
+    customerName = req.customerName;
+    deviceLabel = brand ? `${brand.label} ${model?.name ?? ""}`.trim() : req.deviceOther || "Device";
+    branchId = req.branchId;
+    technicianId = user.technicianId;
+    technicianName = technician?.name ?? user.name;
+  } else {
+    if (user.role !== "owner_admin" && user.role !== "branch_admin") return { ok: false, error: "You must be signed in as an admin." };
+    record = await getRepairRecordById(repairRecordId!);
+    if (!record) return { ok: false, error: "Repair record not found." };
+    customerName = record.customerName;
+    deviceLabel = record.deviceModel || "Device";
+    branchId = null;
+    technicianId = null;
+    technicianName = record.technicianName || user.name;
   }
 
   const agreements = await getServiceAgreements();
-  const existingForPhase = agreements.find((a) => a.requestId === req.id && a.phase === phase);
+  const existingForPhase = agreements.find((a) =>
+    requestId ? a.requestId === requestId && a.phase === phase : a.repairRecordId === repairRecordId && a.phase === phase
+  );
   if (existingForPhase) return { ok: false, error: "This checklist has already been completed." };
 
-  const preAgreement = agreements.find((a) => a.requestId === req.id && a.phase === "pre_repair");
+  const preAgreement = agreements.find((a) =>
+    requestId ? a.requestId === requestId && a.phase === "pre_repair" : a.repairRecordId === repairRecordId && a.phase === "pre_repair"
+  );
   if (phase === "post_repair" && !preAgreement) {
     return { ok: false, error: "Complete the pre-repair checklist first." };
   }
@@ -1230,40 +1286,54 @@ export async function submitChecklist(_prev: SubmitChecklistResult | undefined, 
   }
 
   let receiptPhotoDataUrl: string | null = null;
+  let warrantyCoverage = "";
+  let cost = 0;
+  let partsCost = 0;
+  let laborCost = 0;
+  let otherExpenses = 0;
   if (phase === "post_repair") {
-    receiptPhotoDataUrl = str(formData, "receiptPhotoDataUrl");
-    if (!receiptPhotoDataUrl.startsWith("data:image/")) {
-      return { ok: false, error: "A photo of the receipt is required to complete and close this case." };
+    // Required on the technician/home-service flow (device photo). Optional
+    // on the admin/POS flow (receipt photo) — not every walk-in repair has
+    // a paper receipt to photograph.
+    const receiptPhotoRaw = str(formData, "receiptPhotoDataUrl");
+    const hasPhoto = receiptPhotoRaw.startsWith("data:image/");
+    if (requestId && !hasPhoto) {
+      return { ok: false, error: "A photo of the device is required to complete and close this case." };
+    }
+    receiptPhotoDataUrl = hasPhoto ? receiptPhotoRaw : null;
+    warrantyCoverage = str(formData, "warrantyCoverage");
+    if (!warrantyCoverage) {
+      return { ok: false, error: "Warranty coverage for this repair is required." };
+    }
+    if (requestId) {
+      const costRaw = str(formData, "cost");
+      if (!costRaw) return { ok: false, error: "Price of the repair is required." };
+      cost = Math.max(0, Number(costRaw) || 0);
+      partsCost = Math.max(0, Number(str(formData, "partsCost")) || 0);
+      laborCost = Math.max(0, Number(str(formData, "laborCost")) || 0);
+      otherExpenses = Math.max(0, Number(str(formData, "otherExpenses")) || 0);
     }
   }
-
-  const technicians = await getTechnicians();
-  const technician = technicians.find((t) => t.id === user.technicianId);
-  const lookups = await getLookups();
-  const brand = lookups.find((l) => l.id === req.deviceBrandId);
-  const deviceModels = await query<{ id: string; name: string }>("select id, name from device_models where id=$1", [req.deviceModelId]);
-  const model = deviceModels[0];
-  const deviceLabel = brand ? `${brand.label} ${model?.name ?? ""}`.trim() : req.deviceOther || "Device";
 
   const prefix = phase === "pre_repair" ? "PRC" : "SA";
   const phaseCount = await queryOne<{ n: string }>("select count(*)::int as n from service_agreements where phase=$1", [phase]);
   const reference = `${prefix}-${new Date().getFullYear()}-${String(Number(phaseCount!.n) + 1).padStart(4, "0")}`;
-  const technicianName = technician?.name ?? user.name;
 
   const created = await queryOne<{ id: string }>(
     `insert into service_agreements (
-      request_id, phase, reference, customer_name, device_label, branch_id, technician_id, technician_name,
-      items, summary_notes, agreed_to_terms, customer_signature_data_url, technician_signature_data_url, receipt_photo_data_url
-    ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+      request_id, repair_record_id, phase, reference, customer_name, device_label, branch_id, technician_id, technician_name,
+      items, summary_notes, agreed_to_terms, customer_signature_data_url, technician_signature_data_url, receipt_photo_data_url, warranty_coverage, cost, parts_cost, labor_cost, other_expenses
+    ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
     returning id`,
     [
-      req.id,
+      requestId,
+      repairRecordId,
       phase,
       reference,
-      req.customerName,
+      customerName,
       deviceLabel,
-      req.branchId,
-      user.technicianId,
+      branchId,
+      technicianId,
       technicianName,
       JSON.stringify(items),
       str(formData, "summaryNotes"),
@@ -1271,46 +1341,238 @@ export async function submitChecklist(_prev: SubmitChecklistResult | undefined, 
       customerSignatureDataUrl,
       technicianSignatureDataUrl,
       receiptPhotoDataUrl,
+      warrantyCoverage,
+      cost,
+      partsCost,
+      laborCost,
+      otherExpenses,
     ]
   );
   const agreementId = created!.id;
 
-  if (phase === "pre_repair") {
-    await logActivity(
-      "home_service_request",
-      req.id,
-      `Pre-repair checklist ${reference} completed by ${technicianName} — post-repair checklist is now open.`,
-      technicianName
-    );
-  } else {
-    const now = new Date().toISOString();
-    await query("update service_agreements set sent_to_customer_at=$1 where id=$2", [now, agreementId]);
-    if (preAgreement) await query("update service_agreements set sent_to_customer_at=$1 where id=$2", [now, preAgreement.id]);
+  if (req) {
+    if (phase === "pre_repair") {
+      await logActivity(
+        "home_service_request",
+        req.id,
+        `Pre-repair checklist ${reference} completed by ${technicianName} — post-repair checklist is now open.`,
+        technicianName
+      );
+    } else {
+      const now = new Date().toISOString();
+      const postNotes = str(formData, "summaryNotes");
+      const lookups = await getLookups();
+      const serviceType = lookups.find((l) => l.id === req.serviceTypeId);
 
-    const completedStatus = lookups.find((l) => l.kind === "request_status" && l.label === "Completed");
-    if (completedStatus && req.statusId !== completedStatus.id) {
-      const statusHistory = [...req.statusHistory, { statusId: completedStatus.id, at: now }];
-      await query("update home_service_requests set status_id=$1, status_history=$2 where id=$3", [completedStatus.id, JSON.stringify(statusHistory), req.id]);
+      let emailNote = "no email on file — receipt not emailed";
+      if (req.email) {
+        try {
+          await sendRepairReceiptEmail(req.email, {
+            customerName: req.customerName,
+            reference: req.reference,
+            serviceDate: now.slice(0, 10),
+            deviceLabel,
+            natureOfRepair: [serviceType?.label, req.issueDescription].filter(Boolean).join(" — "),
+            warrantyCoverage,
+            postNotes,
+            cost,
+            technicianName,
+            preItems: preAgreement?.items ?? [],
+            postItems: items,
+            preCustomerSignature: preAgreement?.customerSignatureDataUrl ?? null,
+            preTechnicianSignature: preAgreement?.technicianSignatureDataUrl ?? null,
+            postCustomerSignature: customerSignatureDataUrl,
+            postTechnicianSignature: technicianSignatureDataUrl,
+            receiptPhoto: receiptPhotoDataUrl,
+            photoLabel: "Photo of Device",
+          });
+          await query("update service_agreements set sent_to_customer_at=$1 where id=$2", [now, agreementId]);
+          if (preAgreement) await query("update service_agreements set sent_to_customer_at=$1 where id=$2", [now, preAgreement.id]);
+          emailNote = `receipt emailed to ${req.email}`;
+        } catch (err) {
+          emailNote = `receipt email failed to send to ${req.email} (${err instanceof Error ? err.message : "unknown error"})`;
+        }
+      }
+
+      const completedStatus = lookups.find((l) => l.kind === "request_status" && l.label === "Completed");
+      if (completedStatus && req.statusId !== completedStatus.id) {
+        const statusHistory = [...req.statusHistory, { statusId: completedStatus.id, at: now }];
+        await query("update home_service_requests set status_id=$1, status_history=$2 where id=$3", [completedStatus.id, JSON.stringify(statusHistory), req.id]);
+      }
+
+      await logActivity(
+        "home_service_request",
+        req.id,
+        `Post-repair checklist ${reference} completed by ${technicianName} — case auto-marked Completed. Pre-repair (${preAgreement?.reference ?? "—"}) and post-repair (${reference}) checklists — ${emailNote}`,
+        technicianName
+      );
+      await notifyAdmins(
+        "checklist_completed",
+        req.id,
+        `${technicianName} completed the post-repair checklist for ${req.reference} (${req.customerName}) — case marked Completed. ${emailNote}.`
+      );
     }
-
-    await logActivity(
-      "home_service_request",
-      req.id,
-      `Post-repair checklist ${reference} completed by ${technicianName} — case auto-marked Completed. Pre-repair (${preAgreement?.reference ?? "—"}) and post-repair (${reference}) checklists sent to ${req.email || req.phone} (stubbed — no email/SMS provider configured)`,
-      technicianName
-    );
-    await notifyAdmins(
-      "checklist_completed",
-      req.id,
-      `${technicianName} completed the post-repair checklist for ${req.reference} (${req.customerName}) — case marked Completed and both checklists sent to the customer.`
-    );
+    revalidatePath("/technician");
+    revalidatePath("/admin/requests");
+    revalidatePath(`/admin/requests/${requestId}`);
+    revalidatePath("/admin");
+  } else if (record) {
+    if (phase === "pre_repair") {
+      if (record.customerId) {
+        await logActivity(
+          "customer",
+          record.customerId,
+          `Pre-repair checklist ${reference} completed by ${technicianName} for ${record.reference} — saved as pending, post-repair checklist still open`,
+          user.name
+        );
+      }
+    } else {
+      const postNotes = str(formData, "summaryNotes");
+      let emailNote = "no email on file — receipt not emailed";
+      if (record.email) {
+        try {
+          await sendRepairReceiptEmail(record.email, {
+            customerName: record.customerName,
+            reference: record.reference,
+            serviceDate: record.serviceDate,
+            deviceLabel,
+            natureOfRepair: [record.reportedProblem, record.servicePerformed].filter(Boolean).join(" — "),
+            warrantyCoverage,
+            postNotes,
+            cost: record.cost,
+            technicianName,
+            preItems: preAgreement?.items ?? [],
+            postItems: items,
+            preCustomerSignature: preAgreement?.customerSignatureDataUrl ?? null,
+            preTechnicianSignature: preAgreement?.technicianSignatureDataUrl ?? null,
+            postCustomerSignature: customerSignatureDataUrl,
+            postTechnicianSignature: technicianSignatureDataUrl,
+            receiptPhoto: receiptPhotoDataUrl,
+          });
+          const now = new Date().toISOString();
+          await query("update service_agreements set sent_to_customer_at=$1 where id=$2", [now, agreementId]);
+          if (preAgreement) await query("update service_agreements set sent_to_customer_at=$1 where id=$2", [now, preAgreement.id]);
+          emailNote = `receipt emailed to ${record.email}`;
+        } catch (err) {
+          emailNote = `receipt email failed to send to ${record.email} (${err instanceof Error ? err.message : "unknown error"})`;
+        }
+      }
+      if (record.customerId) {
+        await logActivity(
+          "customer",
+          record.customerId,
+          `Post-repair checklist ${reference} completed by ${technicianName} for ${record.reference} — ${emailNote}`,
+          user.name
+        );
+      }
+    }
+    revalidatePath("/admin/pos");
+    revalidatePath(`/admin/pos/${repairRecordId}`);
+    revalidatePath(`/admin/pos/${repairRecordId}/checklist`);
   }
 
-  revalidatePath("/technician");
-  revalidatePath("/admin/requests");
-  revalidatePath(`/admin/requests/${requestId}`);
-  revalidatePath("/admin");
   return { ok: true, agreementId, phase };
+}
+
+// Re-sends the same PDF receipt that was emailed when the Post-Repair
+// checklist was completed — for when a customer calls back asking for
+// another copy. Reads straight off the already-saved record/agreements
+// (both are locked once the job is completed) rather than re-deriving
+// anything, so the resend is guaranteed to match what was originally sent.
+export type ResendReceiptResult = { ok: true; email: string } | { ok: false; error: string };
+
+export async function resendReceiptEmail(_prev: ResendReceiptResult | undefined, formData: FormData): Promise<ResendReceiptResult> {
+  const user = await getCurrentUser();
+  if (!user || (user.role !== "owner_admin" && user.role !== "branch_admin")) {
+    return { ok: false, error: "You must be signed in as an admin." };
+  }
+
+  const requestId = str(formData, "requestId") || null;
+  const repairRecordId = str(formData, "repairRecordId") || null;
+  if (!requestId && !repairRecordId) return { ok: false, error: "Missing target for this receipt." };
+
+  const agreements = await getServiceAgreements();
+
+  if (requestId) {
+    const req = await getRequestById(requestId);
+    if (!req) return { ok: false, error: "Request not found." };
+    if (!req.email) return { ok: false, error: "No email on file for this customer." };
+    const pre = agreements.find((a) => a.requestId === requestId && a.phase === "pre_repair");
+    const post = agreements.find((a) => a.requestId === requestId && a.phase === "post_repair");
+    if (!post) return { ok: false, error: "The Post-Repair checklist hasn't been completed yet — there's no receipt to resend." };
+    const lookups = await getLookups();
+    const serviceType = lookups.find((l) => l.id === req.serviceTypeId);
+
+    try {
+      await sendRepairReceiptEmail(req.email, {
+        customerName: req.customerName,
+        reference: req.reference,
+        serviceDate: post.completedAt.slice(0, 10),
+        deviceLabel: post.deviceLabel,
+        natureOfRepair: [serviceType?.label, req.issueDescription].filter(Boolean).join(" — "),
+        warrantyCoverage: post.warrantyCoverage,
+        postNotes: post.summaryNotes,
+        cost: post.cost,
+        technicianName: post.technicianName,
+        preItems: pre?.items ?? [],
+        postItems: post.items,
+        preCustomerSignature: pre?.customerSignatureDataUrl ?? null,
+        preTechnicianSignature: pre?.technicianSignatureDataUrl ?? null,
+        postCustomerSignature: post.customerSignatureDataUrl,
+        postTechnicianSignature: post.technicianSignatureDataUrl,
+        receiptPhoto: post.receiptPhotoDataUrl,
+        photoLabel: "Photo of Device",
+      });
+    } catch (err) {
+      return { ok: false, error: `Couldn't send the email — ${err instanceof Error ? err.message : "unknown error"}. Please try again.` };
+    }
+
+    const now = new Date().toISOString();
+    await query("update service_agreements set sent_to_customer_at=$1 where id=$2", [now, post.id]);
+    if (pre) await query("update service_agreements set sent_to_customer_at=$1 where id=$2", [now, pre.id]);
+    await logActivity("home_service_request", requestId, `Receipt resent to ${req.email} by ${user.name}`, user.name);
+    revalidatePath(`/admin/requests/${requestId}`);
+    return { ok: true, email: req.email };
+  }
+
+  const record = await getRepairRecordById(repairRecordId!);
+  if (!record) return { ok: false, error: "Repair record not found." };
+  if (!record.email) return { ok: false, error: "No email on file for this customer." };
+  const pre = agreements.find((a) => a.repairRecordId === repairRecordId && a.phase === "pre_repair");
+  const post = agreements.find((a) => a.repairRecordId === repairRecordId && a.phase === "post_repair");
+  if (!post) return { ok: false, error: "The Post-Repair checklist hasn't been completed yet — there's no receipt to resend." };
+
+  try {
+    await sendRepairReceiptEmail(record.email, {
+      customerName: record.customerName,
+      reference: record.reference,
+      serviceDate: record.serviceDate,
+      deviceLabel: post.deviceLabel,
+      natureOfRepair: [record.reportedProblem, record.servicePerformed].filter(Boolean).join(" — "),
+      warrantyCoverage: post.warrantyCoverage,
+      postNotes: post.summaryNotes,
+      cost: record.cost,
+      technicianName: post.technicianName,
+      preItems: pre?.items ?? [],
+      postItems: post.items,
+      preCustomerSignature: pre?.customerSignatureDataUrl ?? null,
+      preTechnicianSignature: pre?.technicianSignatureDataUrl ?? null,
+      postCustomerSignature: post.customerSignatureDataUrl,
+      postTechnicianSignature: post.technicianSignatureDataUrl,
+      receiptPhoto: post.receiptPhotoDataUrl,
+    });
+  } catch (err) {
+    return { ok: false, error: `Couldn't send the email — ${err instanceof Error ? err.message : "unknown error"}. Please try again.` };
+  }
+
+  const now = new Date().toISOString();
+  await query("update service_agreements set sent_to_customer_at=$1 where id=$2", [now, post.id]);
+  if (pre) await query("update service_agreements set sent_to_customer_at=$1 where id=$2", [now, pre.id]);
+  if (record.customerId) {
+    await logActivity("customer", record.customerId, `Receipt for ${record.reference} resent to ${record.email} by ${user.name}`, user.name);
+  }
+  revalidatePath(`/admin/pos/${repairRecordId}`);
+  return { ok: true, email: record.email };
 }
 
 export async function markNotificationRead(formData: FormData) {

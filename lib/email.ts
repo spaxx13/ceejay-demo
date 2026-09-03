@@ -1,15 +1,64 @@
 import "server-only";
 import { Resend } from "resend";
+import type { ChecklistItem } from "./types";
+import { generateRepairReceiptPdf } from "./receiptPdf";
 
-// Resend's shared testing sender — works without a verified custom domain.
-// Swap for a real "no-reply@yourdomain.com" once a domain is verified in
-// the Resend dashboard.
-const FROM = "Ceejay Cellphone Repair Shop <onboarding@resend.dev>";
+const FROM = "Ceejay Cellphone Repair Shop <noreply@ceejayrepair.com>";
 
 function getClient() {
   const key = process.env.RESEND_API_KEY;
   if (!key) throw new Error("RESEND_API_KEY is not set");
   return new Resend(key);
+}
+
+export async function sendRepairReceiptEmail(
+  to: string,
+  opts: {
+    customerName: string;
+    reference: string;
+    serviceDate: string;
+    deviceLabel: string;
+    natureOfRepair: string;
+    warrantyCoverage: string;
+    postNotes: string;
+    cost: number;
+    technicianName: string;
+    preItems: ChecklistItem[];
+    postItems: ChecklistItem[];
+    preCustomerSignature: string | null;
+    preTechnicianSignature: string | null;
+    postCustomerSignature: string | null;
+    postTechnicianSignature: string | null;
+    receiptPhoto: string | null;
+    photoLabel?: string;
+  }
+) {
+  const client = getClient();
+  const peso = (n: number) => `₱${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+  const pdfBytes = await generateRepairReceiptPdf(opts);
+
+  const html = `
+    <div style="font-family: -apple-system, sans-serif; max-width: 480px; margin: 0 auto; color: #1e293b;">
+      <p style="font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8;">Ceejay Cellphone Repair Shop</p>
+      <h2 style="margin: 4px 0 16px;">Your repair receipt is ready</h2>
+      <p style="font-size: 14px; line-height: 1.5;">
+        Hi ${opts.customerName}, thanks for choosing Ceejay Cellphone Repair Shop. Your receipt for
+        <strong>${opts.reference}</strong> (${opts.deviceLabel || "your device"}, ${peso(opts.cost)}) is attached as a PDF —
+        it includes the full pre- and post-repair checklist results and both signed copies.
+      </p>
+      <p style="font-size: 13px; color: #64748b;">If anything looks off, just reply to this email or contact the branch you visited.</p>
+    </div>
+  `;
+
+  const { error } = await client.emails.send({
+    from: FROM,
+    to,
+    subject: `Your repair receipt — ${opts.reference}`,
+    html,
+    attachments: [{ filename: `receipt-${opts.reference}.pdf`, content: Buffer.from(pdfBytes) }],
+  });
+  if (error) throw new Error(error.message);
 }
 
 export async function sendOtpEmail(to: string, code: string) {

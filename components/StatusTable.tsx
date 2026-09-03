@@ -9,14 +9,14 @@ export default function StatusTable({
   kind,
   items,
   createAction,
-  toggleAction,
+  deleteAction,
   reorderAction,
 }: {
   title: string;
   kind: string;
   items: Item[];
   createAction: (formData: FormData) => void;
-  toggleAction: (formData: FormData) => void;
+  deleteAction: (formData: FormData) => void;
   reorderAction: (formData: FormData) => void;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
@@ -44,7 +44,7 @@ export default function StatusTable({
           <li key={item.id} className="flex items-center justify-between gap-3 py-2.5">
             <div className="flex items-center gap-2">
               <span className="font-mono text-xs text-slate-400">{i + 1}.</span>
-              <span className={`text-sm ${item.active ? "text-slate-800" : "text-slate-400 line-through"}`}>{item.label}</span>
+              <span className="text-sm text-slate-800">{item.label}</span>
             </div>
             <div className="flex items-center gap-2">
               <form action={reorderAction}>
@@ -61,13 +61,14 @@ export default function StatusTable({
                   ↓
                 </button>
               </form>
-              <form action={toggleAction}>
+              <form
+                action={(fd) => {
+                  if (confirm(`Delete "${item.label}"? This can't be undone.`)) deleteAction(fd);
+                }}
+              >
                 <input type="hidden" name="id" value={item.id} />
-                <button
-                  type="submit"
-                  className={`badge border ${item.active ? "border-green-200 bg-green-50 text-green-700" : "border-slate-300 bg-slate-100 text-slate-500"}`}
-                >
-                  {item.active ? "Active" : "Inactive"}
+                <button type="submit" className="btn-secondary !px-3 !py-1 text-xs !text-red-600">
+                  Delete
                 </button>
               </form>
             </div>

@@ -26,9 +26,6 @@ export default async function BranchesPage() {
                 <p className="text-slate-500">
                   <span className="text-slate-400">Phone:</span> {b.contactNumber}
                 </p>
-                <p className="text-slate-500">
-                  <span className="text-slate-400">Hours:</span> Mon–Sat, 10:00 AM – 7:00 PM
-                </p>
               </div>
             </div>
           ))}

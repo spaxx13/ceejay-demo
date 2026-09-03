@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { createDeviceModel, toggleDeviceModelActive } from "@/lib/actions";
+import { createDeviceModel, deleteDeviceModel } from "@/lib/actions";
 
 type Brand = { id: string; label: string };
 type Model = { id: string; brandId: string; name: string; active: boolean };
@@ -44,14 +44,15 @@ export default function DeviceModelManager({ brands, models }: { brands: Brand[]
               <ul className="divide-y divide-slate-200">
                 {brandModels.map((m) => (
                   <li key={m.id} className="flex items-center justify-between py-2">
-                    <span className={`text-sm ${m.active ? "text-slate-800" : "text-slate-400 line-through"}`}>{m.name}</span>
-                    <form action={toggleDeviceModelActive}>
+                    <span className="text-sm text-slate-800">{m.name}</span>
+                    <form
+                      action={(fd) => {
+                        if (confirm(`Delete "${m.name}"? This can't be undone.`)) deleteDeviceModel(fd);
+                      }}
+                    >
                       <input type="hidden" name="id" value={m.id} />
-                      <button
-                        type="submit"
-                        className={`badge border ${m.active ? "border-green-200 bg-green-50 text-green-700" : "border-slate-300 bg-slate-100 text-slate-500"}`}
-                      >
-                        {m.active ? "Active" : "Inactive"}
+                      <button type="submit" className="btn-secondary !px-3 !py-1 text-xs !text-red-600">
+                        Delete
                       </button>
                     </form>
                   </li>

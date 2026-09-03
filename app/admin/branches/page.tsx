@@ -19,7 +19,7 @@ export default async function BranchesPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-xl font-bold text-slate-900">Branches</h1>
-        <p className="mt-1 text-sm text-slate-400">Physical locations customers can visit. Referenced by technicians, zones, and inventory.</p>
+        <p className="mt-1 text-sm text-slate-400">Physical locations customers can visit. Referenced by technicians.</p>
       </div>
       <SettingsTabs />
       <BranchManager branches={branches} />

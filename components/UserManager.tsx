@@ -5,12 +5,16 @@ import { createUser, updateUser, toggleUserActive } from "@/lib/actions";
 import type { Role } from "@/lib/types";
 
 type Technician = { id: string; name: string };
+type Branch = { id: string; name: string };
 type UserRow = {
   id: string;
   name: string;
   email: string;
   role: Role;
   technicianId: string | null;
+  assignedBranchIds: string[];
+  canManageRequests: boolean;
+  canViewAllBranches: boolean;
   active: boolean;
 };
 
@@ -23,10 +27,12 @@ const ROLE_LABELS: Record<Role, string> = {
 export default function UserManager({
   users,
   technicians,
+  branches,
   currentUserId,
 }: {
   users: UserRow[];
   technicians: Technician[];
+  branches: Branch[];
   currentUserId: string;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
@@ -102,6 +108,64 @@ export default function UserManager({
                 <p className="text-[11px] text-amber-700">No technician records yet — add one from Settings &gt; Technicians first.</p>
               )}
               <p className="text-[11px] text-slate-400">Links this login to a Technician record so they only see jobs assigned to them.</p>
+            </div>
+          )}
+          {role === "branch_admin" && (
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-slate-500">Assigned Branch(es)</label>
+              <div className="flex flex-wrap gap-3 rounded-md border border-slate-200 p-2.5">
+                {branches.map((b) => (
+                  <label key={b.id} className="flex items-center gap-1.5 text-sm text-slate-700">
+                    <input
+                      type="checkbox"
+                      name="assignedBranchIds"
+                      value={b.id}
+                      defaultChecked={editing?.assignedBranchIds.includes(b.id) ?? false}
+                      className="h-4 w-4 rounded border-slate-300"
+                    />
+                    {b.name}
+                  </label>
+                ))}
+                {branches.length === 0 && <p className="text-xs text-slate-400">No branches set up yet.</p>}
+              </div>
+              <p className="text-[11px] text-slate-400">
+                Check the branch(es) this account is allowed to access — they&apos;ll only see tickets, sales, and branch options for those
+                branches. Leave all unchecked to allow access to every branch (no restriction).
+              </p>
+            </div>
+          )}
+          {role === "branch_admin" && (
+            <div className="space-y-1.5">
+              <label className="flex items-center gap-1.5 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  name="canManageRequests"
+                  defaultChecked={editing?.canManageRequests ?? true}
+                  className="h-4 w-4 rounded border-slate-300"
+                />
+                Can access and manage Home Service Requests
+              </label>
+              <p className="text-[11px] text-slate-400">
+                Uncheck to hide the Home Service Requests section from this account entirely — no viewing, reassigning, or updating request
+                status or notes.
+              </p>
+            </div>
+          )}
+          {role === "branch_admin" && (
+            <div className="space-y-1.5">
+              <label className="flex items-center gap-1.5 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  name="canViewAllBranches"
+                  defaultChecked={editing?.canViewAllBranches ?? false}
+                  className="h-4 w-4 rounded border-slate-300"
+                />
+                Can view combined Sales &amp; income for all branches
+              </label>
+              <p className="text-[11px] text-slate-400">
+                Off by default: this account only sees the individual card(s) for their own assigned branch(es) on Branch Sales — never the
+                combined &quot;All Branches&quot; totals or the Owner Deductions section. Check this to grant that combined view.
+              </p>
             </div>
           )}
           <div className="flex gap-2">
