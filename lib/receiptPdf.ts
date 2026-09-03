@@ -13,6 +13,9 @@ const RULE = rgb(0.85, 0.87, 0.9);
 const PASS = rgb(0.02, 0.45, 0.2);
 const FAIL = rgb(0.75, 0.11, 0.11);
 const NA = rgb(0.2, 0.35, 0.75);
+const HIGHLIGHT_BG = rgb(0.9, 0.95, 1);
+const HIGHLIGHT_BORDER = rgb(0.55, 0.72, 0.96);
+const HIGHLIGHT_TEXT = rgb(0.06, 0.22, 0.5);
 
 const RESULT_LABEL: Record<string, string> = { pass: "PASS", fail: "FAIL", na: "N/A" };
 const RESULT_COLOR: Record<string, ReturnType<typeof rgb>> = { pass: PASS, fail: FAIL, na: NA };
@@ -101,6 +104,22 @@ class Writer {
       });
     });
     this.y -= lines.length * lineHeight + 4;
+  }
+
+  // A boxed, high-contrast row for the one figure the customer actually
+  // needs to notice on the printed/emailed receipt (the amount).
+  highlightRow(label: string, value: string) {
+    const boxHeight = 30;
+    this.ensureSpace(boxHeight + 10);
+    this.y -= 4;
+    const boxTop = this.y;
+    const boxY = boxTop - boxHeight;
+    this.page.drawRectangle({ x: MARGIN, y: boxY, width: CONTENT_W, height: boxHeight, color: HIGHLIGHT_BG, borderColor: HIGHLIGHT_BORDER, borderWidth: 1.25 });
+    this.page.drawText(label, { x: MARGIN + 12, y: boxY + boxHeight / 2 - 4.5, size: 11, font: this.bold, color: HIGHLIGHT_TEXT });
+    const valueSize = 15;
+    const valueWidth = this.bold.widthOfTextAtSize(value, valueSize);
+    this.page.drawText(value, { x: MARGIN + CONTENT_W - 12 - valueWidth, y: boxY + boxHeight / 2 - 5.5, size: valueSize, font: this.bold, color: HIGHLIGHT_TEXT });
+    this.y = boxY - 10;
   }
 
   paragraph(text: string, size = 10) {
@@ -205,7 +224,7 @@ export async function generateRepairReceiptPdf(opts: {
   w.row("Nature of Repair", opts.natureOfRepair);
   w.row("Technician", opts.technicianName || "—");
   w.row("Warranty Coverage", opts.warrantyCoverage);
-  w.row("Amount", peso(opts.cost), { boldValue: true, valueSize: 12 });
+  w.highlightRow("Amount", peso(opts.cost));
 
   if (opts.postNotes) {
     w.heading("Notes (Post-Repair)");

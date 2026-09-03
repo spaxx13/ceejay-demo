@@ -23,7 +23,7 @@ import {
   canManageHomeServiceRequests,
 } from "./db";
 import { getCurrentUser, setSession, clearSession, requireRole } from "./auth";
-import { sendOtpEmail, sendRepairReceiptEmail } from "./email";
+import { sendOtpEmail, sendRepairReceiptEmail, sendCancellationEmail } from "./email";
 import type {
   Role,
   LookupKind,
@@ -580,11 +580,21 @@ export async function cancelRepairRecord(formData: FormData) {
 
   await query("update repair_records set cancelled=true, cancellation_reason=$1, cancelled_at=now() where id=$2", [reason, recordId]);
 
+  let emailNote = "";
+  if (record.email) {
+    try {
+      await sendCancellationEmail(record.email, { customerName: record.customerName, reference: record.reference, reason });
+      emailNote = ` — cancellation email sent to ${record.email}`;
+    } catch (err) {
+      emailNote = ` — cancellation email failed to send to ${record.email} (${err instanceof Error ? err.message : "unknown error"})`;
+    }
+  }
+
   if (record.customerId) {
     await logActivity(
       "customer",
       record.customerId,
-      `Repair ${record.reference} cancelled by ${user.name}${reason ? ` — ${reason}` : ""}`,
+      `Repair ${record.reference} cancelled by ${user.name}${reason ? ` — ${reason}` : ""}${emailNote}`,
       user.name
     );
   }
@@ -954,7 +964,18 @@ export async function changeRequestStatus(formData: FormData) {
   if (!req || !status) return;
   const statusHistory = [...req.statusHistory, { statusId, at: new Date().toISOString() }];
   await query("update home_service_requests set status_id=$1, status_history=$2 where id=$3", [statusId, JSON.stringify(statusHistory), requestId]);
-  await logActivity("home_service_request", req.id, `Status changed to "${status.label}" by ${user?.name ?? "Admin"}`, user?.name ?? "Admin");
+
+  let emailNote = "";
+  if (status.label === "Cancelled" && req.email) {
+    try {
+      await sendCancellationEmail(req.email, { customerName: req.customerName, reference: req.reference, reason: "" });
+      emailNote = ` — cancellation email sent to ${req.email}`;
+    } catch (err) {
+      emailNote = ` — cancellation email failed to send to ${req.email} (${err instanceof Error ? err.message : "unknown error"})`;
+    }
+  }
+
+  await logActivity("home_service_request", req.id, `Status changed to "${status.label}" by ${user?.name ?? "Admin"}${emailNote}`, user?.name ?? "Admin");
   revalidatePath("/admin/requests");
   revalidatePath(`/admin/requests/${requestId}`);
   revalidatePath("/technician");
