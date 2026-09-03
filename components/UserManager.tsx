@@ -32,6 +32,7 @@ export default function UserManager({
   const formRef = useRef<HTMLFormElement>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [role, setRole] = useState<Role>("branch_admin");
+  const [showPassword, setShowPassword] = useState(false);
   const editing = users.find((u) => u.id === editingId);
 
   function startEdit(u: UserRow) {
@@ -41,6 +42,7 @@ export default function UserManager({
   function reset() {
     setEditingId(null);
     setRole("branch_admin");
+    setShowPassword(false);
     formRef.current?.reset();
   }
 
@@ -76,7 +78,22 @@ export default function UserManager({
               <label className="text-xs font-medium text-slate-500">
                 Password {editingId ? <span className="text-slate-400">(leave blank to keep current)</span> : "*"}
               </label>
-              <input name="password" type="password" required={!editingId} className="input" placeholder={editingId ? "••••••••" : "Set a password"} />
+              <div className="relative">
+                <input
+                  name="password"
+                  type={showPassword ? "text" : "password"}
+                  required={!editingId}
+                  className="input pr-16"
+                  placeholder={editingId ? "••••••••" : "Set a password"}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((v) => !v)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-xs font-medium text-slate-400 hover:text-slate-600"
+                >
+                  {showPassword ? "Hide" : "Show"}
+                </button>
+              </div>
             </div>
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-slate-500">Role *</label>
