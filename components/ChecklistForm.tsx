@@ -54,6 +54,8 @@ export default function ChecklistForm({
 
   const [warrantyCoverage, setWarrantyCoverage] = useState("");
   const [cost, setCost] = useState("");
+  const [laborCost, setLaborCost] = useState("");
+  const totalAmount = (Number(cost) || 0) + (Number(laborCost) || 0);
 
   // React resets a <form action={...}> element's native DOM state (radio
   // "checked", checkbox "checked") after every action settles, success or
@@ -275,7 +277,7 @@ export default function ChecklistForm({
         <div className="card space-y-3">
           <div className="space-y-2">
             <h3 className="text-sm font-semibold text-slate-800">Repair Price</h3>
-            <p className="text-xs text-slate-500">The amount to charge for this repair — this is included on the customer&apos;s emailed receipt.</p>
+            <p className="text-xs text-slate-500">The base repair price — combined with the Labor/Service Cost below for the total charged to the customer.</p>
             <input
               name="cost"
               type="number"
@@ -290,7 +292,7 @@ export default function ChecklistForm({
           </div>
           <div className="space-y-2">
             <h3 className="text-sm font-semibold text-slate-800">Expenses</h3>
-            <p className="text-xs text-slate-500">If any — used to calculate net profit on the Sales reports.</p>
+            <p className="text-xs text-slate-500">Parts and other costs are used to calculate net profit on the Sales reports. Labor/Service Cost is added to the Repair Price as the technician&apos;s service fee.</p>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <div className="space-y-1.5">
                 <label className="text-xs font-medium text-slate-500">Parts/Material Cost (₱)</label>
@@ -298,13 +300,28 @@ export default function ChecklistForm({
               </div>
               <div className="space-y-1.5">
                 <label className="text-xs font-medium text-slate-500">Labor/Service Cost (₱)</label>
-                <input name="laborCost" type="number" min={0} step="0.01" className="input" placeholder="0.00" />
+                <input
+                  name="laborCost"
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={laborCost}
+                  onChange={(e) => setLaborCost(e.target.value)}
+                  className="input"
+                  placeholder="0.00"
+                />
               </div>
               <div className="space-y-1.5">
                 <label className="text-xs font-medium text-slate-500">Other Expenses (₱)</label>
                 <input name="otherExpenses" type="number" min={0} step="0.01" className="input" placeholder="0.00" />
               </div>
             </div>
+          </div>
+          <div className="flex items-center justify-between rounded-lg border-2 border-blue-300 bg-blue-50 px-3 py-2">
+            <span className="text-sm font-semibold text-blue-900">Total Amount (Repair Price + Labor/Service Cost)</span>
+            <span className="text-lg font-bold text-blue-900">
+              ₱{totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </span>
           </div>
         </div>
       )}
