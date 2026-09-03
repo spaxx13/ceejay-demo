@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { getBranches, getTechnicians, getLookups, getUsers } from "@/lib/db";
+import { getBranches, getTechnicians, getLookups, getUsers, getLoginLogs } from "@/lib/db";
 import { requireRole } from "@/lib/auth";
 
 const GROUPS = [
@@ -15,7 +15,10 @@ const GROUPS = [
   {
     label: "Access",
     description: "Who can log in, and what they can do once they're in.",
-    cards: [{ href: "/admin/users", title: "Staff Accounts", description: "Create logins for owner admins, branch admins, and technicians." }],
+    cards: [
+      { href: "/admin/users", title: "Staff Accounts", description: "Create logins for owner admins, branch admins, and technicians." },
+      { href: "/admin/login-logs", title: "Login Logs", description: "Every successful staff login, with date and time." },
+    ],
   },
   {
     label: "Catalog & Workflow",
@@ -39,12 +42,14 @@ const GROUPS = [
 export default async function SettingsHubPage() {
   if (!(await requireRole("owner_admin"))) redirect("/admin");
 
-  const [branches, technicians, lookups, users] = await Promise.all([
+  const [branches, technicians, lookups, users, loginLogs] = await Promise.all([
     getBranches(),
     getTechnicians(),
     getLookups(),
     getUsers(),
+    getLoginLogs(),
   ]);
+  const today = new Date().toISOString().slice(0, 10);
   const counts: Record<string, number> = {
     "/admin/branches": branches.filter((b) => b.active).length,
     "/admin/technicians": technicians.filter((t) => t.active).length,
@@ -52,6 +57,7 @@ export default async function SettingsHubPage() {
     "/admin/service-types": lookups.filter((l) => l.kind === "service_type" && l.active).length,
     "/admin/statuses": lookups.filter((l) => (l.kind === "lead_status" || l.kind === "request_status") && l.active).length,
     "/admin/users": users.filter((u) => u.active).length,
+    "/admin/login-logs": loginLogs.filter((l) => l.at.slice(0, 10) === today).length,
   };
   const countFor = (href: string) => counts[href] ?? null;
 

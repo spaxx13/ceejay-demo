@@ -20,6 +20,7 @@ import type {
   RepairProgress,
   Notification,
   Expense,
+  LoginLog,
 } from "./types";
 
 // Single pooled connection, reused across invocations within the same
@@ -186,6 +187,11 @@ function mapActivity(r: ActivityRow): ActivityLog {
   return { id: r.id, entityType: r.entity_type, entityId: r.entity_id, message: r.message, actor: r.actor, at: toIso(r.at) };
 }
 
+type LoginLogRow = { id: string; user_id: string | null; user_name: string; user_email: string; role: LoginLog["role"]; at: Date };
+function mapLoginLog(r: LoginLogRow): LoginLog {
+  return { id: r.id, userId: r.user_id, userName: r.user_name, userEmail: r.user_email, role: r.role, at: toIso(r.at) };
+}
+
 type SaleRow = { id: string; reference: string; branch_id: string; customer_id: string | null; customer_name: string; customer_phone: string; home_service_request_id: string | null; discount: string; subtotal: string; total: string; payment_method: Sale["paymentMethod"]; cashier_name: string; created_at: Date };
 function mapSale(r: SaleRow, lineItems: SaleLineItem[]): Sale {
   return { id: r.id, reference: r.reference, branchId: r.branch_id, customerId: r.customer_id, customerName: r.customer_name, customerPhone: r.customer_phone, homeServiceRequestId: r.home_service_request_id, lineItems, discount: Number(r.discount), subtotal: Number(r.subtotal), total: Number(r.total), paymentMethod: r.payment_method, cashierName: r.cashier_name, createdAt: toIso(r.created_at) };
@@ -345,6 +351,9 @@ export async function getRequestById(id: string) {
 }
 export async function getActivity() {
   return (await query<ActivityRow>("select * from activity_log order by at desc")).map(mapActivity);
+}
+export async function getLoginLogs() {
+  return (await query<LoginLogRow>("select * from login_logs order by at desc")).map(mapLoginLog);
 }
 export async function getSales() {
   const [saleRows, lineRows] = await Promise.all([

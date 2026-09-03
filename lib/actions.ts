@@ -87,6 +87,7 @@ export async function loginAction(_prev: { error?: string } | undefined, formDat
     return { error: "Invalid email or password." };
   }
   await setSession(user.id);
+  await query("insert into login_logs (user_id, user_name, user_email, role) values ($1,$2,$3,$4)", [user.id, user.name, user.email, user.role]);
   redirect(user.role === "technician" ? "/technician" : "/admin");
 }
 

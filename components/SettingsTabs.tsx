@@ -13,7 +13,10 @@ const GROUPS = [
   },
   {
     label: "Access",
-    tabs: [{ href: "/admin/users", label: "Staff Accounts" }],
+    tabs: [
+      { href: "/admin/users", label: "Staff Accounts" },
+      { href: "/admin/login-logs", label: "Login Logs" },
+    ],
   },
   {
     label: "Catalog & Workflow",

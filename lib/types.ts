@@ -284,6 +284,18 @@ export type ActivityLog = {
   at: string;
 };
 
+// A record of every successful staff login — name/email/role are snapshots
+// taken at login time, so the log stays fully readable even if the account
+// is later renamed or deleted (userId just goes null, per the FK).
+export type LoginLog = {
+  id: string;
+  userId: string | null;
+  userName: string;
+  userEmail: string;
+  role: Role;
+  at: string;
+};
+
 // Digital pre-repair and post-repair checklists, filled out by the
 // technician once a job moves to "In Progress". Mirrors the shop's paper
 // "Post-Repair Checklist" / "Service Agreement" form — the same row set is
