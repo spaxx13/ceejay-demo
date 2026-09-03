@@ -129,16 +129,22 @@ export async function updateUser(formData: FormData) {
   const canManageRequests = role === "branch_admin" ? formData.get("canManageRequests") === "on" : true;
   const canViewAllBranches = role === "branch_admin" ? formData.get("canViewAllBranches") === "on" : true;
 
-  // Same as createUser: no existing Technician record picked — create one
-  // now with the chosen branch(es) and link it.
-  if (role === "technician" && !technicianId) {
+  if (role === "technician") {
     const technicianBranchIds = listStr(formData, "technicianBranchIds");
-    if (technicianBranchIds.length > 0) {
-      const created = await queryOne<{ id: string }>(
-        "insert into technicians (name, contact_number, email, employment_status, branch_ids) values ($1,'',$2,'full_time',$3) returning id",
-        [name, email || user.email, technicianBranchIds]
-      );
-      technicianId = created!.id;
+    if (!technicianId) {
+      // No linked Technician record yet — create one now with the chosen
+      // branch(es) and link it.
+      if (technicianBranchIds.length > 0) {
+        const created = await queryOne<{ id: string }>(
+          "insert into technicians (name, contact_number, email, employment_status, branch_ids) values ($1,'',$2,'full_time',$3) returning id",
+          [name, email || user.email, technicianBranchIds]
+        );
+        technicianId = created!.id;
+      }
+    } else {
+      // Already linked — update that Technician record's branches in place
+      // rather than spawning a new one on every edit.
+      await query("update technicians set branch_ids=$1 where id=$2", [technicianBranchIds, technicianId]);
     }
   }
 

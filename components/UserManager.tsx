@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 import { createUser, updateUser, toggleUserActive } from "@/lib/actions";
 import type { Role } from "@/lib/types";
 
-type Technician = { id: string; name: string };
+type Technician = { id: string; name: string; branchIds: string[] };
 type Branch = { id: string; name: string };
 type UserRow = {
   id: string;
@@ -39,21 +39,18 @@ export default function UserManager({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [role, setRole] = useState<Role>("branch_admin");
   const [showPassword, setShowPassword] = useState(false);
-  const [linkedTechnicianId, setLinkedTechnicianId] = useState("");
   const [technicianBranchSel, setTechnicianBranchSel] = useState<string[]>([]);
   const editing = users.find((u) => u.id === editingId);
 
   function startEdit(u: UserRow) {
     setEditingId(u.id);
     setRole(u.role);
-    setLinkedTechnicianId(u.technicianId ?? "");
-    setTechnicianBranchSel([]);
+    setTechnicianBranchSel(technicians.find((t) => t.id === u.technicianId)?.branchIds ?? []);
   }
   function reset() {
     setEditingId(null);
     setRole("branch_admin");
     setShowPassword(false);
-    setLinkedTechnicianId("");
     setTechnicianBranchSel([]);
     formRef.current?.reset();
   }
@@ -130,50 +127,40 @@ export default function UserManager({
             </div>
           </div>
           {role === "technician" && (
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-slate-500">Linked Technician</label>
-              <select name="technicianId" value={linkedTechnicianId} onChange={(e) => setLinkedTechnicianId(e.target.value)} className="input">
-                <option value="">Not linked — create a new Technician record</option>
-                {technicians.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name}
-                  </option>
-                ))}
-              </select>
-              <p className="text-[11px] text-slate-400">
-                Links this login to a Technician record so they only see jobs assigned to them. Pick an existing one, or leave &quot;Not
-                linked&quot; and choose a branch below to create one automatically.
-              </p>
-            </div>
-          )}
-          {role === "technician" && !linkedTechnicianId && (
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-slate-500">Branch(es)</label>
-              <div className="flex flex-wrap gap-2">
-                {branches.map((b) => (
-                  <label
-                    key={b.id}
-                    className={`badge cursor-pointer border ${
-                      technicianBranchSel.includes(b.id) ? "border-blue-300 bg-blue-100 text-blue-300" : "border-slate-300 bg-slate-100 text-slate-500"
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      name="technicianBranchIds"
-                      value={b.id}
-                      checked={technicianBranchSel.includes(b.id)}
-                      onChange={() =>
-                        setTechnicianBranchSel((s) => (s.includes(b.id) ? s.filter((x) => x !== b.id) : [...s, b.id]))
-                      }
-                      className="sr-only"
-                    />
-                    {b.name}
-                  </label>
-                ))}
-                {branches.length === 0 && <p className="text-xs text-slate-400">No branches set up yet.</p>}
+            <>
+              <input type="hidden" name="technicianId" value={editing?.technicianId ?? ""} />
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-slate-500">Branch(es)</label>
+                <div className="flex flex-wrap gap-2">
+                  {branches.map((b) => (
+                    <label
+                      key={b.id}
+                      className={`badge cursor-pointer border ${
+                        technicianBranchSel.includes(b.id) ? "border-blue-300 bg-blue-100 text-blue-300" : "border-slate-300 bg-slate-100 text-slate-500"
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        name="technicianBranchIds"
+                        value={b.id}
+                        checked={technicianBranchSel.includes(b.id)}
+                        onChange={() =>
+                          setTechnicianBranchSel((s) => (s.includes(b.id) ? s.filter((x) => x !== b.id) : [...s, b.id]))
+                        }
+                        className="sr-only"
+                      />
+                      {b.name}
+                    </label>
+                  ))}
+                  {branches.length === 0 && <p className="text-xs text-slate-400">No branches set up yet.</p>}
+                </div>
+                <p className="text-[11px] text-slate-400">
+                  {editing?.technicianId
+                    ? "Updates the linked Technician record's branch(es), so they only see jobs assigned to them."
+                    : "Creates a linked Technician record with these branch(es), so they only see jobs assigned to them."}
+                </p>
               </div>
-              <p className="text-[11px] text-slate-400">Which branch(es) this new technician will be assigned to.</p>
-            </div>
+            </>
           )}
           {role === "branch_admin" && (
             <div className="space-y-1.5">

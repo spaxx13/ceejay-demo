@@ -20,7 +20,7 @@ export default async function UsersPage() {
     canViewAllBranches: u.canViewAllBranches,
     active: u.active,
   }));
-  const technicians = allTechnicians.filter((t) => t.active).map((t) => ({ id: t.id, name: t.name }));
+  const technicians = allTechnicians.filter((t) => t.active).map((t) => ({ id: t.id, name: t.name, branchIds: t.branchIds }));
   const branches = allBranches.filter((b) => b.active).map((b) => ({ id: b.id, name: b.name }));
 
   return (
