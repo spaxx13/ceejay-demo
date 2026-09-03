@@ -16,10 +16,11 @@ export default function AgreementSummary({
 }) {
   const priceEditForm = allowPriceEdit && (
     <EditAgreementPriceForm
-      key={`${agreement.cost}-${agreement.laborCost}-${agreement.priceEditCount}`}
+      key={`${agreement.cost}-${agreement.laborCost}-${agreement.partsCost}-${agreement.priceEditCount}`}
       agreementId={agreement.id}
       cost={agreement.cost}
       laborCost={agreement.laborCost}
+      partsCost={agreement.partsCost}
       editsRemaining={Math.max(0, MAX_PRICE_EDITS - agreement.priceEditCount)}
     />
   );

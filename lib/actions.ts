@@ -1502,8 +1502,14 @@ export async function updateAgreementPrice(
 
   const cost = Math.max(0, Number(str(formData, "cost")) || 0);
   const laborCost = Math.max(0, Number(str(formData, "laborCost")) || 0);
+  const partsCost = Math.max(0, Number(str(formData, "partsCost")) || 0);
 
-  await query("update service_agreements set cost=$1, labor_cost=$2, price_edit_count=price_edit_count+1 where id=$3", [cost, laborCost, agreementId]);
+  await query("update service_agreements set cost=$1, labor_cost=$2, parts_cost=$3, price_edit_count=price_edit_count+1 where id=$4", [
+    cost,
+    laborCost,
+    partsCost,
+    agreementId,
+  ]);
   await logActivity(
     "home_service_request",
     req.id,
