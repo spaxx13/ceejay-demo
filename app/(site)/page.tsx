@@ -9,7 +9,10 @@ export default async function HomePage() {
     .filter((l) => l.kind === "service_type" && l.active)
     .sort((a, b) => a.order - b.order)
     .slice(0, 6);
-  const branches = allBranches.filter((b) => b.active).slice(0, 3);
+  // A branch without an address is a backend-only bucket (e.g. "Home
+  // Service", used to attribute technician sales) rather than a walk-in
+  // location — keep those off the public site.
+  const branches = allBranches.filter((b) => b.active && b.address.trim()).slice(0, 3);
 
   return (
     <main>
