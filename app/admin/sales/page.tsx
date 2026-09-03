@@ -137,6 +137,11 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
     };
   });
 
+  // Branch admins scoped to their own branch(es) don't manage the
+  // "Unassigned" bucket (unbranched records) — that's an owner-level
+  // reconciliation concern, so hide it for anyone without all-branches access.
+  const visibleRows = showAllBranches ? rowsWithDeductions : rowsWithDeductions.filter((r) => r.name !== "Unassigned");
+
   return (
     <div className="space-y-6">
       <div>
@@ -201,7 +206,7 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
       )}
 
       <div className="space-y-4">
-        {rowsWithDeductions.map((r) => {
+        {visibleRows.map((r) => {
           const branchEntry = branches.find((b) => b.name === r.name);
           return (
             <div key={r.name} className={`card space-y-3 ${r.name === "Unassigned" ? "opacity-60" : ""}`}>
