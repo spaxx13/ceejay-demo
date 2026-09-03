@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { createUser, updateUser, toggleUserActive } from "@/lib/actions";
+import { createUser, updateUser, toggleUserActive, deleteUser } from "@/lib/actions";
 import type { Role } from "@/lib/types";
 
 type Technician = { id: string; name: string; branchIds: string[] };
@@ -276,9 +276,23 @@ export default function UserManager({
                   )}
                 </td>
                 <td className="py-3">
-                  <button className="btn-secondary !px-3 !py-1 text-xs" onClick={() => startEdit(u)}>
-                    Edit
-                  </button>
+                  <div className="flex gap-1.5">
+                    <button className="btn-secondary !px-3 !py-1 text-xs" onClick={() => startEdit(u)}>
+                      Edit
+                    </button>
+                    {u.id !== currentUserId && (
+                      <form
+                        action={(fd) => {
+                          if (confirm(`Delete "${u.name}"'s account? This can't be undone.`)) deleteUser(fd);
+                        }}
+                      >
+                        <input type="hidden" name="id" value={u.id} />
+                        <button type="submit" className="btn-secondary !px-3 !py-1 text-xs !text-red-600">
+                          Delete
+                        </button>
+                      </form>
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}

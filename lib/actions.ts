@@ -215,6 +215,24 @@ export async function toggleUserActive(formData: FormData) {
   revalidatePath("/admin/users");
 }
 
+export async function deleteUser(formData: FormData) {
+  const actor = await requireRole("owner_admin");
+  if (!actor) return;
+
+  const userId = str(formData, "id");
+  if (userId === actor.id) return; // can't delete yourself
+
+  const users = await getUsers();
+  const target = users.find((u) => u.id === userId);
+  if (!target) return;
+  // Never allow deleting the last active Owner Admin — that would lock
+  // everyone out of Settings and user management entirely.
+  if (target.role === "owner_admin" && users.filter((u) => u.role === "owner_admin" && u.active).length <= 1) return;
+
+  await query("delete from users where id=$1", [userId]);
+  revalidatePath("/admin/users");
+}
+
 // ---------- Branches ----------
 
 export async function createBranch(formData: FormData) {
@@ -287,6 +305,30 @@ export async function toggleTechnicianActive(formData: FormData) {
   const techId = str(formData, "id");
   await query("update technicians set active = not active where id=$1", [techId]);
   revalidatePath("/admin/technicians");
+}
+
+export async function deleteTechnician(formData: FormData) {
+  const actor = await requireRole("owner_admin");
+  if (!actor) return;
+
+  const techId = str(formData, "id");
+
+  // Block deleting a technician who still has an open (not yet completed or
+  // cancelled) job assigned — reassign or resolve those first, so a job
+  // never silently ends up assigned-but-technician-less.
+  const [requests, lookups] = await Promise.all([getRequests(), getLookups()]);
+  const openStatusIds = new Set(
+    lookups.filter((l) => l.kind === "request_status" && l.label !== "Completed" && l.label !== "Cancelled").map((l) => l.id)
+  );
+  const hasOpenJob = requests.some((r) => r.assignedTechnicianId === techId && openStatusIds.has(r.statusId));
+  if (hasOpenJob) return;
+
+  // Any login linked to this technician stays (technician_id just becomes
+  // null, per the FK's on delete set null) — past job history keeps its
+  // technician_name snapshot regardless, so nothing here erases records.
+  await query("delete from technicians where id=$1", [techId]);
+  revalidatePath("/admin/technicians");
+  revalidatePath("/admin/users");
 }
 
 // ---------- Device Brands / Models ----------

@@ -9,13 +9,13 @@ const GROUPS = [
     description: "The people and places behind every job — who covers what, and where customers can find you.",
     cards: [
       { href: "/admin/branches", title: "Branches", description: "Physical locations, addresses, and contact numbers." },
-      { href: "/admin/technicians", title: "Technician Records", description: "Technician contact info and the branch(es) they work at." },
+      { href: "/admin/technicians", title: "Technicians", description: "Staff and the branch(es) they work at." },
     ],
   },
   {
     label: "Access",
     description: "Who can log in, and what they can do once they're in.",
-    cards: [{ href: "/admin/users", title: "Technicians", description: "Create logins for owner admins, branch admins, and technicians." }],
+    cards: [{ href: "/admin/users", title: "Staff Accounts", description: "Create logins for owner admins, branch admins, and technicians." }],
   },
   {
     label: "Catalog & Workflow",

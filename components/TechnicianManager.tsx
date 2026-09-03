@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { createTechnician, updateTechnician, toggleTechnicianActive } from "@/lib/actions";
+import { createTechnician, updateTechnician, toggleTechnicianActive, deleteTechnician } from "@/lib/actions";
 
 type Opt = { id: string; name: string };
 type Tech = {
@@ -134,9 +134,21 @@ export default function TechnicianManager({ technicians, branches }: { technicia
                   </form>
                 </td>
                 <td className="py-3">
-                  <button className="btn-secondary !px-3 !py-1 text-xs" onClick={() => startEdit(t)}>
-                    Edit
-                  </button>
+                  <div className="flex gap-1.5">
+                    <button className="btn-secondary !px-3 !py-1 text-xs" onClick={() => startEdit(t)}>
+                      Edit
+                    </button>
+                    <form
+                      action={(fd) => {
+                        if (confirm(`Delete "${t.name}"? This can't be undone. Any account linked to them stays, just unlinked.`)) deleteTechnician(fd);
+                      }}
+                    >
+                      <input type="hidden" name="id" value={t.id} />
+                      <button type="submit" className="btn-secondary !px-3 !py-1 text-xs !text-red-600">
+                        Delete
+                      </button>
+                    </form>
+                  </div>
                 </td>
               </tr>
             ))}
