@@ -8,6 +8,7 @@ const TABS = [
   { href: "/admin/sales/daily", label: "Daily" },
   { href: "/admin/sales/technicians", label: "By Technician" },
   { href: "/admin/sales/home-service", label: "Home Service" },
+  { href: "/admin/sales/materials", label: "Parts/Material Cost" },
   { href: "/admin/sales/expenses", label: "Expenses" },
 ];
 
