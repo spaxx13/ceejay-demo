@@ -1375,7 +1375,7 @@ export async function submitChecklist(_prev: SubmitChecklistResult | undefined, 
             natureOfRepair: [serviceType?.label, req.issueDescription].filter(Boolean).join(" — "),
             warrantyCoverage,
             postNotes,
-            cost: cost + laborCost, // Total Amount: repair price + labor/service fee, charged to the customer
+            cost: Math.max(0, cost + laborCost - partsCost), // Total Amount: repair price + labor/service fee − parts/material cost
             technicianName,
             preItems: preAgreement?.items ?? [],
             postItems: items,
@@ -1567,7 +1567,7 @@ export async function resendReceiptEmail(_prev: ResendReceiptResult | undefined,
         natureOfRepair: [serviceType?.label, req.issueDescription].filter(Boolean).join(" — "),
         warrantyCoverage: post.warrantyCoverage,
         postNotes: post.summaryNotes,
-        cost: post.cost + post.laborCost, // Total Amount: repair price + labor/service fee, charged to the customer
+        cost: Math.max(0, post.cost + post.laborCost - post.partsCost), // Total Amount: repair price + labor/service fee − parts/material cost
         technicianName: post.technicianName,
         preItems: pre?.items ?? [],
         postItems: post.items,

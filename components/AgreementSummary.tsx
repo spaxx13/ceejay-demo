@@ -74,18 +74,22 @@ export default function AgreementSummary({
               <span>+₱{agreement.laborCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
             </div>
           )}
-          {agreement.laborCost > 0 && (
-            <div className="flex items-center justify-between border-t border-slate-100 pt-1 text-sm font-semibold text-slate-900">
-              <span>Total Amount</span>
-              <span>₱{(agreement.cost + agreement.laborCost).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-            </div>
-          )}
           {agreement.partsCost > 0 && (
             <div className="flex items-center justify-between text-sm text-slate-500">
               <span>Parts/Material Cost</span>
               <span>−₱{agreement.partsCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
             </div>
           )}
+          <div className="flex items-center justify-between border-t border-slate-100 pt-1 text-sm font-semibold text-slate-900">
+            <span>Total Amount</span>
+            <span>
+              ₱
+              {Math.max(0, agreement.cost + agreement.laborCost - agreement.partsCost).toLocaleString(undefined, {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}
+            </span>
+          </div>
           {agreement.otherExpenses > 0 && (
             <div className="flex items-center justify-between text-sm text-slate-500">
               <span>Other Expenses</span>

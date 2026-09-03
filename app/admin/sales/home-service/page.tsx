@@ -40,7 +40,7 @@ export default async function HomeServiceSalesPage({ searchParams }: { searchPar
   for (const a of homeServiceJobs) {
     const bucket = ensure(a.technicianName);
     bucket.count += 1;
-    bucket.totalAmount += a.cost + a.laborCost;
+    bucket.totalAmount += Math.max(0, a.cost + a.laborCost - a.partsCost);
   }
 
   const rows = Array.from(totals.values())
@@ -66,8 +66,8 @@ export default async function HomeServiceSalesPage({ searchParams }: { searchPar
       <div>
         <h1 className="text-xl font-bold text-slate-900">Home Service Sales</h1>
         <p className="mt-1 text-sm text-slate-400">
-          Each technician&apos;s home service earnings — Total Amount is Repair Price + Labor/Service Cost, split 30% to the business and 70%
-          to the technician.
+          Each technician&apos;s home service earnings — Total Amount is Repair Price + Labor/Service Cost − Parts/Material Cost, split 30% to
+          the business and 70% to the technician.
         </p>
       </div>
 
