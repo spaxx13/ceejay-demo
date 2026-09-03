@@ -5,6 +5,7 @@ import {
   getLookups,
   getDeviceModels,
   getTechnicians,
+  getBranches,
   getActivity,
   getCustomFormFields,
   getServiceAgreements,
@@ -87,10 +88,11 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
   const req = await getRequestById(id);
   if (!req) notFound();
 
-  const [lookups, deviceModels, technicians, activityLog, customFormFields, agreements, repairProgress] = await Promise.all([
+  const [lookups, deviceModels, technicians, branches, activityLog, customFormFields, agreements, repairProgress] = await Promise.all([
     getLookups(),
     getDeviceModels(),
     getTechnicians(),
+    getBranches(),
     getActivity(),
     getCustomFormFields(),
     getServiceAgreements(),
@@ -100,7 +102,17 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
   const serviceType = lookups.find((l) => l.id === req.serviceTypeId);
   const brand = lookups.find((l) => l.id === req.deviceBrandId);
   const model = deviceModels.find((m) => m.id === req.deviceModelId);
-  const allTechs = technicians.filter((t) => t.active);
+  // Home service requests should only ever be assignable to technicians who
+  // actually work Home Service — not every technician in the system (e.g.
+  // branch-specific POS technicians who never take these jobs). The
+  // currently assigned technician (if any) always stays selectable even if
+  // they're no longer in that pool, so an existing assignment never
+  // silently disappears from the dropdown.
+  const homeServiceBranch = branches.find((b) => !b.address);
+  const allTechs = technicians.filter(
+    (t) =>
+      (t.active && (homeServiceBranch ? t.branchIds.includes(homeServiceBranch.id) : true)) || t.id === req.assignedTechnicianId
+  );
   const currentStatus = statuses.find((s) => s.id === req.statusId);
   const activity = activityLog
     .filter((a) => a.entityType === "home_service_request" && a.entityId === req.id)
