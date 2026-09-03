@@ -74,7 +74,7 @@ export async function createUser(formData: FormData) {
   const email = str(formData, "email").toLowerCase();
   const password = str(formData, "password");
   const role = str(formData, "role") as Role;
-  const technicianId = str(formData, "technicianId") || null;
+  let technicianId = str(formData, "technicianId") || null;
   const assignedBranchIds = role === "branch_admin" ? formData.getAll("assignedBranchIds").map(String) : [];
   const canManageRequests = role === "branch_admin" ? formData.get("canManageRequests") === "on" : true;
   const canViewAllBranches = role === "branch_admin" ? formData.get("canViewAllBranches") === "on" : true;
@@ -83,12 +83,27 @@ export async function createUser(formData: FormData) {
   const existing = await getUserAuthByEmail(email);
   if (existing) return;
 
+  // No existing Technician record picked — create one now with the chosen
+  // branch(es) and link it, instead of requiring a separate trip to
+  // Settings > Technicians before this account can be created.
+  if (role === "technician" && !technicianId) {
+    const technicianBranchIds = listStr(formData, "technicianBranchIds");
+    if (technicianBranchIds.length > 0) {
+      const created = await queryOne<{ id: string }>(
+        "insert into technicians (name, contact_number, email, employment_status, branch_ids) values ($1,'',$2,'full_time',$3) returning id",
+        [name, email, technicianBranchIds]
+      );
+      technicianId = created!.id;
+    }
+  }
+
   const passwordHash = await bcrypt.hash(password, 10);
   await query(
     "insert into users (name, email, password_hash, role, technician_id, assigned_branch_ids, can_manage_requests, can_view_all_branches) values ($1,$2,$3,$4,$5,$6,$7,$8)",
     [name, email, passwordHash, role, role === "technician" ? technicianId : null, assignedBranchIds, canManageRequests, canViewAllBranches]
   );
   revalidatePath("/admin/users");
+  revalidatePath("/admin/technicians");
 }
 
 export async function updateUser(formData: FormData) {
@@ -108,11 +123,24 @@ export async function updateUser(formData: FormData) {
 
   const name = str(formData, "name") || user.name;
   const role = (str(formData, "role") || user.role) as Role;
-  const technicianId = str(formData, "technicianId") || null;
+  let technicianId = str(formData, "technicianId") || null;
   const password = str(formData, "password");
   const assignedBranchIds = role === "branch_admin" ? formData.getAll("assignedBranchIds").map(String) : [];
   const canManageRequests = role === "branch_admin" ? formData.get("canManageRequests") === "on" : true;
   const canViewAllBranches = role === "branch_admin" ? formData.get("canViewAllBranches") === "on" : true;
+
+  // Same as createUser: no existing Technician record picked — create one
+  // now with the chosen branch(es) and link it.
+  if (role === "technician" && !technicianId) {
+    const technicianBranchIds = listStr(formData, "technicianBranchIds");
+    if (technicianBranchIds.length > 0) {
+      const created = await queryOne<{ id: string }>(
+        "insert into technicians (name, contact_number, email, employment_status, branch_ids) values ($1,'',$2,'full_time',$3) returning id",
+        [name, email || user.email, technicianBranchIds]
+      );
+      technicianId = created!.id;
+    }
+  }
 
   if (password) {
     const passwordHash = await bcrypt.hash(password, 10);
@@ -137,6 +165,7 @@ export async function updateUser(formData: FormData) {
     );
   }
   revalidatePath("/admin/users");
+  revalidatePath("/admin/technicians");
 }
 
 export async function toggleUserActive(formData: FormData) {
