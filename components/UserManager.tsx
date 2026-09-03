@@ -240,7 +240,6 @@ export default function UserManager({
               <th className="pb-2 pr-3">Name</th>
               <th className="pb-2 pr-3">Email</th>
               <th className="pb-2 pr-3">Role</th>
-              <th className="pb-2 pr-3">Linked Technician</th>
               <th className="pb-2 pr-3">Status</th>
               <th className="pb-2">Actions</th>
             </tr>
@@ -248,7 +247,7 @@ export default function UserManager({
           <tbody>
             {users.length === 0 && (
               <tr>
-                <td colSpan={6} className="py-6 text-center text-slate-400">
+                <td colSpan={5} className="py-6 text-center text-slate-400">
                   No staff accounts yet.
                 </td>
               </tr>
@@ -261,7 +260,6 @@ export default function UserManager({
                 </td>
                 <td className="py-3 pr-3 text-slate-500">{u.email}</td>
                 <td className="py-3 pr-3 text-slate-500">{ROLE_LABELS[u.role]}</td>
-                <td className="py-3 pr-3 text-slate-500">{technicians.find((t) => t.id === u.technicianId)?.name ?? "—"}</td>
                 <td className="py-3 pr-3">
                   {u.id === currentUserId ? (
                     <span className="badge border border-green-200 bg-green-50 text-green-700">Active</span>
