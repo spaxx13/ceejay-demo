@@ -1,6 +1,5 @@
 import Link from "next/link";
-import { getServiceAgreements, isBranchHidden } from "@/lib/db";
-import { getCurrentUser } from "@/lib/auth";
+import { getServiceAgreements } from "@/lib/db";
 import SalesTabs from "@/components/SalesTabs";
 
 const peso = (n: number) => `₱${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -9,7 +8,7 @@ const TECHNICIAN_SHARE = 0.7;
 
 export default async function HomeServiceSalesPage({ searchParams }: { searchParams: Promise<{ from?: string; to?: string }> }) {
   const sp = await searchParams;
-  const [user, agreements] = await Promise.all([getCurrentUser(), getServiceAgreements()]);
+  const agreements = await getServiceAgreements();
 
   // Default to today so the page always opens on the most current sales —
   // an explicit From/To filter (even a partial one) overrides this.
@@ -23,10 +22,12 @@ export default async function HomeServiceSalesPage({ searchParams }: { searchPar
   // checklist is completed. Repair Price + Labor/Service Cost together are
   // the Total Amount charged to the customer, split 30% company / 70%
   // technician (distinct from the Net Profit / 50% split used on the
-  // combined By Branch and By Technician reports).
-  const homeServiceJobs = agreements.filter(
-    (a) => a.phase === "post_repair" && a.requestId && inRange(a.completedAt.slice(0, 10)) && !isBranchHidden(user, a.branchId)
-  );
+  // combined By Branch and By Technician reports). Not branch-scoped: this
+  // report is organized by technician, and a job's branch tag is
+  // incidental (whichever branch the technician was dispatched from), not
+  // a meaningful visibility boundary — every account that can open Sales
+  // sees all of it.
+  const homeServiceJobs = agreements.filter((a) => a.phase === "post_repair" && a.requestId && inRange(a.completedAt.slice(0, 10)));
 
   type TechTotals = { name: string; count: number; totalAmount: number };
   const totals = new Map<string, TechTotals>();
