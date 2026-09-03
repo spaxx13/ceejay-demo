@@ -6,6 +6,7 @@ import { getCurrentUser } from "@/lib/auth";
 import ChecklistForm from "@/components/ChecklistForm";
 import RepairProgressForm from "@/components/RepairProgressForm";
 import AgreementSummary from "@/components/AgreementSummary";
+import ResendReceiptButton from "@/components/ResendReceiptButton";
 
 export default async function TechnicianChecklistPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -66,6 +67,14 @@ export default async function TechnicianChecklistPage({ params }: { params: Prom
       {pre && !post && <ChecklistForm phase="post_repair" {...commonProps} />}
 
       {post && <AgreementSummary agreement={post} title={`Post-Repair Checklist completed — ${post.reference}`} allowPriceEdit />}
+
+      {post && (
+        <div className="card space-y-2">
+          <h3 className="text-sm font-semibold text-slate-800">Receipt</h3>
+          <p className="text-xs text-slate-500">If the customer asks for another copy, resend the same PDF receipt to their email.</p>
+          <ResendReceiptButton target={{ type: "request", id: req.id }} email={req.email} />
+        </div>
+      )}
     </div>
   );
 }

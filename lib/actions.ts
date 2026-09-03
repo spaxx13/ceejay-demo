@@ -1532,19 +1532,25 @@ export type ResendReceiptResult = { ok: true; email: string } | { ok: false; err
 
 export async function resendReceiptEmail(_prev: ResendReceiptResult | undefined, formData: FormData): Promise<ResendReceiptResult> {
   const user = await getCurrentUser();
-  if (!user || (user.role !== "owner_admin" && user.role !== "branch_admin")) {
-    return { ok: false, error: "You must be signed in as an admin." };
+  if (!user || (user.role !== "owner_admin" && user.role !== "branch_admin" && user.role !== "technician")) {
+    return { ok: false, error: "You must be signed in as an admin or the assigned technician." };
   }
 
   const requestId = str(formData, "requestId") || null;
   const repairRecordId = str(formData, "repairRecordId") || null;
   if (!requestId && !repairRecordId) return { ok: false, error: "Missing target for this receipt." };
+  if (user.role === "technician" && !requestId) {
+    return { ok: false, error: "Technicians can only resend home service receipts." };
+  }
 
   const agreements = await getServiceAgreements();
 
   if (requestId) {
     const req = await getRequestById(requestId);
     if (!req) return { ok: false, error: "Request not found." };
+    if (user.role === "technician" && req.assignedTechnicianId !== user.technicianId) {
+      return { ok: false, error: "This job isn't assigned to you." };
+    }
     if (!req.email) return { ok: false, error: "No email on file for this customer." };
     const pre = agreements.find((a) => a.requestId === requestId && a.phase === "pre_repair");
     const post = agreements.find((a) => a.requestId === requestId && a.phase === "post_repair");
@@ -1581,6 +1587,7 @@ export async function resendReceiptEmail(_prev: ResendReceiptResult | undefined,
     if (pre) await query("update service_agreements set sent_to_customer_at=$1 where id=$2", [now, pre.id]);
     await logActivity("home_service_request", requestId, `Receipt resent to ${req.email} by ${user.name}`, user.name);
     revalidatePath(`/admin/requests/${requestId}`);
+    revalidatePath(`/technician/requests/${requestId}/checklist`);
     return { ok: true, email: req.email };
   }
 
