@@ -80,9 +80,9 @@ export default function AgreementSummary({
               <span>−₱{agreement.partsCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
             </div>
           )}
-          <div className="flex items-center justify-between border-t border-slate-100 pt-1 text-sm font-semibold text-slate-900">
+          <div className="flex items-center justify-between rounded-lg border-2 border-blue-300 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-900">
             <span>Total Amount</span>
-            <span>
+            <span className="text-base">
               ₱
               {Math.max(0, agreement.cost + agreement.laborCost - agreement.partsCost).toLocaleString(undefined, {
                 minimumFractionDigits: 2,
