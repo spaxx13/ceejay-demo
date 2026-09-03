@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { getBranches, getTechnicians, getLookups } from "@/lib/db";
+import { getBranches, getTechnicians, getLookups, getUsers } from "@/lib/db";
 import { requireRole } from "@/lib/auth";
 
 const GROUPS = [
@@ -11,6 +11,11 @@ const GROUPS = [
       { href: "/admin/branches", title: "Branches", description: "Physical locations, addresses, and contact numbers." },
       { href: "/admin/technicians", title: "Technician Records", description: "Technician contact info and the branch(es) they work at." },
     ],
+  },
+  {
+    label: "Access",
+    description: "Who can log in, and what they can do once they're in.",
+    cards: [{ href: "/admin/users", title: "Technicians", description: "Create logins for owner admins, branch admins, and technicians." }],
   },
   {
     label: "Catalog & Workflow",
@@ -34,13 +39,19 @@ const GROUPS = [
 export default async function SettingsHubPage() {
   if (!(await requireRole("owner_admin"))) redirect("/admin");
 
-  const [branches, technicians, lookups] = await Promise.all([getBranches(), getTechnicians(), getLookups()]);
+  const [branches, technicians, lookups, users] = await Promise.all([
+    getBranches(),
+    getTechnicians(),
+    getLookups(),
+    getUsers(),
+  ]);
   const counts: Record<string, number> = {
     "/admin/branches": branches.filter((b) => b.active).length,
     "/admin/technicians": technicians.filter((t) => t.active).length,
     "/admin/device-catalog": lookups.filter((l) => l.kind === "device_brand" && l.active).length,
     "/admin/service-types": lookups.filter((l) => l.kind === "service_type" && l.active).length,
     "/admin/statuses": lookups.filter((l) => (l.kind === "lead_status" || l.kind === "request_status") && l.active).length,
+    "/admin/users": users.filter((u) => u.active).length,
   };
   const countFor = (href: string) => counts[href] ?? null;
 
