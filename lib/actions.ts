@@ -1169,10 +1169,21 @@ export async function technicianUpdateStatus(formData: FormData) {
     adminNotes,
     requestId,
   ]);
+
+  let emailNote = "";
+  if (status.label === "Cancelled" && req.email) {
+    try {
+      await sendCancellationEmail(req.email, { customerName: req.customerName, reference: req.reference, reason: note });
+      emailNote = ` — cancellation email sent to ${req.email}`;
+    } catch (err) {
+      emailNote = ` — cancellation email failed to send to ${req.email} (${err instanceof Error ? err.message : "unknown error"})`;
+    }
+  }
+
   await logActivity(
     "home_service_request",
     req.id,
-    `Status updated to "${status.label}" by technician ${user?.name ?? ""}${note ? ` — ${note}` : ""}`,
+    `Status updated to "${status.label}" by technician ${user?.name ?? ""}${note ? ` — ${note}` : ""}${emailNote}`,
     user?.name ?? "Technician"
   );
   if (status.label === "In Progress") {
