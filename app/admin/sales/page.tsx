@@ -63,7 +63,7 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
 
   for (const r of posSales) {
     const branch = branches.find((b) => b.id === r.branchId);
-    const bucket = ensure(r.branchId, branch?.name ?? "Unassigned");
+    const bucket = ensure(r.branchId, branch?.name ?? "Home Service");
     bucket.posCount += 1;
     bucket.posRevenue += r.cost;
     bucket.expenses += r.partsCost + r.laborCost + r.otherExpenses;
@@ -74,7 +74,7 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
   for (const a of homeServiceSales) {
     const req = requestById.get(a.requestId!);
     const branch = branches.find((b) => b.id === req?.branchId);
-    const bucket = ensure(req?.branchId ?? null, branch?.name ?? "Unassigned");
+    const bucket = ensure(req?.branchId ?? null, branch?.name ?? "Home Service");
     bucket.hsCount += 1;
     bucket.hsRevenue += a.cost;
     bucket.expenses += a.partsCost + a.laborCost + a.otherExpenses;
@@ -85,8 +85,8 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
 
   const rows = Array.from(totals.values())
     .sort((a, b) => {
-      if (a.name === "Unassigned") return 1;
-      if (b.name === "Unassigned") return -1;
+      if (a.branchId === null) return 1;
+      if (b.branchId === null) return -1;
       return a.name.localeCompare(b.name);
     })
     .map((r) => {
@@ -136,6 +136,11 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
       technicians,
     };
   });
+
+  // Branch admins scoped to their own branch(es) don't manage the
+  // unbranched ("Home Service") bucket — that's an owner-level
+  // reconciliation concern, so hide it for anyone without all-branches access.
+  const visibleRows = showAllBranches ? rowsWithDeductions : rowsWithDeductions.filter((r) => r.branchId !== null);
 
   return (
     <div className="space-y-6">
@@ -201,10 +206,10 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
       )}
 
       <div className="space-y-4">
-        {rowsWithDeductions.map((r) => {
-          const branchEntry = branches.find((b) => b.name === r.name);
+        {visibleRows.map((r) => {
+          const branchEntry = branches.find((b) => b.id === r.branchId);
           return (
-            <div key={r.name} className={`card space-y-3 ${r.name === "Unassigned" ? "opacity-60" : ""}`}>
+            <div key={r.name} className="card space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <h3 className="text-sm font-semibold text-slate-800">{r.name}</h3>
                 <p className="text-base font-bold text-green-700">{peso(r.netProfit)}</p>

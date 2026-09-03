@@ -10,7 +10,10 @@ const VALUES = [
 
 export default async function AboutPage() {
   const branches = await getBranches();
-  const branchCount = branches.filter((b) => b.active).length;
+  // A branch without an address is a backend-only bucket (e.g. "Home
+  // Service", used to attribute technician sales) rather than a walk-in
+  // location — don't count it here.
+  const branchCount = branches.filter((b) => b.active && b.address.trim()).length;
 
   return (
     <main>

@@ -2,7 +2,10 @@ import { getBranches } from "@/lib/db";
 import ContactForm from "@/components/site/ContactForm";
 
 export default async function ContactPage() {
-  const branches = (await getBranches()).filter((b) => b.active);
+  // A branch without an address is a backend-only bucket (e.g. "Home
+  // Service", used to attribute technician sales) rather than a walk-in
+  // location — keep those off the public site.
+  const branches = (await getBranches()).filter((b) => b.active && b.address.trim());
 
   return (
     <main className="grid-bg px-4 py-14 sm:px-6">

@@ -2,7 +2,10 @@ import Link from "next/link";
 import { getBranches } from "@/lib/db";
 
 export default async function BranchesPage() {
-  const branches = (await getBranches()).filter((b) => b.active);
+  // A branch without an address is a backend-only bucket (e.g. "Home
+  // Service", used to attribute technician sales) rather than a walk-in
+  // location — keep those off the public site.
+  const branches = (await getBranches()).filter((b) => b.active && b.address.trim());
 
   return (
     <main>
