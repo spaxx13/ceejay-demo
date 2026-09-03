@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getBranches, getRepairRecords, getRequests, getServiceAgreements, getExpenses, isBranchHidden, canViewAllBranchSales } from "@/lib/db";
+import { getBranches, getRepairRecords, getExpenses, isBranchHidden, canViewAllBranchSales } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import SalesTabs from "@/components/SalesTabs";
 
@@ -7,12 +7,10 @@ const peso = (n: number) => `₱${n.toLocaleString(undefined, { minimumFractionD
 
 export default async function BranchSalesPage({ searchParams }: { searchParams: Promise<{ from?: string; to?: string }> }) {
   const sp = await searchParams;
-  const [user, allBranches, repairRecords, requests, agreements, expenses] = await Promise.all([
+  const [user, allBranches, repairRecords, expenses] = await Promise.all([
     getCurrentUser(),
     getBranches(),
     getRepairRecords(),
-    getRequests(),
-    getServiceAgreements(),
     getExpenses(),
   ]);
   // Backend-only branches (no address, e.g. "Home Service") exist purely for
@@ -28,24 +26,17 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
   const to = hasFilter ? sp.to : today;
   const inRange = (date: string) => (!from || date >= from) && (!to || date <= to);
 
-  // POS sales: completed/pending repair_records with a declared cost, minus cancelled.
+  // This page is walk-in/POS repair records only — completed home service
+  // jobs are tracked entirely on the dedicated Sales > Home Service tab, so
+  // that revenue is never mixed into these branch totals.
   const posSales = repairRecords.filter((r) => !r.cancelled && inRange(r.serviceDate) && !isBranchHidden(user, r.branchId));
 
-  // Home service sales: a job only has revenue once its Post-Repair checklist
-  // is completed — that's the same agreement that carries the price the
-  // technician entered. Branch comes from the request (set when a
-  // technician is assigned to it).
-  const requestById = new Map(requests.map((r) => [r.id, r]));
-  const homeServiceSales = agreements.filter(
-    (a) => a.phase === "post_repair" && a.requestId && inRange(a.completedAt.slice(0, 10)) && !isBranchHidden(user, requestById.get(a.requestId)?.branchId ?? null)
-  );
-
-  type BranchTotals = { name: string; branchId: string | null; posCount: number; posRevenue: number; hsCount: number; hsRevenue: number; expenses: number };
+  type BranchTotals = { name: string; branchId: string | null; posCount: number; posRevenue: number; expenses: number };
   const totals = new Map<string, BranchTotals>();
   const key = (branchId: string | null) => branchId ?? "unassigned";
   const ensure = (branchId: string | null, name: string) => {
     const k = key(branchId);
-    if (!totals.has(k)) totals.set(k, { name, branchId, posCount: 0, posRevenue: 0, hsCount: 0, hsRevenue: 0, expenses: 0 });
+    if (!totals.has(k)) totals.set(k, { name, branchId, posCount: 0, posRevenue: 0, expenses: 0 });
     return totals.get(k)!;
   };
 
@@ -66,24 +57,13 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
 
   for (const r of posSales) {
     const branch = branches.find((b) => b.id === r.branchId);
-    const bucket = ensure(r.branchId, branch?.name ?? "Home Service");
+    const bucket = ensure(r.branchId, branch?.name ?? "Unassigned");
     bucket.posCount += 1;
     bucket.posRevenue += r.cost;
     bucket.expenses += r.partsCost + r.laborCost + r.otherExpenses;
     const techBucket = ensureTech(r.branchId, r.technicianName);
     techBucket.count += 1;
     techBucket.revenue += r.cost;
-  }
-  for (const a of homeServiceSales) {
-    const req = requestById.get(a.requestId!);
-    const branch = branches.find((b) => b.id === req?.branchId);
-    const bucket = ensure(req?.branchId ?? null, branch?.name ?? "Home Service");
-    bucket.hsCount += 1;
-    bucket.hsRevenue += a.cost;
-    bucket.expenses += a.partsCost + a.laborCost + a.otherExpenses;
-    const techBucket = ensureTech(req?.branchId ?? null, a.technicianName);
-    techBucket.count += 1;
-    techBucket.revenue += a.cost;
   }
 
   const rows = Array.from(totals.values())
@@ -93,15 +73,13 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
       return a.name.localeCompare(b.name);
     })
     .map((r) => {
-      const netProfit = r.posRevenue + r.hsRevenue - r.expenses;
+      const netProfit = r.posRevenue - r.expenses;
       return { ...r, netProfit, finalTotalSales: netProfit / 2 };
     });
 
   const grandTotal = {
     posCount: rows.reduce((s, r) => s + r.posCount, 0),
     posRevenue: rows.reduce((s, r) => s + r.posRevenue, 0),
-    hsCount: rows.reduce((s, r) => s + r.hsCount, 0),
-    hsRevenue: rows.reduce((s, r) => s + r.hsRevenue, 0),
     expenses: rows.reduce((s, r) => s + r.expenses, 0),
     netProfit: rows.reduce((s, r) => s + r.netProfit, 0),
   };
@@ -110,8 +88,7 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
   const inRangeExpenses = expenses.filter((e) => inRange(e.expenseDate));
   const ownerFinalDeductions = inRangeExpenses.filter((e) => e.target === "owner_final_total_sales").reduce((s, e) => s + e.amount, 0);
   const ownerTotalSalesDeductions = inRangeExpenses.filter((e) => e.target === "owner_total_sales").reduce((s, e) => s + e.amount, 0);
-  const combinedRevenue = grandTotal.posRevenue + grandTotal.hsRevenue;
-  const ownerTotalSalesNet = combinedRevenue - ownerTotalSalesDeductions;
+  const ownerTotalSalesNet = grandTotal.posRevenue - ownerTotalSalesDeductions;
   const ownerFinalTotalSalesNet = grandFinalTotalSales - ownerFinalDeductions;
   const showAllBranches = canViewAllBranchSales(user);
 
@@ -134,7 +111,7 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
       ...r,
       branchTotalSalesDeductions,
       branchFinalDeductions,
-      totalIncomeNet: r.posRevenue + r.hsRevenue - branchTotalSalesDeductions,
+      totalIncomeNet: r.posRevenue - branchTotalSalesDeductions,
       finalTotalSalesNet: r.finalTotalSales - branchFinalDeductions,
       technicians,
     };
@@ -150,8 +127,8 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
       <div>
         <h1 className="text-xl font-bold text-slate-900">Branch Sales</h1>
         <p className="mt-1 text-sm text-slate-400">
-          Revenue by branch, combining walk-in/POS repair records and completed home service jobs, with parts cost deducted to show net
-          profit.
+          Walk-in/POS repair revenue by branch, with parts cost deducted to show net profit. Home service earnings are tracked separately —
+          see the Home Service tab.
         </p>
       </div>
 
@@ -176,18 +153,10 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
       {!hasFilter && <p className="-mt-3 text-xs text-slate-400">Showing today&apos;s sales ({today}). Set a date range above to see other days.</p>}
 
       {showAllBranches && (
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-7">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         <div className="card">
           <p className="text-xs text-slate-400">POS Revenue</p>
           <p className="mt-1 text-2xl font-bold text-slate-900">{peso(grandTotal.posRevenue)}</p>
-        </div>
-        <div className="card">
-          <p className="text-xs text-slate-400">Home Service Revenue</p>
-          <p className="mt-1 text-2xl font-bold text-slate-900">{peso(grandTotal.hsRevenue)}</p>
-        </div>
-        <div className="card">
-          <p className="text-xs text-slate-400">Combined Revenue</p>
-          <p className="mt-1 text-2xl font-bold text-slate-900">{peso(grandTotal.posRevenue + grandTotal.hsRevenue)}</p>
         </div>
         <div className="card">
           <p className="text-xs text-slate-400">Expenses</p>
@@ -203,7 +172,7 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
         </div>
         <div className="card">
           <p className="text-xs text-slate-400">Total Transactions</p>
-          <p className="mt-1 text-2xl font-bold text-slate-900">{grandTotal.posCount + grandTotal.hsCount}</p>
+          <p className="mt-1 text-2xl font-bold text-slate-900">{grandTotal.posCount}</p>
         </div>
       </div>
       )}
@@ -231,16 +200,6 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
                     <td className="py-2 pr-3 text-slate-500">{r.posCount}</td>
                     <td className="py-2 pr-3 text-slate-800">{peso(r.posRevenue)}</td>
                   </tr>
-                  <tr className="border-b border-slate-100">
-                    <td className="py-2 pr-3 text-slate-600">Home Service Sales</td>
-                    <td className="py-2 pr-3 text-slate-500">{r.hsCount}</td>
-                    <td className="py-2 pr-3 text-slate-800">{peso(r.hsRevenue)}</td>
-                  </tr>
-                  <tr className="border-b border-slate-100">
-                    <td className="pt-2 pr-3 font-semibold text-slate-800">Total Income</td>
-                    <td className="pt-2 pr-3 font-semibold text-slate-800">{r.posCount + r.hsCount}</td>
-                    <td className="pt-2 pr-3 font-semibold text-slate-900">{peso(r.posRevenue + r.hsRevenue)}</td>
-                  </tr>
                   {r.branchTotalSalesDeductions > 0 && (
                     <>
                       <tr className="border-b border-slate-100">
@@ -249,7 +208,7 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
                         <td className="py-2 pr-3 text-red-700">−{peso(r.branchTotalSalesDeductions)}</td>
                       </tr>
                       <tr className="border-b border-slate-100">
-                        <td className="pt-2 pr-3 font-semibold text-slate-800">Total Income (Net)</td>
+                        <td className="pt-2 pr-3 font-semibold text-slate-800">POS Sales (Net)</td>
                         <td className="pt-2 pr-3 text-slate-500">—</td>
                         <td className="pt-2 pr-3 font-semibold text-blue-300">{peso(r.totalIncomeNet)}</td>
                       </tr>
@@ -321,8 +280,8 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
         {showAllBranches && (
         <div className="card space-y-1">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-slate-800">Total Income (All Branches)</h3>
-            <p className="text-base font-bold text-slate-900">{peso(grandTotal.posRevenue + grandTotal.hsRevenue)}</p>
+            <h3 className="text-sm font-semibold text-slate-800">Total POS Income (All Branches)</h3>
+            <p className="text-base font-bold text-slate-900">{peso(grandTotal.posRevenue)}</p>
           </div>
           <div className="flex items-center justify-between text-sm text-slate-500">
             <span>Expenses (parts, labor, other)</span>
@@ -342,10 +301,13 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
         {showAllBranches && (
         <div className="card space-y-1">
           <h3 className="text-sm font-semibold text-slate-800">Owner Deductions</h3>
-          <p className="text-xs text-slate-400">Business expenses logged under Sales &gt; Expenses, deducted from the owner&apos;s totals.</p>
+          <p className="text-xs text-slate-400">
+            Business expenses logged under Sales &gt; Expenses, deducted from the owner&apos;s POS totals. Home service business expenses are
+            tracked on the Home Service tab instead.
+          </p>
           <div className="mt-2 flex items-center justify-between">
             <span className="text-sm text-slate-600">Total Sales of the Owner</span>
-            <span className="text-sm text-slate-800">{peso(combinedRevenue)}</span>
+            <span className="text-sm text-slate-800">{peso(grandTotal.posRevenue)}</span>
           </div>
           <div className="flex items-center justify-between text-sm text-slate-500">
             <span>Business Expenses</span>
