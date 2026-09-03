@@ -1,9 +1,29 @@
 import { formatDateTime } from "@/lib/format";
+import { MAX_PRICE_EDITS } from "@/lib/config";
+import EditAgreementPriceForm from "./EditAgreementPriceForm";
 import type { ServiceAgreement } from "@/lib/types";
 
 const RESULT_LABEL: Record<string, string> = { pass: "Pass", fail: "Fail", na: "N/A" };
 
-export default function AgreementSummary({ agreement, title }: { agreement: ServiceAgreement; title: string }) {
+export default function AgreementSummary({
+  agreement,
+  title,
+  allowPriceEdit = false,
+}: {
+  agreement: ServiceAgreement;
+  title: string;
+  allowPriceEdit?: boolean;
+}) {
+  const priceEditForm = allowPriceEdit && (
+    <EditAgreementPriceForm
+      key={`${agreement.cost}-${agreement.laborCost}-${agreement.priceEditCount}`}
+      agreementId={agreement.id}
+      cost={agreement.cost}
+      laborCost={agreement.laborCost}
+      editsRemaining={Math.max(0, MAX_PRICE_EDITS - agreement.priceEditCount)}
+    />
+  );
+
   return (
     <div className="space-y-4">
       <div className="card space-y-1 text-center">
@@ -71,8 +91,10 @@ export default function AgreementSummary({ agreement, title }: { agreement: Serv
               <span>−₱{agreement.otherExpenses.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
             </div>
           )}
+          {priceEditForm && <div className="border-t border-slate-100 pt-2">{priceEditForm}</div>}
         </div>
       )}
+      {allowPriceEdit && agreement.cost === 0 && <div className="card">{priceEditForm}</div>}
       <div className={`card grid grid-cols-1 gap-4 ${agreement.customerSignatureDataUrl ? "sm:grid-cols-2" : ""}`}>
         {agreement.customerSignatureDataUrl && (
           <div>

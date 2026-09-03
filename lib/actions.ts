@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import bcrypt from "bcryptjs";
-import { OTP_GATE_ENABLED } from "@/lib/config";
+import { OTP_GATE_ENABLED, MAX_PRICE_EDITS } from "@/lib/config";
 import { CHECKLIST_TEMPLATE } from "./checklist";
 import {
   query,
@@ -1472,6 +1472,49 @@ export async function submitChecklist(_prev: SubmitChecklistResult | undefined, 
   }
 
   return { ok: true, agreementId, phase };
+}
+
+// Lets a technician self-correct the Repair Price / Labor-Service Cost on
+// their own completed Post-Repair checklist (e.g. a typo at submission
+// time) — capped at MAX_PRICE_EDITS so it stays a correction tool, not an
+// open price field.
+export type UpdateAgreementPriceResult = { ok: true } | { ok: false; error: string };
+
+export async function updateAgreementPrice(
+  _prev: UpdateAgreementPriceResult | undefined,
+  formData: FormData
+): Promise<UpdateAgreementPriceResult> {
+  const user = await getCurrentUser();
+  if (!user || user.role !== "technician") return { ok: false, error: "You must be signed in as a technician." };
+
+  const agreementId = str(formData, "agreementId");
+  const agreements = await getServiceAgreements();
+  const agreement = agreements.find((a) => a.id === agreementId);
+  if (!agreement) return { ok: false, error: "Checklist not found." };
+  if (agreement.phase !== "post_repair" || !agreement.requestId) return { ok: false, error: "This checklist can't be price-edited." };
+
+  const req = await getRequestById(agreement.requestId);
+  if (!req || req.assignedTechnicianId !== user.technicianId) return { ok: false, error: "This job isn't assigned to you." };
+
+  if (agreement.priceEditCount >= MAX_PRICE_EDITS) {
+    return { ok: false, error: `You've already used all ${MAX_PRICE_EDITS} price edits for this job.` };
+  }
+
+  const cost = Math.max(0, Number(str(formData, "cost")) || 0);
+  const laborCost = Math.max(0, Number(str(formData, "laborCost")) || 0);
+
+  await query("update service_agreements set cost=$1, labor_cost=$2, price_edit_count=price_edit_count+1 where id=$3", [cost, laborCost, agreementId]);
+  await logActivity(
+    "home_service_request",
+    req.id,
+    `${user.name} edited the repair price on ${agreement.reference} (edit ${agreement.priceEditCount + 1}/${MAX_PRICE_EDITS})`,
+    user.name
+  );
+  revalidatePath("/technician");
+  revalidatePath(`/technician/requests/${req.id}/checklist`);
+  revalidatePath("/admin/requests");
+  revalidatePath(`/admin/requests/${req.id}`);
+  return { ok: true };
 }
 
 // Re-sends the same PDF receipt that was emailed when the Post-Repair

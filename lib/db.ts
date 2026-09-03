@@ -222,7 +222,7 @@ type ServiceAgreementRow = {
   id: string; request_id: string | null; repair_record_id: string | null; phase: ServiceAgreement["phase"]; reference: string; customer_name: string; device_label: string;
   branch_id: string | null; technician_id: string | null; technician_name: string; items: ServiceAgreement["items"]; summary_notes: string;
   agreed_to_terms: boolean; customer_signature_data_url: string | null; technician_signature_data_url: string | null; receipt_photo_data_url: string | null;
-  warranty_coverage: string; cost: string; parts_cost: string; labor_cost: string; other_expenses: string; completed_at: Date; sent_to_customer_at: Date | null; created_at: Date;
+  warranty_coverage: string; cost: string; parts_cost: string; labor_cost: string; other_expenses: string; price_edit_count: number; completed_at: Date; sent_to_customer_at: Date | null; created_at: Date;
 };
 function mapServiceAgreement(r: ServiceAgreementRow): ServiceAgreement {
   return {
@@ -230,7 +230,7 @@ function mapServiceAgreement(r: ServiceAgreementRow): ServiceAgreement {
     branchId: r.branch_id, technicianId: r.technician_id, technicianName: r.technician_name, items: r.items ?? [], summaryNotes: r.summary_notes,
     agreedToTerms: r.agreed_to_terms, customerSignatureDataUrl: r.customer_signature_data_url, technicianSignatureDataUrl: r.technician_signature_data_url,
     receiptPhotoDataUrl: r.receipt_photo_data_url, warrantyCoverage: r.warranty_coverage ?? "", cost: Number(r.cost ?? 0), partsCost: Number(r.parts_cost ?? 0),
-    laborCost: Number(r.labor_cost ?? 0), otherExpenses: Number(r.other_expenses ?? 0), completedAt: toIso(r.completed_at), sentToCustomerAt: toIsoOrNull(r.sent_to_customer_at), createdAt: toIso(r.created_at),
+    laborCost: Number(r.labor_cost ?? 0), otherExpenses: Number(r.other_expenses ?? 0), priceEditCount: r.price_edit_count ?? 0, completedAt: toIso(r.completed_at), sentToCustomerAt: toIsoOrNull(r.sent_to_customer_at), createdAt: toIso(r.created_at),
   };
 }
 

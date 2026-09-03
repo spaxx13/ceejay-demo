@@ -328,6 +328,7 @@ export type ServiceAgreement = {
   partsCost: number; // same scope as cost — what the parts cost the shop, deducted on Branch Sales for net profit
   laborCost: number; // same scope as cost — labor/service cost paid out for this job
   otherExpenses: number; // same scope as cost — any other expense tied to this job
+  priceEditCount: number; // how many times the technician has self-corrected cost/laborCost after completion — capped at 3
   completedAt: string;
   sentToCustomerAt: string | null; // set once the receipt email actually sends successfully
   createdAt: string;

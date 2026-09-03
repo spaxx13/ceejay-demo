@@ -65,7 +65,7 @@ export default async function TechnicianChecklistPage({ params }: { params: Prom
       {!pre && <ChecklistForm phase="pre_repair" {...commonProps} />}
       {pre && !post && <ChecklistForm phase="post_repair" {...commonProps} />}
 
-      {post && <AgreementSummary agreement={post} title={`Post-Repair Checklist completed — ${post.reference}`} />}
+      {post && <AgreementSummary agreement={post} title={`Post-Repair Checklist completed — ${post.reference}`} allowPriceEdit />}
     </div>
   );
 }
