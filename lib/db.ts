@@ -104,6 +104,23 @@ export function canManageHomeServiceRequests(user: Pick<User, "role" | "canManag
   return user.role === "owner_admin" || (user.role === "branch_admin" && user.canManageRequests);
 }
 
+// The branch stored on a home-service request/agreement is only ever a
+// snapshot taken when the job was assigned to a technician (their branch at
+// that moment) — it never updates again after that. If the technician's own
+// branch assignment changes later, older jobs stay stuck showing the branch
+// that's no longer accurate. Always resolve to the technician's *current*
+// branch instead, falling back to the stored value only when there's no
+// assigned technician (or the technician record itself has no branch) to
+// resolve from.
+export function homeServiceBranchId(
+  assignedTechnicianId: string | null,
+  storedBranchId: string | null,
+  technicians: Pick<Technician, "id" | "branchIds">[]
+) {
+  const tech = assignedTechnicianId ? technicians.find((t) => t.id === assignedTechnicianId) : undefined;
+  return tech?.branchIds[0] ?? storedBranchId;
+}
+
 // True when this account can see combined "All Branches" sales figures on
 // Branch Sales (the aggregate stat cards, All-Branches summary, and Owner
 // Deductions). Owner admins always can; branch admins are scoped by

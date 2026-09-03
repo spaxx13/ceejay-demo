@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getRepairRecords, getRequests, getServiceAgreements, getExpenses, isBranchHidden } from "@/lib/db";
+import { getRepairRecords, getServiceAgreements, getExpenses, getTechnicians, isBranchHidden, homeServiceBranchId } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import SalesTabs from "@/components/SalesTabs";
 
@@ -8,14 +8,13 @@ const pct = (n: number) => `${n.toLocaleString(undefined, { minimumFractionDigit
 
 export default async function TechnicianSalesPage({ searchParams }: { searchParams: Promise<{ from?: string; to?: string }> }) {
   const sp = await searchParams;
-  const [user, repairRecords, requests, agreements, expenses] = await Promise.all([
+  const [user, repairRecords, agreements, expenses, technicians] = await Promise.all([
     getCurrentUser(),
     getRepairRecords(),
-    getRequests(),
     getServiceAgreements(),
     getExpenses(),
+    getTechnicians(),
   ]);
-  const requestById = new Map(requests.map((r) => [r.id, r]));
 
   // Default to today so the page always opens on the most current sales —
   // an explicit From/To filter (even a partial one) overrides this.
@@ -30,7 +29,11 @@ export default async function TechnicianSalesPage({ searchParams }: { searchPara
   // name (as typed/recorded on each job) instead of branch.
   const posSales = repairRecords.filter((r) => !r.cancelled && inRange(r.serviceDate) && !isBranchHidden(user, r.branchId));
   const homeServiceSales = agreements.filter(
-    (a) => a.phase === "post_repair" && a.requestId && inRange(a.completedAt.slice(0, 10)) && !isBranchHidden(user, requestById.get(a.requestId)?.branchId ?? null)
+    (a) =>
+      a.phase === "post_repair" &&
+      a.requestId &&
+      inRange(a.completedAt.slice(0, 10)) &&
+      !isBranchHidden(user, homeServiceBranchId(a.technicianId, a.branchId, technicians))
   );
   const technicianExpenses = expenses.filter(
     (e) => e.target === "technician_final_total_sales" && inRange(e.expenseDate) && !isBranchHidden(user, e.branchId)

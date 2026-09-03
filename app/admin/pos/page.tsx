@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getRepairRecords, getServiceAgreements, getRepairRecordStatus, getBranches, getRequests, isBranchHidden } from "@/lib/db";
+import { getRepairRecords, getServiceAgreements, getRepairRecordStatus, getBranches, getRequests, getTechnicians, isBranchHidden, homeServiceBranchId } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { formatDateTime } from "@/lib/format";
 import PopupLink from "@/components/PopupLink";
@@ -24,12 +24,13 @@ type UnifiedRow = {
 
 export default async function PosPage({ searchParams }: { searchParams: Promise<{ q?: string; date?: string; status?: string; branch?: string }> }) {
   const sp = await searchParams;
-  const [user, allRecordsRaw, agreements, allBranchesRaw, requests] = await Promise.all([
+  const [user, allRecordsRaw, agreements, allBranchesRaw, requests, technicians] = await Promise.all([
     getCurrentUser(),
     getRepairRecords(),
     getServiceAgreements(),
     getBranches(),
     getRequests(),
+    getTechnicians(),
   ]);
   const allBranches = allBranchesRaw.filter((b) => !isBranchHidden(user, b.id));
   const allRecordsRawFiltered = allRecordsRaw.filter((r) => !isBranchHidden(user, r.branchId));
@@ -59,14 +60,15 @@ export default async function PosPage({ searchParams }: { searchParams: Promise<
   const requestById = new Map(requests.map((req) => [req.id, req]));
   const homeServiceRows: UnifiedRow[] = agreements
     .filter((a) => a.phase === "post_repair" && a.requestId)
-    .filter((a) => !isBranchHidden(user, a.branchId))
-    .map((a) => {
+    .map((a) => ({ a, branchId: homeServiceBranchId(a.technicianId, a.branchId, technicians) }))
+    .filter(({ branchId }) => !isBranchHidden(user, branchId))
+    .map(({ a, branchId }) => {
       const req = a.requestId ? requestById.get(a.requestId) : undefined;
       return {
         id: a.id,
         kind: "home_service" as const,
         reference: req?.reference ?? a.reference,
-        branchId: a.branchId,
+        branchId,
         customerName: a.customerName,
         device: a.deviceLabel,
         technicianName: a.technicianName,

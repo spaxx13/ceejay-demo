@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getRepairRecords, getRequests, getServiceAgreements, isBranchHidden } from "@/lib/db";
+import { getRepairRecords, getServiceAgreements, getTechnicians, isBranchHidden, homeServiceBranchId } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import SalesTabs from "@/components/SalesTabs";
 
@@ -7,20 +7,23 @@ const peso = (n: number) => `₱${n.toLocaleString(undefined, { minimumFractionD
 
 export default async function DailySalesPage({ searchParams }: { searchParams: Promise<{ from?: string; to?: string }> }) {
   const sp = await searchParams;
-  const [user, repairRecords, requests, agreements] = await Promise.all([
+  const [user, repairRecords, agreements, technicians] = await Promise.all([
     getCurrentUser(),
     getRepairRecords(),
-    getRequests(),
     getServiceAgreements(),
+    getTechnicians(),
   ]);
 
   const inRange = (date: string) => (!sp.from || date >= sp.from) && (!sp.to || date <= sp.to);
 
   const posSales = repairRecords.filter((r) => !r.cancelled && inRange(r.serviceDate) && !isBranchHidden(user, r.branchId));
 
-  const requestById = new Map(requests.map((r) => [r.id, r]));
   const homeServiceSales = agreements.filter(
-    (a) => a.phase === "post_repair" && a.requestId && inRange(a.completedAt.slice(0, 10)) && !isBranchHidden(user, requestById.get(a.requestId)?.branchId ?? null)
+    (a) =>
+      a.phase === "post_repair" &&
+      a.requestId &&
+      inRange(a.completedAt.slice(0, 10)) &&
+      !isBranchHidden(user, homeServiceBranchId(a.technicianId, a.branchId, technicians))
   );
 
   type DayTotals = { date: string; posCount: number; posRevenue: number; hsCount: number; hsRevenue: number; expenses: number };
