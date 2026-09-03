@@ -181,7 +181,9 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
         <div className="space-y-6">
           <div className="card space-y-3">
             <h3 className="text-sm font-semibold text-slate-800">Assignment</h3>
-            <p className="text-xs text-slate-400">{req.assignedTechnicianId ? "Manually assigned." : "No technician assigned."}</p>
+            <p className="text-xs text-slate-400">
+              {req.assignedTechnicianId ? (req.autoAssigned ? "Auto-assigned." : "Manually assigned.") : "No technician assigned."}
+            </p>
             <form action={reassignRequest} className="space-y-2">
               <input type="hidden" name="id" value={req.id} />
               <select name="technicianId" defaultValue={req.assignedTechnicianId ?? ""} className="input">

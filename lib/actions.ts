@@ -13,6 +13,8 @@ import {
   getTechnicians,
   getLookups,
   getCustomers,
+  getBranches,
+  getRequests,
   getRequestById,
   getRepairRecordById,
   getServiceAgreements,
@@ -45,6 +47,35 @@ function isValidPhone(phone: string) {
   return /^(\+63|0)9\d{9}$/.test(cleaned);
 }
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// Picks a technician for a new Home Service Request automatically, load-
+// balanced across whichever technicians are assigned to the backend-only
+// "Home Service" branch (the one with no address — same signal Branch Sales
+// and POS already use to identify it) — whoever currently has the fewest
+// open (not yet completed/cancelled) home service jobs. Returns null if
+// there's no such branch or no technician assigned to it yet, in which case
+// the request is left unassigned for manual triage, same as before.
+async function pickHomeServiceTechnician(): Promise<{ technicianId: string; branchId: string } | null> {
+  const [technicians, branches, requests, lookups] = await Promise.all([getTechnicians(), getBranches(), getRequests(), getLookups()]);
+  const homeServiceBranch = branches.find((b) => !b.address);
+  if (!homeServiceBranch) return null;
+
+  const pool = technicians.filter((t) => t.active && t.branchIds.includes(homeServiceBranch.id));
+  if (pool.length === 0) return null;
+
+  const openStatusIds = new Set(
+    lookups.filter((l) => l.kind === "request_status" && l.label !== "Completed" && l.label !== "Cancelled").map((l) => l.id)
+  );
+  const openCount = new Map<string, number>(pool.map((t) => [t.id, 0]));
+  for (const r of requests) {
+    if (r.assignedTechnicianId && openStatusIds.has(r.statusId) && openCount.has(r.assignedTechnicianId)) {
+      openCount.set(r.assignedTechnicianId, (openCount.get(r.assignedTechnicianId) ?? 0) + 1);
+    }
+  }
+
+  const chosen = pool.reduce((best, t) => ((openCount.get(t.id) ?? 0) < (openCount.get(best.id) ?? 0) ? t : best));
+  return { technicianId: chosen.id, branchId: homeServiceBranch.id };
+}
 
 // ---------- Auth ----------
 
@@ -856,7 +887,11 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
 
   const allLookups = await getLookups();
   const requestStatuses = allLookups.filter((l) => l.kind === "request_status").sort((a, b) => a.order - b.order);
-  const initialStatus = requestStatuses[0];
+  const pendingStatus = requestStatuses[0];
+  const assignedStatus = requestStatuses.find((s) => s.label === "Assigned") ?? pendingStatus;
+
+  const autoAssignment = await pickHomeServiceTechnician();
+  const initialStatus = autoAssignment ? assignedStatus : pendingStatus;
 
   const requestsCount = await queryOne<{ n: string }>("select count(*)::int as n from home_service_requests");
   const reference = `HSR-${new Date().getFullYear()}-${String(Number(requestsCount!.n) + 1).padStart(4, "0")}`;
@@ -880,8 +915,9 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
     `insert into home_service_requests (
       reference, customer_id, customer_name, phone, email, device_brand_id, device_model_id, device_other, service_type_id,
       issue_description, photo_data_url, street, landmark, province, city, lat, lng, preferred_datetime,
-      status_id, status_history, custom_fields, vlog_consent, vlog_blur_preference
-    ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)
+      status_id, status_history, custom_fields, vlog_consent, vlog_blur_preference,
+      assigned_technician_id, auto_assigned, branch_id
+    ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26)
     returning id`,
     [
       reference,
@@ -907,10 +943,16 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
       JSON.stringify(customFields),
       vlogConsent,
       vlogBlurPreference,
+      autoAssignment?.technicianId ?? null,
+      autoAssignment !== null,
+      autoAssignment?.branchId ?? null,
     ]
   );
 
-  await logActivity("home_service_request", created!.id, `Request ${reference} submitted and sent to the Unassigned queue for triage`, "System");
+  const assignmentNote = autoAssignment
+    ? ` and auto-assigned to a Home Service technician`
+    : " and sent to the Unassigned queue for triage";
+  await logActivity("home_service_request", created!.id, `Request ${reference} submitted${assignmentNote}`, "System");
 
   if (email) await query("delete from otp_codes where email=$1", [email.trim().toLowerCase()]);
 
