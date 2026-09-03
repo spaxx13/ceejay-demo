@@ -1,50 +1,115 @@
 import Link from "next/link";
-import { getRepairRecords, getServiceAgreements, getRepairRecordStatus, getBranches, isBranchHidden } from "@/lib/db";
+import { getRepairRecords, getServiceAgreements, getRepairRecordStatus, getBranches, getRequests, isBranchHidden } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { formatDateTime } from "@/lib/format";
 import PopupLink from "@/components/PopupLink";
 
 const peso = (n: number) => `₱${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
+type UnifiedRow = {
+  id: string;
+  kind: "pos" | "home_service";
+  reference: string;
+  branchId: string | null;
+  customerName: string;
+  device: string;
+  technicianName: string;
+  cost: number;
+  status: "pending" | "completed" | "cancelled";
+  date: string;
+  createdAt: string;
+  resumable: boolean;
+  viewHref: string;
+};
+
 export default async function PosPage({ searchParams }: { searchParams: Promise<{ q?: string; date?: string; status?: string; branch?: string }> }) {
   const sp = await searchParams;
-  const [user, allRecordsRaw, agreements, allBranchesRaw] = await Promise.all([getCurrentUser(), getRepairRecords(), getServiceAgreements(), getBranches()]);
+  const [user, allRecordsRaw, agreements, allBranchesRaw, requests] = await Promise.all([
+    getCurrentUser(),
+    getRepairRecords(),
+    getServiceAgreements(),
+    getBranches(),
+    getRequests(),
+  ]);
   const allBranches = allBranchesRaw.filter((b) => !isBranchHidden(user, b.id));
-  const allRecords = allRecordsRaw.filter((r) => !isBranchHidden(user, r.branchId));
-  const statusOf = (r: (typeof allRecords)[number]) => getRepairRecordStatus(r, agreements);
+  const allRecordsRawFiltered = allRecordsRaw.filter((r) => !isBranchHidden(user, r.branchId));
+  const statusOf = (r: (typeof allRecordsRawFiltered)[number]) => getRepairRecordStatus(r, agreements);
   const branches = allBranches.filter((b) => b.active);
   const branchName = (branchId: string | null) => allBranches.find((b) => b.id === branchId)?.name ?? "—";
 
-  let records = [...allRecords];
-  if (sp.date) records = records.filter((r) => r.serviceDate === sp.date);
-  if (sp.status === "cancelled") records = records.filter((r) => statusOf(r) === "cancelled");
-  if (sp.status === "completed") records = records.filter((r) => statusOf(r) === "completed");
-  if (sp.status === "pending") records = records.filter((r) => statusOf(r) === "pending");
+  const posRows: UnifiedRow[] = allRecordsRawFiltered.map((r) => ({
+    id: r.id,
+    kind: "pos",
+    reference: r.reference,
+    branchId: r.branchId,
+    customerName: r.customerName,
+    device: r.deviceModel,
+    technicianName: r.technicianName,
+    cost: r.cost,
+    status: statusOf(r),
+    date: r.serviceDate,
+    createdAt: r.createdAt,
+    resumable: statusOf(r) === "pending",
+    viewHref: `/admin/pos/${r.id}`,
+  }));
+
+  // Completed home service jobs — same source set as the Home Service Sales
+  // report (post-repair checklist done, tied to a request). Merged in here
+  // so this page is a single log of every paid job, POS or home service.
+  const requestById = new Map(requests.map((req) => [req.id, req]));
+  const homeServiceRows: UnifiedRow[] = agreements
+    .filter((a) => a.phase === "post_repair" && a.requestId)
+    .filter((a) => !isBranchHidden(user, a.branchId))
+    .map((a) => {
+      const req = a.requestId ? requestById.get(a.requestId) : undefined;
+      return {
+        id: a.id,
+        kind: "home_service" as const,
+        reference: req?.reference ?? a.reference,
+        branchId: a.branchId,
+        customerName: a.customerName,
+        device: a.deviceLabel,
+        technicianName: a.technicianName,
+        cost: a.cost + a.laborCost,
+        status: "completed" as const,
+        date: a.completedAt.slice(0, 10),
+        createdAt: a.completedAt,
+        resumable: false,
+        viewHref: req ? `/admin/requests/${req.id}` : "/admin/requests",
+      };
+    });
+
+  const allRows = [...posRows, ...homeServiceRows];
+
+  let records = [...allRows];
+  if (sp.date) records = records.filter((r) => r.date === sp.date);
+  if (sp.status === "cancelled") records = records.filter((r) => r.status === "cancelled");
+  if (sp.status === "completed") records = records.filter((r) => r.status === "completed");
+  if (sp.status === "pending") records = records.filter((r) => r.status === "pending");
   if (sp.branch) records = records.filter((r) => r.branchId === sp.branch);
   if (sp.q) {
     const q = sp.q.toLowerCase();
     records = records.filter(
       (r) =>
         r.customerName.toLowerCase().includes(q) ||
-        r.contactNumber.includes(q) ||
         r.technicianName.toLowerCase().includes(q) ||
         r.reference.toLowerCase().includes(q) ||
-        r.deviceModel.toLowerCase().includes(q)
+        r.device.toLowerCase().includes(q)
     );
   }
   records.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
 
   const today = new Date().toISOString().slice(0, 10);
-  const todayRecords = allRecords.filter((r) => r.serviceDate === today);
-  const todayTotal = todayRecords.filter((r) => statusOf(r) !== "cancelled").reduce((sum, r) => sum + r.cost, 0);
-  const pendingCount = allRecords.filter((r) => statusOf(r) === "pending").length;
+  const todayRows = allRows.filter((r) => r.date === today);
+  const todayTotal = todayRows.filter((r) => r.status !== "cancelled").reduce((sum, r) => sum + r.cost, 0);
+  const pendingCount = allRows.filter((r) => r.status === "pending").length;
 
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-slate-900">Repair Records</h1>
-          <p className="mt-1 text-sm text-slate-400">A simple log of customers, their devices, reported problems, and repairs performed.</p>
+          <p className="mt-1 text-sm text-slate-400">A simple log of customers, their devices, reported problems, and repairs performed — POS walk-ins and completed home service jobs.</p>
         </div>
         <PopupLink href="/admin/pos/new" className="btn-primary">
           + New Record
@@ -54,7 +119,7 @@ export default async function PosPage({ searchParams }: { searchParams: Promise<
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <div className="card">
           <p className="text-xs text-slate-400">Today&apos;s Records</p>
-          <p className="mt-1 text-2xl font-bold text-slate-900">{todayRecords.length}</p>
+          <p className="mt-1 text-2xl font-bold text-slate-900">{todayRows.length}</p>
         </div>
         <div className="card">
           <p className="text-xs text-slate-400">Today&apos;s Total</p>
@@ -66,12 +131,12 @@ export default async function PosPage({ searchParams }: { searchParams: Promise<
         </Link>
         <div className="card">
           <p className="text-xs text-slate-400">All-Time Records</p>
-          <p className="mt-1 text-2xl font-bold text-slate-900">{allRecords.length}</p>
+          <p className="mt-1 text-2xl font-bold text-slate-900">{allRows.length}</p>
         </div>
       </div>
 
       <form className="card flex flex-wrap gap-3">
-        <input name="q" defaultValue={sp.q ?? ""} placeholder="Search customer, phone, technician, device, or reference..." className="input w-72" />
+        <input name="q" defaultValue={sp.q ?? ""} placeholder="Search customer, technician, device, or reference..." className="input w-72" />
         <input type="date" name="date" defaultValue={sp.date ?? ""} className="input w-44" />
         <select name="status" defaultValue={sp.status ?? ""} className="input w-40">
           <option value="">All statuses</option>
@@ -118,38 +183,38 @@ export default async function PosPage({ searchParams }: { searchParams: Promise<
                 </td>
               </tr>
             )}
-            {records.map((r) => {
-              const status = statusOf(r);
-              return (
-                <tr key={r.id} className={`border-b border-slate-200 last:border-0 ${status === "cancelled" ? "opacity-60" : ""}`}>
-                  <td className="py-3 pr-3 font-mono text-xs text-blue-300">{r.reference}</td>
-                  <td className="py-3 pr-3 text-slate-500">{branchName(r.branchId)}</td>
-                  <td className="py-3 pr-3 text-slate-800">{r.customerName}</td>
-                  <td className="py-3 pr-3 text-slate-500">{r.deviceModel || "—"}</td>
-                  <td className="py-3 pr-3 text-slate-500">{r.technicianName || "—"}</td>
-                  <td className="py-3 pr-3 font-semibold text-slate-800">{peso(r.cost)}</td>
-                  <td className="py-3 pr-3">
-                    {status === "cancelled" && <span className="badge border border-red-200 bg-red-50 text-red-700">Cancelled</span>}
-                    {status === "completed" && <span className="badge border border-green-200 bg-green-50 text-green-700">Completed</span>}
-                    {status === "pending" && <span className="badge border border-amber-200 bg-amber-50 text-amber-700">Pending</span>}
-                  </td>
-                  <td className="py-3 pr-3 text-slate-500">{formatDateTime(r.createdAt)}</td>
-                  <td className="py-3">
-                    <div className="flex gap-1.5">
-                      {status === "pending" ? (
-                        <PopupLink href={`/admin/pos/${r.id}`} className="btn-primary !px-3 !py-1 text-xs">
-                          Resume
-                        </PopupLink>
-                      ) : (
-                        <Link href={`/admin/pos/${r.id}`} className="btn-secondary !px-3 !py-1 text-xs">
-                          View
-                        </Link>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
+            {records.map((r) => (
+              <tr key={`${r.kind}-${r.id}`} className={`border-b border-slate-200 last:border-0 ${r.status === "cancelled" ? "opacity-60" : ""}`}>
+                <td className="py-3 pr-3 font-mono text-xs text-blue-300">
+                  {r.reference}
+                  {r.kind === "home_service" && <span className="ml-1.5 badge border border-blue-200 bg-blue-50 text-blue-500">Home Service</span>}
+                </td>
+                <td className="py-3 pr-3 text-slate-500">{branchName(r.branchId)}</td>
+                <td className="py-3 pr-3 text-slate-800">{r.customerName}</td>
+                <td className="py-3 pr-3 text-slate-500">{r.device || "—"}</td>
+                <td className="py-3 pr-3 text-slate-500">{r.technicianName || "—"}</td>
+                <td className="py-3 pr-3 font-semibold text-slate-800">{peso(r.cost)}</td>
+                <td className="py-3 pr-3">
+                  {r.status === "cancelled" && <span className="badge border border-red-200 bg-red-50 text-red-700">Cancelled</span>}
+                  {r.status === "completed" && <span className="badge border border-green-200 bg-green-50 text-green-700">Completed</span>}
+                  {r.status === "pending" && <span className="badge border border-amber-200 bg-amber-50 text-amber-700">Pending</span>}
+                </td>
+                <td className="py-3 pr-3 text-slate-500">{formatDateTime(r.createdAt)}</td>
+                <td className="py-3">
+                  <div className="flex gap-1.5">
+                    {r.resumable ? (
+                      <PopupLink href={r.viewHref} className="btn-primary !px-3 !py-1 text-xs">
+                        Resume
+                      </PopupLink>
+                    ) : (
+                      <Link href={r.viewHref} className="btn-secondary !px-3 !py-1 text-xs">
+                        View
+                      </Link>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>
