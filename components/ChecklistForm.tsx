@@ -55,8 +55,7 @@ export default function ChecklistForm({
   const [warrantyCoverage, setWarrantyCoverage] = useState("");
   const [cost, setCost] = useState("");
   const [laborCost, setLaborCost] = useState("");
-  const [partsCost, setPartsCost] = useState("");
-  const totalAmount = Math.max(0, (Number(cost) || 0) + (Number(laborCost) || 0) - (Number(partsCost) || 0));
+  const totalAmount = (Number(cost) || 0) + (Number(laborCost) || 0);
 
   // React resets a <form action={...}> element's native DOM state (radio
   // "checked", checkbox "checked") after every action settles, success or
@@ -293,20 +292,11 @@ export default function ChecklistForm({
           </div>
           <div className="space-y-2">
             <h3 className="text-sm font-semibold text-slate-800">Expenses</h3>
-            <p className="text-xs text-slate-500">Parts/Material Cost is deducted from the Total Amount below. Other Expenses is tracked separately for net profit on the Sales reports. Labor/Service Cost is added to the Repair Price as the technician&apos;s service fee.</p>
+            <p className="text-xs text-slate-500">Parts/Material Cost and Other Expenses are internal-only — tracked for net profit on the Sales reports, never shown to the customer or included in the Total Amount below. Labor/Service Cost is added to the Repair Price as the technician&apos;s service fee.</p>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <div className="space-y-1.5">
                 <label className="text-xs font-medium text-slate-500">Parts/Material Cost (₱)</label>
-                <input
-                  name="partsCost"
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  value={partsCost}
-                  onChange={(e) => setPartsCost(e.target.value)}
-                  className="input"
-                  placeholder="0.00"
-                />
+                <input name="partsCost" type="number" min={0} step="0.01" className="input" placeholder="0.00" />
               </div>
               <div className="space-y-1.5">
                 <label className="text-xs font-medium text-slate-500">Labor/Service Cost (₱)</label>
@@ -328,7 +318,7 @@ export default function ChecklistForm({
             </div>
           </div>
           <div className="flex items-center justify-between rounded-lg border-2 border-blue-300 bg-blue-50 px-3 py-2">
-            <span className="text-sm font-semibold text-blue-900">Total Amount (Repair Price + Labor/Service Cost − Parts/Material Cost)</span>
+            <span className="text-sm font-semibold text-blue-900">Total Amount (Repair Price + Labor/Service Cost)</span>
             <span className="text-lg font-bold text-blue-900">
               ₱{totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </span>

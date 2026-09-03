@@ -1396,7 +1396,7 @@ export async function submitChecklist(_prev: SubmitChecklistResult | undefined, 
             natureOfRepair: [serviceType?.label, req.issueDescription].filter(Boolean).join(" — "),
             warrantyCoverage,
             postNotes,
-            cost: cost + laborCost, // Receipt amount: repair price + labor/service fee — parts/material cost is deducted in internal records only, not shown/charged to the customer here
+            cost: cost + laborCost, // Receipt amount: repair price + labor/service fee — matches Total Amount everywhere — parts/material cost is internal-only, not part of this figure
             technicianName,
             preItems: preAgreement?.items ?? [],
             postItems: items,
@@ -1588,7 +1588,7 @@ export async function resendReceiptEmail(_prev: ResendReceiptResult | undefined,
         natureOfRepair: [serviceType?.label, req.issueDescription].filter(Boolean).join(" — "),
         warrantyCoverage: post.warrantyCoverage,
         postNotes: post.summaryNotes,
-        cost: post.cost + post.laborCost, // Receipt amount: repair price + labor/service fee — parts/material cost is deducted in internal records only, not shown/charged to the customer here
+        cost: post.cost + post.laborCost, // Receipt amount: repair price + labor/service fee — matches Total Amount everywhere — parts/material cost is internal-only, not part of this figure
         technicianName: post.technicianName,
         preItems: pre?.items ?? [],
         postItems: post.items,
