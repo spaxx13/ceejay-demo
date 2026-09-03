@@ -15,7 +15,10 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
     getServiceAgreements(),
     getExpenses(),
   ]);
-  const branches = allBranches.filter((b) => !isBranchHidden(user, b.id));
+  // Backend-only branches (no address, e.g. "Home Service") exist purely for
+  // sales/expense attribution — they don't get their own card here since
+  // that data has its own dedicated Sales > Home Service tab instead.
+  const branches = allBranches.filter((b) => !isBranchHidden(user, b.id) && b.address);
 
   // Default to today so the page always opens on the most current sales —
   // an explicit From/To filter (even a partial one) overrides this.
@@ -137,10 +140,10 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
     };
   });
 
-  // Branch admins scoped to their own branch(es) don't manage the
-  // unbranched ("Home Service") bucket — that's an owner-level
-  // reconciliation concern, so hide it for anyone without all-branches access.
-  const visibleRows = showAllBranches ? rowsWithDeductions : rowsWithDeductions.filter((r) => r.branchId !== null);
+  // The unbranched/backend-only ("Home Service") bucket never gets its own
+  // card here — that revenue is tracked on the dedicated Sales > Home
+  // Service tab instead, so nobody sees it duplicated in two places.
+  const visibleRows = rowsWithDeductions.filter((r) => r.branchId !== null);
 
   return (
     <div className="space-y-6">
