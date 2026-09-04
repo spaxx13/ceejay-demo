@@ -12,6 +12,7 @@ type Tech = {
   employmentStatus: string;
   branchIds: string[];
   active: boolean;
+  earningsSharePercent: number;
 };
 
 export default function TechnicianManager({ technicians, branches }: { technicians: Tech[]; branches: Opt[] }) {
@@ -61,13 +62,31 @@ export default function TechnicianManager({ technicians, branches }: { technicia
               <input name="email" type="email" defaultValue={editing?.email ?? ""} className="input" />
             </div>
           </div>
-          <div className="space-y-1.5">
-            <label className="text-xs font-medium text-slate-500">Employment Status</label>
-            <select name="employmentStatus" defaultValue={editing?.employmentStatus ?? "full_time"} className="input max-w-xs">
-              <option value="full_time">Full-time</option>
-              <option value="part_time">Part-time</option>
-              <option value="contractor">Contractor</option>
-            </select>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-slate-500">Employment Status</label>
+              <select name="employmentStatus" defaultValue={editing?.employmentStatus ?? "full_time"} className="input">
+                <option value="full_time">Full-time</option>
+                <option value="part_time">Part-time</option>
+                <option value="contractor">Contractor</option>
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-slate-500">Earnings Share (%)</label>
+              <input
+                name="earningsSharePercent"
+                type="number"
+                min={0}
+                max={100}
+                step="1"
+                defaultValue={editing?.earningsSharePercent ?? 50}
+                className="input"
+              />
+              <p className="text-[11px] text-slate-400">
+                This technician&apos;s cut of their own Net Profit on Sales &gt; Branch Sales and Sales &gt; By Technician. Set to 100% for an
+                owner-technician who keeps everything.
+              </p>
+            </div>
           </div>
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-slate-500">Branch(es)</label>
@@ -112,6 +131,7 @@ export default function TechnicianManager({ technicians, branches }: { technicia
               <th className="pb-2 pr-3">Name</th>
               <th className="pb-2 pr-3">Contact</th>
               <th className="pb-2 pr-3">Branch(es)</th>
+              <th className="pb-2 pr-3">Earnings Share</th>
               <th className="pb-2 pr-3">Status</th>
               <th className="pb-2">Actions</th>
             </tr>
@@ -122,6 +142,7 @@ export default function TechnicianManager({ technicians, branches }: { technicia
                 <td className="py-3 pr-3 font-medium text-slate-800">{t.name}</td>
                 <td className="py-3 pr-3 text-slate-500">{t.contactNumber}</td>
                 <td className="py-3 pr-3 text-slate-500">{branches.filter((b) => t.branchIds.includes(b.id)).map((b) => b.name).join(", ") || "—"}</td>
+                <td className="py-3 pr-3 text-slate-500">{t.earningsSharePercent}%</td>
                 <td className="py-3 pr-3">
                   <form action={toggleTechnicianActive}>
                     <input type="hidden" name="id" value={t.id} />

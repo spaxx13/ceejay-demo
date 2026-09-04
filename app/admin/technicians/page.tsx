@@ -16,6 +16,7 @@ export default async function TechniciansPage() {
     employmentStatus: t.employmentStatus,
     branchIds: t.branchIds,
     active: t.active,
+    earningsSharePercent: t.earningsSharePercent,
   }));
   const branches = allBranches.filter((b) => b.active).map((b) => ({ id: b.id, name: b.name }));
 

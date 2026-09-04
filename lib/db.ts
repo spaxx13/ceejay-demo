@@ -122,6 +122,17 @@ export function homeServiceBranchId(
   return tech?.branchIds[0] ?? storedBranchId;
 }
 
+// Repair records and service agreements only ever store the technician's
+// *name* (no technician_id FK), so this is the one place that turns a raw
+// name into that technician's configured earnings share — every Sales
+// report should call this rather than re-deriving its own default, so they
+// can never disagree with each other or with Settings > Technicians.
+export function technicianSharePercent(technicianName: string, technicians: Pick<Technician, "name" | "earningsSharePercent">[]) {
+  const name = technicianName.trim();
+  const tech = technicians.find((t) => t.name.trim() === name);
+  return tech?.earningsSharePercent ?? 50;
+}
+
 // True when this account can see combined "All Branches" sales figures on
 // Branch Sales (the aggregate stat cards, All-Branches summary, and Owner
 // Deductions). Owner admins always can; branch admins are scoped by
@@ -136,9 +147,15 @@ function mapBranch(r: BranchRow): Branch {
   return { id: r.id, name: r.name, address: r.address, contactNumber: r.contact_number, active: r.active };
 }
 
-type TechnicianRow = { id: string; name: string; contact_number: string; email: string; employment_status: Technician["employmentStatus"]; branch_ids: string[]; active: boolean };
+type TechnicianRow = {
+  id: string; name: string; contact_number: string; email: string; employment_status: Technician["employmentStatus"];
+  branch_ids: string[]; active: boolean; earnings_share_percent: string | number;
+};
 function mapTechnician(r: TechnicianRow): Technician {
-  return { id: r.id, name: r.name, contactNumber: r.contact_number, email: r.email, employmentStatus: r.employment_status, branchIds: r.branch_ids ?? [], active: r.active };
+  return {
+    id: r.id, name: r.name, contactNumber: r.contact_number, email: r.email, employmentStatus: r.employment_status,
+    branchIds: r.branch_ids ?? [], active: r.active, earningsSharePercent: Number(r.earnings_share_percent ?? 50),
+  };
 }
 
 type CustomerRow = { id: string; name: string; phone: string; email: string; street: string; province: string; landmark: string; source: string; notes: string; created_at: Date };

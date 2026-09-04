@@ -1,23 +1,18 @@
 import Link from "next/link";
-import { getBranches, getRepairRecords, getExpenses, isBranchHidden, canViewAllBranchSales } from "@/lib/db";
+import { getBranches, getRepairRecords, getExpenses, getTechnicians, isBranchHidden, canViewAllBranchSales, technicianSharePercent } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import SalesTabs from "@/components/SalesTabs";
 
 const peso = (n: number) => `₱${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-// The one technician exempt from the 50/50 split — his full net profit on
-// every job counts entirely toward the business's Remaining share, never
-// split with anyone. Matched by exact technician name.
-const EXEMPT_TECHNICIAN_NAME = "Boss Ceejay";
-const TECHNICIAN_SHARE_RATE = 0.5;
-
 export default async function BranchSalesPage({ searchParams }: { searchParams: Promise<{ from?: string; to?: string }> }) {
   const sp = await searchParams;
-  const [user, allBranches, repairRecords, expenses] = await Promise.all([
+  const [user, allBranches, repairRecords, expenses, technicians] = await Promise.all([
     getCurrentUser(),
     getBranches(),
     getRepairRecords(),
     getExpenses(),
+    getTechnicians(),
   ]);
   // Backend-only branches (no address, e.g. "Home Service") exist purely for
   // sales/expense attribution — they don't get their own card here since
@@ -41,10 +36,10 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
   //   1. Each technician's own Net Profit = their revenue minus their own
   //      job costs (parts/labor/other) — untouched by anything else.
   //   2. That Net Profit splits into a Technician Share and a Remaining
-  //      (Business) share. Boss Ceejay is the one exception: 100% of his
-  //      Net Profit goes to Remaining, 0% is "shared" — he keeps it all
-  //      because he owns the business, not because he's an employee being
-  //      paid a cut.
+  //      (Business) share, using THAT technician's own earnings share
+  //      percent (Settings > Technicians — e.g. 50%, 70%, or 100% for an
+  //      owner-technician who keeps everything). Same lookup as every other
+  //      Sales report, so none of them can disagree with each other.
   //   3. A branch's totals are just the sum of its technicians' rows, so
   //      "Technician Share" and "Remaining" always add back up to exactly
   //      "Net Profit" — nothing is computed twice or in a disconnected way.
@@ -53,7 +48,7 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
   //      a technician's cut only ever depends on their own jobs.
   type TechRow = {
     name: string;
-    isExempt: boolean;
+    sharePercent: number;
     count: number;
     revenue: number;
     jobCost: number;
@@ -81,7 +76,7 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
     if (!techByBranch.has(bk)) techByBranch.set(bk, new Map());
     const branchMap = techByBranch.get(bk)!;
     if (!branchMap.has(name)) {
-      branchMap.set(name, { name, isExempt: name === EXEMPT_TECHNICIAN_NAME, count: 0, revenue: 0, jobCost: 0, netProfit: 0, share: 0, remaining: 0 });
+      branchMap.set(name, { name, sharePercent: technicianSharePercent(name, technicians), count: 0, revenue: 0, jobCost: 0, netProfit: 0, share: 0, remaining: 0 });
     }
     return branchMap.get(name)!;
   };
@@ -110,8 +105,12 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
       const technicians = Array.from(techMap?.values() ?? [])
         .map((t) => {
           const netProfit = t.revenue - t.jobCost;
-          const share = t.isExempt ? 0 : netProfit * TECHNICIAN_SHARE_RATE;
-          const remaining = t.isExempt ? netProfit : netProfit * (1 - TECHNICIAN_SHARE_RATE);
+          // A 100% share means this technician IS the business (an
+          // owner-technician) — their full Net Profit is the business's own
+          // money, not a payout to a separate party, so it belongs entirely
+          // under Remaining, never under Technician Share.
+          const share = t.sharePercent >= 100 ? 0 : netProfit * (t.sharePercent / 100);
+          const remaining = netProfit - share;
           return { ...t, netProfit, share, remaining };
         })
         .sort((a, b) => {
@@ -175,9 +174,11 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
       <div>
         <h1 className="text-xl font-bold text-slate-900">Branch Sales</h1>
         <p className="mt-1 text-sm text-slate-400">
-          Walk-in/POS repair revenue by branch. Each technician&apos;s Net Profit splits 50/50 with the business —{" "}
-          <strong className="text-slate-600">except {EXEMPT_TECHNICIAN_NAME}</strong>, who is exempt from the split and keeps 100% of his own
-          Net Profit as part of the business&apos;s Remaining share. Home service earnings are tracked separately — see the Home Service tab.
+          Walk-in/POS repair revenue by branch. Each technician&apos;s Net Profit splits by their own earnings share (set per technician on{" "}
+          <Link href="/admin/technicians" className="underline">
+            Settings &gt; Technicians
+          </Link>
+          ) — the rest is the business&apos;s Remaining share. Home service earnings are tracked separately — see the Home Service tab.
         </p>
       </div>
 
@@ -212,7 +213,7 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
             <p className="mt-1 text-2xl font-bold text-green-700">{peso(grandTotal.netProfit)}</p>
           </div>
           <div className="card">
-            <p className="text-xs text-slate-400">Technician Share (50%)</p>
+            <p className="text-xs text-slate-400">Technician Share</p>
             <p className="mt-1 text-2xl font-bold text-amber-700">{peso(grandTotal.technicianShare)}</p>
           </div>
           <div className="card">
@@ -252,7 +253,7 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
                     <td className="py-2 pr-3 text-right font-semibold text-green-700">{peso(r.netProfit)}</td>
                   </tr>
                   <tr className="border-b border-slate-100">
-                    <td className="py-2 pr-3 pl-5 text-slate-500">Technician Share (50%, excl. {EXEMPT_TECHNICIAN_NAME})</td>
+                    <td className="py-2 pr-3 pl-5 text-slate-500">Technician Share (per technician&apos;s own %)</td>
                     <td className="py-2 pr-3 text-right text-amber-700">{peso(r.technicianShare)}</td>
                   </tr>
                   <tr className="border-b border-slate-200">
@@ -287,6 +288,7 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
                         <th className="pb-2 pr-3 font-medium">Revenue</th>
                         <th className="pb-2 pr-3 font-medium">Job Cost</th>
                         <th className="pb-2 pr-3 font-medium">Net Profit</th>
+                        <th className="pb-2 pr-3 font-medium">Split</th>
                         <th className="pb-2 pr-3 font-medium">Share (Tech)</th>
                         <th className="pb-2 font-medium">Remaining (Business)</th>
                       </tr>
@@ -296,15 +298,16 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
                         <tr key={t.name} className={`border-b border-slate-100 last:border-0 ${t.name === "Unassigned" ? "opacity-60" : ""}`}>
                           <td className="py-2 pr-3 text-slate-700">
                             {t.name}
-                            {t.isExempt && (
-                              <span className="ml-1.5 badge border border-amber-200 bg-amber-50 text-amber-700">100% — exempt</span>
+                            {t.sharePercent >= 100 && (
+                              <span className="ml-1.5 badge border border-amber-200 bg-amber-50 text-amber-700">100% — owner</span>
                             )}
                           </td>
                           <td className="py-2 pr-3 text-slate-500">{t.count}</td>
                           <td className="py-2 pr-3 text-slate-800">{peso(t.revenue)}</td>
                           <td className="py-2 pr-3 text-red-700">−{peso(t.jobCost)}</td>
                           <td className="py-2 pr-3 font-medium text-slate-800">{peso(t.netProfit)}</td>
-                          <td className="py-2 pr-3 text-amber-700">{t.isExempt ? "—" : peso(t.share)}</td>
+                          <td className="py-2 pr-3 text-slate-500">{t.sharePercent}% tech / {100 - t.sharePercent}% biz</td>
+                          <td className="py-2 pr-3 text-amber-700">{t.sharePercent >= 100 ? "—" : peso(t.share)}</td>
                           <td className="py-2 text-blue-300">{peso(t.remaining)}</td>
                         </tr>
                       ))}
@@ -314,6 +317,7 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
                         <td className="pt-2 pr-3">{peso(r.revenue)}</td>
                         <td className="pt-2 pr-3 text-red-700">−{peso(r.jobCost)}</td>
                         <td className="pt-2 pr-3">{peso(r.netProfit)}</td>
+                        <td className="pt-2 pr-3"></td>
                         <td className="pt-2 pr-3 text-amber-700">{peso(r.technicianShare)}</td>
                         <td className="pt-2 text-blue-300">{peso(r.remaining)}</td>
                       </tr>
@@ -349,7 +353,7 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
                   <td className="py-2 pr-3 text-right font-semibold text-green-700">{peso(grandTotal.netProfit)}</td>
                 </tr>
                 <tr className="border-b border-slate-100">
-                  <td className="py-2 pr-3 pl-5 text-slate-500">Technician Share (50%, excl. {EXEMPT_TECHNICIAN_NAME})</td>
+                  <td className="py-2 pr-3 pl-5 text-slate-500">Technician Share (per technician&apos;s own %)</td>
                   <td className="py-2 pr-3 text-right text-amber-700">{peso(grandTotal.technicianShare)}</td>
                 </tr>
                 <tr className="border-b border-slate-200">

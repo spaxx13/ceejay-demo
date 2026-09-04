@@ -268,17 +268,23 @@ export async function toggleBranchActive(formData: FormData) {
 
 // ---------- Technicians ----------
 
+function earningsSharePercentFromForm(formData: FormData) {
+  const raw = str(formData, "earningsSharePercent");
+  return raw ? Math.min(100, Math.max(0, Number(raw) || 50)) : 50;
+}
+
 export async function createTechnician(formData: FormData) {
   const name = str(formData, "name");
   if (!name) return;
   await query(
-    "insert into technicians (name, contact_number, email, employment_status, branch_ids) values ($1,$2,$3,$4,$5)",
+    "insert into technicians (name, contact_number, email, employment_status, branch_ids, earnings_share_percent) values ($1,$2,$3,$4,$5,$6)",
     [
       name,
       str(formData, "contactNumber"),
       str(formData, "email"),
       str(formData, "employmentStatus") || "full_time",
       listStr(formData, "branchIds"),
+      earningsSharePercentFromForm(formData),
     ]
   );
   revalidatePath("/admin/technicians");
@@ -289,13 +295,14 @@ export async function updateTechnician(formData: FormData) {
   const name = str(formData, "name");
   if (!name) return;
   await query(
-    "update technicians set name=$1, contact_number=$2, email=$3, employment_status=$4, branch_ids=$5 where id=$6",
+    "update technicians set name=$1, contact_number=$2, email=$3, employment_status=$4, branch_ids=$5, earnings_share_percent=$6 where id=$7",
     [
       name,
       str(formData, "contactNumber"),
       str(formData, "email"),
       str(formData, "employmentStatus") || "full_time",
       listStr(formData, "branchIds"),
+      earningsSharePercentFromForm(formData),
       techId,
     ]
   );

@@ -1,14 +1,10 @@
 import Link from "next/link";
-import { getRepairRecords, getServiceAgreements, getExpenses, getTechnicians, isBranchHidden, homeServiceBranchId } from "@/lib/db";
+import { getRepairRecords, getServiceAgreements, getExpenses, getTechnicians, isBranchHidden, homeServiceBranchId, technicianSharePercent } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import SalesTabs from "@/components/SalesTabs";
 
 const peso = (n: number) => `₱${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const pct = (n: number) => `${n.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`;
-
-// Same exemption as Branch Sales — he keeps 100% of his own Net Profit
-// instead of splitting 50/50, since he owns the business.
-const EXEMPT_TECHNICIAN_NAME = "Boss Ceejay";
 
 export default async function TechnicianSalesPage({ searchParams }: { searchParams: Promise<{ from?: string; to?: string }> }) {
   const sp = await searchParams;
@@ -70,20 +66,25 @@ export default async function TechnicianSalesPage({ searchParams }: { searchPara
 
   const rows = Array.from(totals.values())
     .map((t) => {
-      const isExempt = t.name === EXEMPT_TECHNICIAN_NAME;
+      const sharePercent = technicianSharePercent(t.name, technicians);
       const totalExpenses = t.partsCost + t.laborCost + t.otherExpenses;
       const netProfit = t.totalSales - totalExpenses;
       const profitMargin = t.totalSales > 0 ? (netProfit / t.totalSales) * 100 : 0;
-      const share = isExempt ? 0 : netProfit / 2;
-      const remaining = isExempt ? netProfit : netProfit / 2;
+      // A 100% share means this technician IS the business (an
+      // owner-technician) — their full Net Profit is the business's own
+      // money, not a payout to a separate party, so it belongs entirely
+      // under Remaining, never under Share.
+      const isFullShare = sharePercent >= 100;
+      const share = isFullShare ? 0 : netProfit * (sharePercent / 100);
+      const remaining = netProfit - share;
       const businessExpenses = technicianExpenses.filter((e) => e.technicianName === t.name).reduce((s, e) => s + e.amount, 0);
-      // A "technician" business expense against the exempt technician has
-      // nothing to deduct from on the Share side (it's always ₱0 for him) —
-      // it comes out of his Remaining instead, same place his whole Net
-      // Profit already goes.
-      const shareNet = isExempt ? share : share - businessExpenses;
-      const remainingNet = isExempt ? remaining - businessExpenses : remaining;
-      return { ...t, isExempt, totalExpenses, netProfit, profitMargin, share, remaining, businessExpenses, shareNet, remainingNet };
+      // A "technician" business expense against a 100%-share (owner)
+      // technician has nothing to deduct from on the Share side (it's
+      // always ₱0 for them) — it comes out of their Remaining instead,
+      // wherever their Net Profit actually lands.
+      const shareNet = isFullShare ? share : share - businessExpenses;
+      const remainingNet = isFullShare ? remaining - businessExpenses : remaining;
+      return { ...t, sharePercent, totalExpenses, netProfit, profitMargin, share, remaining, businessExpenses, shareNet, remainingNet };
     })
     .sort((a, b) => {
       if (a.name === "Unassigned") return 1;
@@ -116,8 +117,11 @@ export default async function TechnicianSalesPage({ searchParams }: { searchPara
         <h1 className="text-xl font-bold text-slate-900">Sales and Net Profit by Technician</h1>
         <p className="mt-1 text-sm text-slate-400">
           Each technician&apos;s total sales, expenses, and net profit across POS repair records and completed home service jobs. Net Profit
-          splits 50/50 with the business, except <strong className="text-slate-600">{EXEMPT_TECHNICIAN_NAME}</strong>, who is exempt and keeps
-          100% as part of the business&apos;s Remaining share.
+          splits by each technician&apos;s own earnings share (set per technician on{" "}
+          <Link href="/admin/technicians" className="underline">
+            Settings &gt; Technicians
+          </Link>
+          ) — the rest is the business&apos;s Remaining share.
         </p>
       </div>
 
@@ -154,6 +158,7 @@ export default async function TechnicianSalesPage({ searchParams }: { searchPara
               <th className="pb-2 pr-3 font-medium">Total Expenses</th>
               <th className="pb-2 pr-3 font-medium">Net Profit</th>
               <th className="pb-2 pr-3 font-medium">Profit Margin</th>
+              <th className="pb-2 pr-3 font-medium">Split</th>
               <th className="pb-2 pr-3 font-medium">Share (Tech)</th>
               <th className="pb-2 pr-3 font-medium">Remaining (Business)</th>
               <th className="pb-2 pr-3 font-medium">Business Expenses</th>
@@ -163,7 +168,7 @@ export default async function TechnicianSalesPage({ searchParams }: { searchPara
           <tbody>
             {rows.length === 0 && (
               <tr>
-                <td colSpan={13} className="py-6 text-center text-slate-400">
+                <td colSpan={14} className="py-6 text-center text-slate-400">
                   No sales recorded yet.
                 </td>
               </tr>
@@ -172,7 +177,7 @@ export default async function TechnicianSalesPage({ searchParams }: { searchPara
               <tr key={r.name} className={`border-b border-slate-200 last:border-0 ${r.name === "Unassigned" ? "opacity-60" : ""}`}>
                 <td className="py-3 pr-3 font-medium text-slate-800">
                   {r.name}
-                  {r.isExempt && <span className="ml-1.5 badge border border-amber-200 bg-amber-50 text-amber-700">100% — exempt</span>}
+                  {r.sharePercent >= 100 && <span className="ml-1.5 badge border border-amber-200 bg-amber-50 text-amber-700">100% — owner</span>}
                 </td>
                 <td className="py-3 pr-3 text-slate-500">{r.count}</td>
                 <td className="py-3 pr-3 text-slate-800">{peso(r.totalSales)}</td>
@@ -182,7 +187,10 @@ export default async function TechnicianSalesPage({ searchParams }: { searchPara
                 <td className="py-3 pr-3 text-red-700">−{peso(r.totalExpenses)}</td>
                 <td className="py-3 pr-3 font-semibold text-green-700">{peso(r.netProfit)}</td>
                 <td className="py-3 pr-3 font-semibold text-slate-800">{pct(r.profitMargin)}</td>
-                <td className="py-3 pr-3 font-semibold text-amber-700">{r.isExempt ? "—" : peso(r.share)}</td>
+                <td className="py-3 pr-3 text-slate-500">
+                  {r.sharePercent}% / {100 - r.sharePercent}%
+                </td>
+                <td className="py-3 pr-3 font-semibold text-amber-700">{r.sharePercent >= 100 ? "—" : peso(r.share)}</td>
                 <td className="py-3 pr-3 font-semibold text-blue-300">{peso(r.remaining)}</td>
                 <td className="py-3 pr-3 text-red-700">−{peso(r.businessExpenses)}</td>
                 <td className="py-3 font-semibold text-blue-300">{peso(r.shareNet + r.remainingNet)}</td>
@@ -199,6 +207,7 @@ export default async function TechnicianSalesPage({ searchParams }: { searchPara
                 <td className="pt-3 pr-3 text-red-700">−{peso(grandTotal.totalExpenses)}</td>
                 <td className="pt-3 pr-3 text-green-700">{peso(grandTotal.netProfit)}</td>
                 <td className="pt-3 pr-3">{pct(grandMargin)}</td>
+                <td className="pt-3 pr-3"></td>
                 <td className="pt-3 pr-3 text-amber-700">{peso(grandTotal.share)}</td>
                 <td className="pt-3 pr-3 text-blue-300">{peso(grandTotal.remaining)}</td>
                 <td className="pt-3 pr-3 text-red-700">−{peso(grandTotal.businessExpenses)}</td>
