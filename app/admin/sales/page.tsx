@@ -5,6 +5,12 @@ import SalesTabs from "@/components/SalesTabs";
 
 const peso = (n: number) => `₱${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
+// The one technician exempt from the 50/50 split — his full net profit on
+// every job counts entirely toward the business's Remaining share, never
+// split with anyone. Matched by exact technician name.
+const EXEMPT_TECHNICIAN_NAME = "Boss Ceejay";
+const TECHNICIAN_SHARE_RATE = 0.5;
+
 export default async function BranchSalesPage({ searchParams }: { searchParams: Promise<{ from?: string; to?: string }> }) {
   const sp = await searchParams;
   const [user, allBranches, repairRecords, expenses] = await Promise.all([
@@ -31,104 +37,147 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
   // that revenue is never mixed into these branch totals.
   const posSales = repairRecords.filter((r) => !r.cancelled && inRange(r.serviceDate) && !isBranchHidden(user, r.branchId));
 
-  type BranchTotals = { name: string; branchId: string | null; posCount: number; posRevenue: number; expenses: number };
-  const totals = new Map<string, BranchTotals>();
-  const key = (branchId: string | null) => branchId ?? "unassigned";
-  const ensure = (branchId: string | null, name: string) => {
-    const k = key(branchId);
-    if (!totals.has(k)) totals.set(k, { name, branchId, posCount: 0, posRevenue: 0, expenses: 0 });
-    return totals.get(k)!;
+  // Every figure on this page is built the same way, bottom-up:
+  //   1. Each technician's own Net Profit = their revenue minus their own
+  //      job costs (parts/labor/other) — untouched by anything else.
+  //   2. That Net Profit splits into a Technician Share and a Remaining
+  //      (Business) share. Boss Ceejay is the one exception: 100% of his
+  //      Net Profit goes to Remaining, 0% is "shared" — he keeps it all
+  //      because he owns the business, not because he's an employee being
+  //      paid a cut.
+  //   3. A branch's totals are just the sum of its technicians' rows, so
+  //      "Technician Share" and "Remaining" always add back up to exactly
+  //      "Net Profit" — nothing is computed twice or in a disconnected way.
+  //   4. Owner-logged Business Expenses (Sales > Expenses) always reduce
+  //      the business's own Remaining share, never a technician's share —
+  //      a technician's cut only ever depends on their own jobs.
+  type TechRow = {
+    name: string;
+    isExempt: boolean;
+    count: number;
+    revenue: number;
+    jobCost: number;
+    netProfit: number;
+    share: number;
+    remaining: number;
+  };
+  type BranchTotals = {
+    name: string;
+    branchId: string | null;
+    count: number;
+    revenue: number;
+    jobCost: number;
+    netProfit: number;
+    technicianShare: number;
+    remaining: number;
+    technicians: TechRow[];
   };
 
-  // Which technicians handled a transaction at each branch, and how much
-  // they brought in — shown as a sub-table on each branch's card.
-  type TechBucket = { name: string; count: number; revenue: number };
-  const techByBranch = new Map<string, Map<string, TechBucket>>();
+  const techByBranch = new Map<string, Map<string, TechRow>>();
+  const key = (branchId: string | null) => branchId ?? "unassigned";
   const ensureTech = (branchId: string | null, rawName: string) => {
     const bk = key(branchId);
     const name = rawName.trim() || "Unassigned";
     if (!techByBranch.has(bk)) techByBranch.set(bk, new Map());
     const branchMap = techByBranch.get(bk)!;
-    if (!branchMap.has(name)) branchMap.set(name, { name, count: 0, revenue: 0 });
+    if (!branchMap.has(name)) {
+      branchMap.set(name, { name, isExempt: name === EXEMPT_TECHNICIAN_NAME, count: 0, revenue: 0, jobCost: 0, netProfit: 0, share: 0, remaining: 0 });
+    }
     return branchMap.get(name)!;
   };
 
-  for (const b of branches) ensure(b.id, b.name);
+  const branchIdsSeen = new Set<string | null>();
+  for (const b of branches) branchIdsSeen.add(b.id);
 
   for (const r of posSales) {
-    const branch = branches.find((b) => b.id === r.branchId);
-    const bucket = ensure(r.branchId, branch?.name ?? "Unassigned");
-    bucket.posCount += 1;
-    bucket.posRevenue += r.cost;
-    bucket.expenses += r.partsCost + r.laborCost + r.otherExpenses;
-    const techBucket = ensureTech(r.branchId, r.technicianName);
-    techBucket.count += 1;
-    techBucket.revenue += r.cost;
+    branchIdsSeen.add(r.branchId);
+    const t = ensureTech(r.branchId, r.technicianName);
+    t.count += 1;
+    t.revenue += r.cost;
+    t.jobCost += r.partsCost + r.laborCost + r.otherExpenses;
   }
 
-  const rows = Array.from(totals.values())
+  const branchName = (branchId: string | null) => branches.find((b) => b.id === branchId)?.name ?? "Unassigned";
+
+  const rows: BranchTotals[] = Array.from(branchIdsSeen.values())
     .sort((a, b) => {
-      if (a.branchId === null) return 1;
-      if (b.branchId === null) return -1;
-      return a.name.localeCompare(b.name);
+      if (a === null) return 1;
+      if (b === null) return -1;
+      return branchName(a).localeCompare(branchName(b));
     })
-    .map((r) => {
-      const netProfit = r.posRevenue - r.expenses;
-      return { ...r, netProfit, finalTotalSales: netProfit / 2 };
+    .map((branchId) => {
+      const techMap = techByBranch.get(key(branchId));
+      const technicians = Array.from(techMap?.values() ?? [])
+        .map((t) => {
+          const netProfit = t.revenue - t.jobCost;
+          const share = t.isExempt ? 0 : netProfit * TECHNICIAN_SHARE_RATE;
+          const remaining = t.isExempt ? netProfit : netProfit * (1 - TECHNICIAN_SHARE_RATE);
+          return { ...t, netProfit, share, remaining };
+        })
+        .sort((a, b) => {
+          if (a.name === "Unassigned") return 1;
+          if (b.name === "Unassigned") return -1;
+          return b.netProfit - a.netProfit;
+        });
+
+      const totals = technicians.reduce(
+        (acc, t) => ({
+          count: acc.count + t.count,
+          revenue: acc.revenue + t.revenue,
+          jobCost: acc.jobCost + t.jobCost,
+          netProfit: acc.netProfit + t.netProfit,
+          technicianShare: acc.technicianShare + t.share,
+          remaining: acc.remaining + t.remaining,
+        }),
+        { count: 0, revenue: 0, jobCost: 0, netProfit: 0, technicianShare: 0, remaining: 0 }
+      );
+
+      return { name: branchName(branchId), branchId, technicians, ...totals };
     });
 
-  const grandTotal = {
-    posCount: rows.reduce((s, r) => s + r.posCount, 0),
-    posRevenue: rows.reduce((s, r) => s + r.posRevenue, 0),
-    expenses: rows.reduce((s, r) => s + r.expenses, 0),
-    netProfit: rows.reduce((s, r) => s + r.netProfit, 0),
-  };
-  const grandFinalTotalSales = grandTotal.netProfit / 2;
+  const grandTotal = rows.reduce(
+    (acc, r) => ({
+      count: acc.count + r.count,
+      revenue: acc.revenue + r.revenue,
+      jobCost: acc.jobCost + r.jobCost,
+      netProfit: acc.netProfit + r.netProfit,
+      technicianShare: acc.technicianShare + r.technicianShare,
+      remaining: acc.remaining + r.remaining,
+    }),
+    { count: 0, revenue: 0, jobCost: 0, netProfit: 0, technicianShare: 0, remaining: 0 }
+  );
 
-  const inRangeExpenses = expenses.filter((e) => inRange(e.expenseDate));
-  const ownerFinalDeductions = inRangeExpenses.filter((e) => e.target === "owner_final_total_sales").reduce((s, e) => s + e.amount, 0);
-  const ownerTotalSalesDeductions = inRangeExpenses.filter((e) => e.target === "owner_total_sales").reduce((s, e) => s + e.amount, 0);
-  const ownerTotalSalesNet = grandTotal.posRevenue - ownerTotalSalesDeductions;
-  const ownerFinalTotalSalesNet = grandFinalTotalSales - ownerFinalDeductions;
-  const showAllBranches = canViewAllBranchSales(user);
+  // Owner-logged Business Expenses (Sales > Expenses) — whichever target the
+  // admin picked when logging it, both land the same place here: reduced
+  // out of the business's own Remaining share, never a technician's share.
+  // An expense can optionally be tied to one branch (only counts on that
+  // branch's card) or left unassigned (counts on every branch's card) —
+  // either way it always counts once toward the true combined total below.
+  const inRangeExpenses = expenses.filter((e) => inRange(e.expenseDate) && (e.target === "owner_total_sales" || e.target === "owner_final_total_sales"));
+  const businessExpensesFor = (branchId: string | null) =>
+    inRangeExpenses.filter((e) => e.branchId === null || e.branchId === branchId).reduce((s, e) => s + e.amount, 0);
+  const totalBusinessExpenses = inRangeExpenses.reduce((s, e) => s + e.amount, 0);
 
-  // An owner-level expense can optionally be tied to one specific branch
-  // (only deducted from that branch's card); left unassigned, it applies to
-  // every branch's card. Either way it always counts toward the true
-  // combined Owner Deductions total above.
-  const deductionsFor = (target: "owner_final_total_sales" | "owner_total_sales", branchId: string | null) =>
-    inRangeExpenses.filter((e) => e.target === target && (e.branchId === null || e.branchId === branchId)).reduce((s, e) => s + e.amount, 0);
-
-  const rowsWithDeductions = rows.map((r) => {
-    const branchTotalSalesDeductions = deductionsFor("owner_total_sales", r.branchId);
-    const branchFinalDeductions = deductionsFor("owner_final_total_sales", r.branchId);
-    const technicians = Array.from(techByBranch.get(key(r.branchId))?.values() ?? []).sort((a, b) => {
-      if (a.name === "Unassigned") return 1;
-      if (b.name === "Unassigned") return -1;
-      return b.revenue - a.revenue;
-    });
-    return {
-      ...r,
-      branchTotalSalesDeductions,
-      branchFinalDeductions,
-      totalIncomeNet: r.posRevenue - branchTotalSalesDeductions,
-      finalTotalSalesNet: r.finalTotalSales - branchFinalDeductions,
-      technicians,
-    };
+  const rowsWithExpenses = rows.map((r) => {
+    const businessExpenses = businessExpensesFor(r.branchId);
+    return { ...r, businessExpenses, businessShareNet: r.remaining - businessExpenses };
   });
+  const grandBusinessShareNet = grandTotal.remaining - totalBusinessExpenses;
 
+  const showAllBranches = canViewAllBranchSales(user);
   // The unbranched/backend-only ("Home Service") bucket never gets its own
   // card here — that revenue is tracked on the dedicated Sales > Home
   // Service tab instead, so nobody sees it duplicated in two places.
-  const visibleRows = rowsWithDeductions.filter((r) => r.branchId !== null);
+  const visibleRows = rowsWithExpenses.filter((r) => r.branchId !== null);
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-xl font-bold text-slate-900">Branch Sales</h1>
         <p className="mt-1 text-sm text-slate-400">
-          Walk-in/POS repair revenue by branch, with parts cost deducted to show net profit. Home service earnings are tracked separately —
-          see the Home Service tab.
+          Walk-in/POS repair revenue by branch. Each technician&apos;s Net Profit splits 50/50 with the business —{" "}
+          <strong className="text-slate-600">except {EXEMPT_TECHNICIAN_NAME}</strong>, who is exempt from the split and keeps 100% of his own
+          Net Profit as part of the business&apos;s Remaining share. Home service earnings are tracked separately — see the Home Service tab.
         </p>
       </div>
 
@@ -153,121 +202,126 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
       {!hasFilter && <p className="-mt-3 text-xs text-slate-400">Showing today&apos;s sales ({today}). Set a date range above to see other days.</p>}
 
       {showAllBranches && (
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-        <div className="card">
-          <p className="text-xs text-slate-400">POS Revenue</p>
-          <p className="mt-1 text-2xl font-bold text-slate-900">{peso(grandTotal.posRevenue)}</p>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+          <div className="card">
+            <p className="text-xs text-slate-400">Overall Total Income</p>
+            <p className="mt-1 text-2xl font-bold text-slate-900">{peso(grandTotal.revenue)}</p>
+          </div>
+          <div className="card">
+            <p className="text-xs text-slate-400">Net Profit</p>
+            <p className="mt-1 text-2xl font-bold text-green-700">{peso(grandTotal.netProfit)}</p>
+          </div>
+          <div className="card">
+            <p className="text-xs text-slate-400">Technician Share (50%)</p>
+            <p className="mt-1 text-2xl font-bold text-amber-700">{peso(grandTotal.technicianShare)}</p>
+          </div>
+          <div className="card">
+            <p className="text-xs text-slate-400">Remaining (Business)</p>
+            <p className="mt-1 text-2xl font-bold text-blue-300">{peso(grandTotal.remaining)}</p>
+          </div>
+          <div className="card">
+            <p className="text-xs text-slate-400">Total Transactions</p>
+            <p className="mt-1 text-2xl font-bold text-slate-900">{grandTotal.count}</p>
+          </div>
         </div>
-        <div className="card">
-          <p className="text-xs text-slate-400">Expenses</p>
-          <p className="mt-1 text-2xl font-bold text-red-700">−{peso(grandTotal.expenses)}</p>
-        </div>
-        <div className="card">
-          <p className="text-xs text-slate-400">Net Profit</p>
-          <p className="mt-1 text-2xl font-bold text-green-700">{peso(grandTotal.netProfit)}</p>
-        </div>
-        <div className="card">
-          <p className="text-xs text-slate-400">Final Total Sales (50%)</p>
-          <p className="mt-1 text-2xl font-bold text-blue-300">{peso(grandFinalTotalSales)}</p>
-        </div>
-        <div className="card">
-          <p className="text-xs text-slate-400">Total Transactions</p>
-          <p className="mt-1 text-2xl font-bold text-slate-900">{grandTotal.posCount}</p>
-        </div>
-      </div>
       )}
 
       <div className="space-y-4">
         {visibleRows.map((r) => {
           const branchEntry = branches.find((b) => b.id === r.branchId);
           return (
-            <div key={r.name} className="card space-y-3">
+            <div key={r.name} className="card space-y-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <h3 className="text-sm font-semibold text-slate-800">{r.name}</h3>
-                <p className="text-base font-bold text-green-700">{peso(r.netProfit)}</p>
+                <p className="text-base font-bold text-green-700">{peso(r.netProfit)} net profit</p>
               </div>
+
+              {/* One linear waterfall — every row flows from the row above it. */}
               <table className="w-full text-left text-sm">
-                <thead>
-                  <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-400">
-                    <th className="pb-2 pr-3 font-medium">Source</th>
-                    <th className="pb-2 pr-3 font-medium">Transactions</th>
-                    <th className="pb-2 pr-3 font-medium">Revenue</th>
-                  </tr>
-                </thead>
                 <tbody>
                   <tr className="border-b border-slate-100">
-                    <td className="py-2 pr-3 text-slate-600">POS Sales</td>
-                    <td className="py-2 pr-3 text-slate-500">{r.posCount}</td>
-                    <td className="py-2 pr-3 text-slate-800">{peso(r.posRevenue)}</td>
-                  </tr>
-                  {r.branchTotalSalesDeductions > 0 && (
-                    <>
-                      <tr className="border-b border-slate-100">
-                        <td className="py-2 pr-3 text-slate-600">Business Expenses (Owner)</td>
-                        <td className="py-2 pr-3 text-slate-500">—</td>
-                        <td className="py-2 pr-3 text-red-700">−{peso(r.branchTotalSalesDeductions)}</td>
-                      </tr>
-                      <tr className="border-b border-slate-100">
-                        <td className="pt-2 pr-3 font-semibold text-slate-800">POS Sales (Net)</td>
-                        <td className="pt-2 pr-3 text-slate-500">—</td>
-                        <td className="pt-2 pr-3 font-semibold text-blue-300">{peso(r.totalIncomeNet)}</td>
-                      </tr>
-                    </>
-                  )}
-                  <tr className="border-b border-slate-100">
-                    <td className="py-2 pr-3 text-slate-600">Expenses</td>
-                    <td className="py-2 pr-3 text-slate-500">—</td>
-                    <td className="py-2 pr-3 text-red-700">−{peso(r.expenses)}</td>
+                    <td className="py-2 pr-3 text-slate-600">Total Income ({r.count} transactions)</td>
+                    <td className="py-2 pr-3 text-right text-slate-800">{peso(r.revenue)}</td>
                   </tr>
                   <tr className="border-b border-slate-100">
-                    <td className="pt-2 pr-3 font-semibold text-slate-800">Net Profit</td>
-                    <td className="pt-2 pr-3 text-slate-500">—</td>
-                    <td className="pt-2 pr-3 font-semibold text-green-700">{peso(r.netProfit)}</td>
+                    <td className="py-2 pr-3 text-slate-600">− Job Costs (parts/labor/other)</td>
+                    <td className="py-2 pr-3 text-right text-red-700">−{peso(r.jobCost)}</td>
                   </tr>
-                  <tr className={r.branchFinalDeductions > 0 ? "border-b border-slate-100" : ""}>
-                    <td className="pt-2 pr-3 font-semibold text-slate-800">Final Total Sales (50%)</td>
-                    <td className="pt-2 pr-3 text-slate-500">—</td>
-                    <td className="pt-2 pr-3 font-semibold text-blue-300">{peso(r.finalTotalSales)}</td>
+                  <tr className="border-b border-slate-200">
+                    <td className="py-2 pr-3 font-semibold text-slate-800">= Net Profit</td>
+                    <td className="py-2 pr-3 text-right font-semibold text-green-700">{peso(r.netProfit)}</td>
                   </tr>
-                  {r.branchFinalDeductions > 0 && (
+                  <tr className="border-b border-slate-100">
+                    <td className="py-2 pr-3 pl-5 text-slate-500">Technician Share (50%, excl. {EXEMPT_TECHNICIAN_NAME})</td>
+                    <td className="py-2 pr-3 text-right text-amber-700">{peso(r.technicianShare)}</td>
+                  </tr>
+                  <tr className="border-b border-slate-200">
+                    <td className="py-2 pr-3 pl-5 font-semibold text-slate-700">Remaining (Business Share)</td>
+                    <td className="py-2 pr-3 text-right font-semibold text-blue-300">{peso(r.remaining)}</td>
+                  </tr>
+                  {r.businessExpenses > 0 && (
                     <>
                       <tr className="border-b border-slate-100">
-                        <td className="py-2 pr-3 text-slate-600">Business Expenses (Owner)</td>
-                        <td className="py-2 pr-3 text-slate-500">—</td>
-                        <td className="py-2 pr-3 text-red-700">−{peso(r.branchFinalDeductions)}</td>
+                        <td className="py-2 pr-3 text-slate-600">− Business Expenses (Owner)</td>
+                        <td className="py-2 pr-3 text-right text-red-700">−{peso(r.businessExpenses)}</td>
                       </tr>
                       <tr>
-                        <td className="pt-2 pr-3 font-semibold text-slate-800">Final Total Sales (Net)</td>
-                        <td className="pt-2 pr-3 text-slate-500">—</td>
-                        <td className="pt-2 pr-3 font-semibold text-blue-300">{peso(r.finalTotalSalesNet)}</td>
+                        <td className="pt-2 pr-3 font-semibold text-slate-900">= Business Share (Net)</td>
+                        <td className="pt-2 pr-3 text-right font-semibold text-blue-300">{peso(r.businessShareNet)}</td>
                       </tr>
                     </>
                   )}
                 </tbody>
               </table>
+
               {r.technicians.length > 0 && (
                 <div>
-                  <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400">Technicians</p>
+                  <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                    Per Technician — Net Profit → Share vs. Remaining
+                  </p>
                   <table className="w-full text-left text-sm">
                     <thead>
                       <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-400">
                         <th className="pb-2 pr-3 font-medium">Technician</th>
                         <th className="pb-2 pr-3 font-medium">Jobs</th>
-                        <th className="pb-2 font-medium">Revenue</th>
+                        <th className="pb-2 pr-3 font-medium">Revenue</th>
+                        <th className="pb-2 pr-3 font-medium">Job Cost</th>
+                        <th className="pb-2 pr-3 font-medium">Net Profit</th>
+                        <th className="pb-2 pr-3 font-medium">Share (Tech)</th>
+                        <th className="pb-2 font-medium">Remaining (Business)</th>
                       </tr>
                     </thead>
                     <tbody>
                       {r.technicians.map((t) => (
                         <tr key={t.name} className={`border-b border-slate-100 last:border-0 ${t.name === "Unassigned" ? "opacity-60" : ""}`}>
-                          <td className="py-2 pr-3 text-slate-700">{t.name}</td>
+                          <td className="py-2 pr-3 text-slate-700">
+                            {t.name}
+                            {t.isExempt && (
+                              <span className="ml-1.5 badge border border-amber-200 bg-amber-50 text-amber-700">100% — exempt</span>
+                            )}
+                          </td>
                           <td className="py-2 pr-3 text-slate-500">{t.count}</td>
-                          <td className="py-2 text-slate-800">{peso(t.revenue)}</td>
+                          <td className="py-2 pr-3 text-slate-800">{peso(t.revenue)}</td>
+                          <td className="py-2 pr-3 text-red-700">−{peso(t.jobCost)}</td>
+                          <td className="py-2 pr-3 font-medium text-slate-800">{peso(t.netProfit)}</td>
+                          <td className="py-2 pr-3 text-amber-700">{t.isExempt ? "—" : peso(t.share)}</td>
+                          <td className="py-2 text-blue-300">{peso(t.remaining)}</td>
                         </tr>
                       ))}
+                      <tr className="font-semibold text-slate-900">
+                        <td className="pt-2 pr-3">Total</td>
+                        <td className="pt-2 pr-3">{r.count}</td>
+                        <td className="pt-2 pr-3">{peso(r.revenue)}</td>
+                        <td className="pt-2 pr-3 text-red-700">−{peso(r.jobCost)}</td>
+                        <td className="pt-2 pr-3">{peso(r.netProfit)}</td>
+                        <td className="pt-2 pr-3 text-amber-700">{peso(r.technicianShare)}</td>
+                        <td className="pt-2 text-blue-300">{peso(r.remaining)}</td>
+                      </tr>
                     </tbody>
                   </table>
                 </div>
               )}
+
               {branchEntry && (
                 <Link href={`/admin/pos?branch=${branchEntry.id}`} className="btn-secondary inline-block !px-3 !py-1 text-xs">
                   View POS Records
@@ -278,58 +332,45 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
         })}
 
         {showAllBranches && (
-        <div className="card space-y-1">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-slate-800">Total POS Income (All Branches)</h3>
-            <p className="text-base font-bold text-slate-900">{peso(grandTotal.posRevenue)}</p>
+          <div className="card space-y-3">
+            <h3 className="text-sm font-semibold text-slate-800">All Branches — Combined</h3>
+            <table className="w-full text-left text-sm">
+              <tbody>
+                <tr className="border-b border-slate-100">
+                  <td className="py-2 pr-3 text-slate-600">Overall Total Income ({grandTotal.count} transactions)</td>
+                  <td className="py-2 pr-3 text-right text-slate-800">{peso(grandTotal.revenue)}</td>
+                </tr>
+                <tr className="border-b border-slate-100">
+                  <td className="py-2 pr-3 text-slate-600">− Job Costs (parts/labor/other)</td>
+                  <td className="py-2 pr-3 text-right text-red-700">−{peso(grandTotal.jobCost)}</td>
+                </tr>
+                <tr className="border-b border-slate-200">
+                  <td className="py-2 pr-3 font-semibold text-slate-800">= Net Profit</td>
+                  <td className="py-2 pr-3 text-right font-semibold text-green-700">{peso(grandTotal.netProfit)}</td>
+                </tr>
+                <tr className="border-b border-slate-100">
+                  <td className="py-2 pr-3 pl-5 text-slate-500">Technician Share (50%, excl. {EXEMPT_TECHNICIAN_NAME})</td>
+                  <td className="py-2 pr-3 text-right text-amber-700">{peso(grandTotal.technicianShare)}</td>
+                </tr>
+                <tr className="border-b border-slate-200">
+                  <td className="py-2 pr-3 pl-5 font-semibold text-slate-700">Remaining (Business Share)</td>
+                  <td className="py-2 pr-3 text-right font-semibold text-blue-300">{peso(grandTotal.remaining)}</td>
+                </tr>
+                {totalBusinessExpenses > 0 && (
+                  <>
+                    <tr className="border-b border-slate-100">
+                      <td className="py-2 pr-3 text-slate-600">− Business Expenses (Owner, all branches)</td>
+                      <td className="py-2 pr-3 text-right text-red-700">−{peso(totalBusinessExpenses)}</td>
+                    </tr>
+                    <tr>
+                      <td className="pt-2 pr-3 font-semibold text-slate-900">= Business Share (Net)</td>
+                      <td className="pt-2 pr-3 text-right font-semibold text-blue-300">{peso(grandBusinessShareNet)}</td>
+                    </tr>
+                  </>
+                )}
+              </tbody>
+            </table>
           </div>
-          <div className="flex items-center justify-between text-sm text-slate-500">
-            <span>Expenses (parts, labor, other)</span>
-            <span className="text-red-700">−{peso(grandTotal.expenses)}</span>
-          </div>
-          <div className="flex items-center justify-between border-t border-slate-200 pt-1">
-            <h3 className="text-sm font-semibold text-slate-800">Net Profit (All Branches)</h3>
-            <p className="text-base font-bold text-green-700">{peso(grandTotal.netProfit)}</p>
-          </div>
-          <div className="flex items-center justify-between border-t border-slate-200 pt-1">
-            <h3 className="text-sm font-semibold text-slate-800">Final Total Sales (All Branches, 50%)</h3>
-            <p className="text-base font-bold text-blue-300">{peso(grandFinalTotalSales)}</p>
-          </div>
-        </div>
-        )}
-
-        {showAllBranches && (
-        <div className="card space-y-1">
-          <h3 className="text-sm font-semibold text-slate-800">Owner Deductions</h3>
-          <p className="text-xs text-slate-400">
-            Business expenses logged under Sales &gt; Expenses, deducted from the owner&apos;s POS totals. Home service business expenses are
-            tracked on the Home Service tab instead.
-          </p>
-          <div className="mt-2 flex items-center justify-between">
-            <span className="text-sm text-slate-600">Total Sales of the Owner</span>
-            <span className="text-sm text-slate-800">{peso(grandTotal.posRevenue)}</span>
-          </div>
-          <div className="flex items-center justify-between text-sm text-slate-500">
-            <span>Business Expenses</span>
-            <span className="text-red-700">−{peso(ownerTotalSalesDeductions)}</span>
-          </div>
-          <div className="flex items-center justify-between border-t border-slate-200 pt-1">
-            <h3 className="text-sm font-semibold text-slate-800">Total Sales of the Owner (Net)</h3>
-            <p className="text-base font-bold text-blue-300">{peso(ownerTotalSalesNet)}</p>
-          </div>
-          <div className="mt-2 flex items-center justify-between">
-            <span className="text-sm text-slate-600">Owner&apos;s Final Total Sales (50%)</span>
-            <span className="text-sm text-slate-800">{peso(grandFinalTotalSales)}</span>
-          </div>
-          <div className="flex items-center justify-between text-sm text-slate-500">
-            <span>Business Expenses</span>
-            <span className="text-red-700">−{peso(ownerFinalDeductions)}</span>
-          </div>
-          <div className="flex items-center justify-between border-t border-slate-200 pt-1">
-            <h3 className="text-sm font-semibold text-slate-800">Owner&apos;s Final Total Sales (Net)</h3>
-            <p className="text-base font-bold text-blue-300">{peso(ownerFinalTotalSalesNet)}</p>
-          </div>
-        </div>
         )}
       </div>
     </div>
