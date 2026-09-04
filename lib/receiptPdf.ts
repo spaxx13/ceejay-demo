@@ -78,12 +78,14 @@ class Writer {
   page: PDFPage;
   font: PDFFont;
   bold: PDFFont;
+  logoImg: Awaited<ReturnType<PDFDocument["embedJpg"]>>;
   y = PAGE_H - MARGIN;
 
-  private constructor(doc: PDFDocument, font: PDFFont, bold: PDFFont) {
+  private constructor(doc: PDFDocument, font: PDFFont, bold: PDFFont, logoImg: Awaited<ReturnType<PDFDocument["embedJpg"]>>) {
     this.doc = doc;
     this.font = font;
     this.bold = bold;
+    this.logoImg = logoImg;
     this.page = doc.addPage([PAGE_W, PAGE_H]);
   }
 
@@ -91,7 +93,8 @@ class Writer {
     const doc = await PDFDocument.create();
     const font = await doc.embedFont(StandardFonts.Helvetica);
     const bold = await doc.embedFont(StandardFonts.HelveticaBold);
-    return new Writer(doc, font, bold);
+    const logoImg = await doc.embedJpg(Uint8Array.from(Buffer.from(LOGO_PNG_BASE64, "base64")));
+    return new Writer(doc, font, bold, logoImg);
   }
 
   ensureSpace(height: number) {
@@ -111,14 +114,12 @@ class Writer {
 
   // Shop logo top-left, branch/home-service contact numbers top-right,
   // both anchored to the same top edge, followed by a rule.
-  async header(reference: string, subtitle: string) {
-    const logoBytes = Uint8Array.from(Buffer.from(LOGO_PNG_BASE64, "base64"));
-    const logoImg = await this.doc.embedJpg(logoBytes);
+  header(reference: string, subtitle: string) {
     const logoH = 46;
-    const logoScale = logoH / logoImg.height;
-    const logoW = logoImg.width * logoScale;
+    const logoScale = logoH / this.logoImg.height;
+    const logoW = this.logoImg.width * logoScale;
     const topY = this.y;
-    this.page.drawImage(logoImg, { x: MARGIN, y: topY - logoH, width: logoW, height: logoH });
+    this.page.drawImage(this.logoImg, { x: MARGIN, y: topY - logoH, width: logoW, height: logoH });
 
     const contactSize = 8.5;
     const lineHeight = 11;
@@ -310,6 +311,24 @@ class Writer {
     });
   }
 
+  // Faint centered logo watermark and a small "Ceejay Apple Services —
+  // Receipt {reference}" footer, stamped on every page of the finished
+  // document — including ones added after header() already ran.
+  stampAllPages(reference: string) {
+    const wmH = 260;
+    const wmScale = wmH / this.logoImg.height;
+    const wmW = this.logoImg.width * wmScale;
+    const footerText = `Ceejay Apple Services — Receipt ${reference}`;
+    const pages = this.doc.getPages();
+    pages.forEach((page, i) => {
+      page.drawImage(this.logoImg, { x: (PAGE_W - wmW) / 2, y: (PAGE_H - wmH) / 2, width: wmW, height: wmH, opacity: 0.06 });
+      page.drawText(footerText, { x: MARGIN, y: 22, size: 8, font: this.font, color: MUTED });
+      const pageLabel = `Page ${i + 1} of ${pages.length}`;
+      const pageLabelWidth = this.font.widthOfTextAtSize(pageLabel, 8);
+      page.drawText(pageLabel, { x: MARGIN + CONTENT_W - pageLabelWidth, y: 22, size: 8, font: this.font, color: MUTED });
+    });
+  }
+
   async save() {
     return this.doc.save();
   }
@@ -337,7 +356,7 @@ export async function generateRepairReceiptPdf(opts: {
 }): Promise<Uint8Array> {
   const w = await Writer.create();
 
-  await w.header(opts.reference, "Repair Receipt");
+  w.header(opts.reference, "Repair Receipt");
 
   w.heading("Service Details");
   w.row("Customer Name", opts.customerName, { boldValue: true });
@@ -389,6 +408,8 @@ export async function generateRepairReceiptPdf(opts: {
       w.y -= height + 10;
     }
   }
+
+  w.stampAllPages(opts.reference);
 
   return w.save();
 }
