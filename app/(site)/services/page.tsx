@@ -11,15 +11,21 @@ const DESCRIPTIONS: Record<string, string> = {
   "Logic board problem": "Component-level diagnosis and repair for logic board issues — no power, short circuits, or boot failures.",
   "Camera": "Blurry photos, autofocus issues, or a cracked camera lens fixed with a genuine replacement module.",
   "Backhousing(Whole shell including backglass)": "Full back housing replacement, including the rear glass — for a cracked back or a damaged frame.",
-  "Camera replacement": "Camera module swapped out for a genuine replacement — available for home service too.",
-  "Back Housing (whole shell)": "Whole shell replacement for a cracked or damaged back — available for home service too.",
 };
 
 const FALLBACK = "Professional service to get your device back to perfect condition, backed by our technicians.";
 
+// Kept selectable on the Home Service request form (they're not in that
+// form's own exclusion list), but not shown here on the public Services
+// page — they're near-duplicates of "Camera" and "Backhousing(...)" above,
+// which already cover the in-branch/general listing.
+const HIDDEN_FROM_PUBLIC = new Set(["Camera replacement", "Back Housing (whole shell)"]);
+
 export default async function ServicesPage() {
   const lookups = await getLookups();
-  const serviceTypes = lookups.filter((l) => l.kind === "service_type" && l.active).sort((a, b) => a.order - b.order);
+  const serviceTypes = lookups
+    .filter((l) => l.kind === "service_type" && l.active && !HIDDEN_FROM_PUBLIC.has(l.label))
+    .sort((a, b) => a.order - b.order);
 
   return (
     <main>

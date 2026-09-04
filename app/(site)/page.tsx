@@ -3,10 +3,15 @@ import { getSiteContent, getLookups, getBranches } from "@/lib/db";
 import InShopIllustration from "@/components/site/InShopIllustration";
 import HomeServiceIllustration from "@/components/site/HomeServiceIllustration";
 
+// Kept selectable on the Home Service request form, but not shown here —
+// near-duplicates of "Camera" and "Backhousing(...)", which already cover
+// the general listing. Matches app/(site)/services/page.tsx.
+const HIDDEN_FROM_PUBLIC = new Set(["Camera replacement", "Back Housing (whole shell)"]);
+
 export default async function HomePage() {
   const [sc, lookups, allBranches] = await Promise.all([getSiteContent(), getLookups(), getBranches()]);
   const serviceTypes = lookups
-    .filter((l) => l.kind === "service_type" && l.active)
+    .filter((l) => l.kind === "service_type" && l.active && !HIDDEN_FROM_PUBLIC.has(l.label))
     .sort((a, b) => a.order - b.order)
     .slice(0, 6);
   // A branch without an address is a backend-only bucket (e.g. "Home
