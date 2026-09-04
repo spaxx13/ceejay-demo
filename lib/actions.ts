@@ -13,7 +13,6 @@ import {
   getTechnicians,
   getLookups,
   getCustomers,
-  getBranches,
   getRequests,
   getRequestById,
   getRepairRecordById,
@@ -48,35 +47,6 @@ function isValidPhone(phone: string) {
   return /^(\+63|0)9\d{9}$/.test(cleaned);
 }
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-// Picks a technician for a new Home Service Request automatically, load-
-// balanced across whichever technicians are assigned to the backend-only
-// "Home Service" branch (the one with no address — same signal Branch Sales
-// and POS already use to identify it) — whoever currently has the fewest
-// open (not yet completed/cancelled) home service jobs. Returns null if
-// there's no such branch or no technician assigned to it yet, in which case
-// the request is left unassigned for manual triage, same as before.
-async function pickHomeServiceTechnician(): Promise<{ technicianId: string; branchId: string } | null> {
-  const [technicians, branches, requests, lookups] = await Promise.all([getTechnicians(), getBranches(), getRequests(), getLookups()]);
-  const homeServiceBranch = branches.find((b) => !b.address);
-  if (!homeServiceBranch) return null;
-
-  const pool = technicians.filter((t) => t.active && t.branchIds.includes(homeServiceBranch.id));
-  if (pool.length === 0) return null;
-
-  const openStatusIds = new Set(
-    lookups.filter((l) => l.kind === "request_status" && l.label !== "Completed" && l.label !== "Cancelled").map((l) => l.id)
-  );
-  const openCount = new Map<string, number>(pool.map((t) => [t.id, 0]));
-  for (const r of requests) {
-    if (r.assignedTechnicianId && openStatusIds.has(r.statusId) && openCount.has(r.assignedTechnicianId)) {
-      openCount.set(r.assignedTechnicianId, (openCount.get(r.assignedTechnicianId) ?? 0) + 1);
-    }
-  }
-
-  const chosen = pool.reduce((best, t) => ((openCount.get(t.id) ?? 0) < (openCount.get(best.id) ?? 0) ? t : best));
-  return { technicianId: chosen.id, branchId: homeServiceBranch.id };
-}
 
 // ---------- Auth ----------
 
@@ -960,11 +930,10 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
 
   const allLookups = await getLookups();
   const requestStatuses = allLookups.filter((l) => l.kind === "request_status").sort((a, b) => a.order - b.order);
-  const pendingStatus = requestStatuses[0];
-  const assignedStatus = requestStatuses.find((s) => s.label === "Assigned") ?? pendingStatus;
-
-  const autoAssignment = await pickHomeServiceTechnician();
-  const initialStatus = autoAssignment ? assignedStatus : pendingStatus;
+  // Home Service Requests are no longer auto-assigned to a technician on
+  // submission — every new request lands in the Unassigned queue for an
+  // admin to triage and assign manually.
+  const initialStatus = requestStatuses[0];
 
   const requestsCount = await queryOne<{ n: string }>("select count(*)::int as n from home_service_requests");
   const reference = `HSR-${new Date().getFullYear()}-${String(Number(requestsCount!.n) + 1).padStart(4, "0")}`;
@@ -1016,21 +985,15 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
       JSON.stringify(customFields),
       vlogConsent,
       vlogBlurPreference,
-      autoAssignment?.technicianId ?? null,
-      autoAssignment !== null,
-      autoAssignment?.branchId ?? null,
+      null,
+      false,
+      null,
     ]
   );
 
-  const assignmentNote = autoAssignment
-    ? ` and auto-assigned to a Home Service technician`
-    : " and sent to the Unassigned queue for triage";
-
   let smsNote = "";
   if (phone && smsConfigured()) {
-    const confirmMessage = autoAssignment
-      ? `Hi ${name || "there"}, your Ceejay repair request ${reference} has been received and assigned to a technician! We'll text you updates here.`
-      : `Hi ${name || "there"}, your Ceejay repair request ${reference} has been received! Our team will reach out soon to schedule your service.`;
+    const confirmMessage = `Hi ${name || "there"}, your Ceejay repair request ${reference} has been received! Our team will reach out soon to schedule your service.`;
     try {
       await sendSms(phone, confirmMessage);
       smsNote = ` — confirmation SMS sent to ${phone}`;
@@ -1038,7 +1001,12 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
       smsNote = ` — confirmation SMS failed to send to ${phone} (${err instanceof Error ? err.message : "unknown error"})`;
     }
   }
-  await logActivity("home_service_request", created!.id, `Request ${reference} submitted${assignmentNote}${smsNote}`, "System");
+  await logActivity(
+    "home_service_request",
+    created!.id,
+    `Request ${reference} submitted and sent to the Unassigned queue for triage${smsNote}`,
+    "System"
+  );
 
   if (email) await query("delete from otp_codes where email=$1", [email.trim().toLowerCase()]);
 
