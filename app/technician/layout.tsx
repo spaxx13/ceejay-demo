@@ -24,6 +24,9 @@ export default async function TechnicianLayout({ children }: { children: React.R
             <Link href="/technician/earnings" className="text-xs font-medium text-slate-500 hover:text-slate-800">
               My Earnings
             </Link>
+            <Link href="/technician/panic-log" className="text-xs font-medium text-slate-500 hover:text-slate-800">
+              Panic Log
+            </Link>
             <span className="text-xs text-slate-400">{user.name}</span>
             <form action={logoutAction}>
               <button className="btn-secondary !px-3 !py-1.5 text-xs" type="submit">
