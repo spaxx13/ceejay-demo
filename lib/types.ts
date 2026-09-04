@@ -224,6 +224,7 @@ export type HomeServiceRequest = {
   customFields: Record<string, string | boolean>; // keyed by CustomFormField.key
   vlogConsent: boolean;
   vlogBlurPreference: "blurred" | "not_blurred" | ""; // only meaningful when vlogConsent is true
+  reminderSentAt: string | null; // set once the daily appointment-reminder cron has texted this customer
 };
 
 export type SaleLineItem = {

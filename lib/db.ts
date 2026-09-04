@@ -185,7 +185,7 @@ type RequestRow = {
   lat: number | null; lng: number | null; preferred_datetime: Date | string | null;
   status_id: string; assigned_technician_id: string | null; auto_assigned: boolean; branch_id: string | null; admin_notes: string;
   status_history: { statusId: string; at: string }[]; custom_fields: Record<string, string | boolean>; created_at: Date;
-  vlog_consent: boolean; vlog_blur_preference: HomeServiceRequest["vlogBlurPreference"];
+  vlog_consent: boolean; vlog_blur_preference: HomeServiceRequest["vlogBlurPreference"]; reminder_sent_at: Date | null;
 };
 function mapRequest(r: RequestRow): HomeServiceRequest {
   return {
@@ -195,7 +195,7 @@ function mapRequest(r: RequestRow): HomeServiceRequest {
     lat: r.lat, lng: r.lng, preferredDatetime: toDateStr(r.preferred_datetime),
     statusId: r.status_id, assignedTechnicianId: r.assigned_technician_id, autoAssigned: r.auto_assigned, branchId: r.branch_id, adminNotes: r.admin_notes,
     createdAt: toIso(r.created_at), statusHistory: r.status_history ?? [], customFields: r.custom_fields ?? {},
-    vlogConsent: r.vlog_consent, vlogBlurPreference: r.vlog_blur_preference || "",
+    vlogConsent: r.vlog_consent, vlogBlurPreference: r.vlog_blur_preference || "", reminderSentAt: toIsoOrNull(r.reminder_sent_at),
   };
 }
 

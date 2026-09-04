@@ -1,4 +1,5 @@
 import { getLookups, getDeviceModels, getRequestFormContent, getCustomFormFields } from "@/lib/db";
+import { smsConfigured } from "@/lib/sms";
 import HomeServiceForm from "@/components/HomeServiceForm";
 
 export default async function RequestPage() {
@@ -34,7 +35,14 @@ export default async function RequestPage() {
             This form has no active fields right now — add or re-enable some from Admin &gt; Settings &gt; Request Form.
           </p>
         ) : (
-          <HomeServiceForm brands={brands} models={models} serviceTypes={serviceTypes} content={content} fields={fields} />
+          <HomeServiceForm
+            brands={brands}
+            models={models}
+            serviceTypes={serviceTypes}
+            content={content}
+            fields={fields}
+            smsAvailable={smsConfigured()}
+          />
         )}
       </div>
     </main>

@@ -25,7 +25,8 @@ import {
   canManageHomeServiceRequests,
 } from "./db";
 import { getCurrentUser, setSession, clearSession, requireRole } from "./auth";
-import { sendOtpEmail, sendRepairReceiptEmail, sendCancellationEmail } from "./email";
+import { sendRepairReceiptEmail, sendCancellationEmail } from "./email";
+import { sendOtpSms, sendSms, smsConfigured, normalizePhone } from "./sms";
 import type {
   Role,
   LookupKind,
@@ -796,74 +797,75 @@ export async function updateRepairRecordDetails(formData: FormData) {
   revalidatePath("/admin/crm");
 }
 
-// ---------- Home Service Request: Email OTP Verification ----------
-// Anti-spam gate — a customer must prove they control the email address
-// they typed before the Home Service Request form can be submitted at
-// all. One row per email in otp_codes; a fresh send overwrites whatever
-// was there before rather than accumulating history.
+// ---------- Home Service Request: SMS OTP Verification ----------
+// Anti-spam gate — a customer must prove they control the phone number they
+// typed before the Home Service Request form can be submitted at all. One
+// row per phone in otp_codes; a fresh send overwrites whatever was there
+// before rather than accumulating history. Semaphore generates the actual
+// code (routed to their OTP-dedicated SMS path) and hands it back in the
+// send response — this just hashes and stores whatever it returns, so
+// verification below never needed to change when the source of the code
+// moved from a local Math.random() to Semaphore.
+//
+// If SEMAPHORE_API_KEY isn't configured, the gate quietly disables itself
+// (see OTP_GATE_ENABLED usage in submitHomeServiceRequest) rather than
+// blocking every submission — a missing/misconfigured SMS provider should
+// never be able to take the public request form down.
 
 const OTP_TTL_MS = 10 * 60_000;
 const OTP_RESEND_COOLDOWN_MS = 60_000;
 const OTP_MAX_ATTEMPTS = 5;
 
-function isValidEmail(email: string) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-}
-
-function generateOtpCode() {
-  return String(Math.floor(100000 + Math.random() * 900000));
-}
-
 export type SendOtpResult = { ok: true } | { ok: false; error: string };
 
-export async function sendHomeServiceOtp(emailInput: string): Promise<SendOtpResult> {
-  const email = emailInput.trim().toLowerCase();
-  if (!isValidEmail(email)) return { ok: false, error: "Enter a valid email address first." };
+export async function sendHomeServiceOtp(phoneInput: string): Promise<SendOtpResult> {
+  if (!isValidPhone(phoneInput)) return { ok: false, error: "Enter a valid PH mobile number first, e.g. 0917 123 4567." };
+  if (!smsConfigured()) return { ok: false, error: "SMS verification is temporarily unavailable — please try again later." };
+  const phone = normalizePhone(phoneInput);
 
-  const existing = await queryOne<{ created_at: Date }>("select created_at from otp_codes where email=$1", [email]);
+  const existing = await queryOne<{ created_at: Date }>("select created_at from otp_codes where phone=$1", [phone]);
   if (existing && Date.now() - new Date(existing.created_at).getTime() < OTP_RESEND_COOLDOWN_MS) {
     return { ok: false, error: "Please wait a moment before requesting another code." };
   }
 
-  const code = generateOtpCode();
+  let code: string;
+  try {
+    code = await sendOtpSms(phone);
+  } catch {
+    return { ok: false, error: "Couldn't send the verification SMS — please try again in a moment." };
+  }
   const codeHash = await bcrypt.hash(code, 10);
   const expiresAt = new Date(Date.now() + OTP_TTL_MS).toISOString();
 
   await query(
-    `insert into otp_codes (email, code_hash, attempts, verified, expires_at, created_at)
+    `insert into otp_codes (phone, code_hash, attempts, verified, expires_at, created_at)
      values ($1,$2,0,false,$3,now())
-     on conflict (email) do update set code_hash=$2, attempts=0, verified=false, expires_at=$3, created_at=now()`,
-    [email, codeHash, expiresAt]
+     on conflict (phone) do update set code_hash=$2, attempts=0, verified=false, expires_at=$3, created_at=now()`,
+    [phone, codeHash, expiresAt]
   );
-
-  try {
-    await sendOtpEmail(email, code);
-  } catch {
-    return { ok: false, error: "Couldn't send the verification email — please try again in a moment." };
-  }
   return { ok: true };
 }
 
 export type VerifyOtpResult = { ok: true } | { ok: false; error: string };
 
-export async function verifyHomeServiceOtp(emailInput: string, codeInput: string): Promise<VerifyOtpResult> {
-  const email = emailInput.trim().toLowerCase();
+export async function verifyHomeServiceOtp(phoneInput: string, codeInput: string): Promise<VerifyOtpResult> {
+  const phone = normalizePhone(phoneInput);
   const code = codeInput.trim();
   const row = await queryOne<{ code_hash: string; attempts: number; expires_at: Date; verified: boolean }>(
-    "select code_hash, attempts, expires_at, verified from otp_codes where email=$1",
-    [email]
+    "select code_hash, attempts, expires_at, verified from otp_codes where phone=$1",
+    [phone]
   );
   if (!row) return { ok: false, error: "Send a verification code first." };
   if (row.verified) return { ok: true };
   if (new Date(row.expires_at).getTime() < Date.now()) return { ok: false, error: "That code expired — request a new one." };
   if (row.attempts >= OTP_MAX_ATTEMPTS) return { ok: false, error: "Too many incorrect attempts — request a new code." };
 
-  const match = code.length === 6 && (await bcrypt.compare(code, row.code_hash));
+  const match = code.length > 0 && (await bcrypt.compare(code, row.code_hash));
   if (!match) {
-    await query("update otp_codes set attempts = attempts + 1 where email=$1", [email]);
+    await query("update otp_codes set attempts = attempts + 1 where phone=$1", [phone]);
     return { ok: false, error: "Incorrect code. Please try again." };
   }
-  await query("update otp_codes set verified=true where email=$1", [email]);
+  await query("update otp_codes set verified=true where phone=$1", [phone]);
   return { ok: true };
 }
 
@@ -910,9 +912,12 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
     return { ok: false, error: "Please enter a valid PH mobile number, e.g. 0917 123 4567." };
   }
   if (isRequired("email") && !email) return { ok: false, error: `${label("email")} is required.` };
-  if (OTP_GATE_ENABLED && isActive("email") && email) {
-    const otpRow = await queryOne<{ verified: boolean }>("select verified from otp_codes where email=$1", [email.trim().toLowerCase()]);
-    if (!otpRow?.verified) return { ok: false, error: "Please verify your email address before submitting." };
+  // A misconfigured/missing Semaphore key must never be able to take the
+  // public request form down — the gate only actually applies once SMS
+  // sending is really available.
+  if (OTP_GATE_ENABLED && smsConfigured() && isActive("phone") && phone) {
+    const otpRow = await queryOne<{ verified: boolean }>("select verified from otp_codes where phone=$1", [normalizePhone(phone)]);
+    if (!otpRow?.verified) return { ok: false, error: "Please verify your phone number before submitting." };
   }
   if (isRequired("device_brand") && !deviceBrandId) return { ok: false, error: `${label("device_brand")} is required.` };
   if (isRequired("device_model") && !deviceModelId && !deviceOther) return { ok: false, error: `${label("device_model")} is required.` };
@@ -1024,9 +1029,22 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
   const assignmentNote = autoAssignment
     ? ` and auto-assigned to a Home Service technician`
     : " and sent to the Unassigned queue for triage";
-  await logActivity("home_service_request", created!.id, `Request ${reference} submitted${assignmentNote}`, "System");
 
-  if (email) await query("delete from otp_codes where email=$1", [email.trim().toLowerCase()]);
+  let smsNote = "";
+  if (phone && smsConfigured()) {
+    const confirmMessage = autoAssignment
+      ? `Hi ${name || "there"}, your Ceejay repair request ${reference} has been received and assigned to a technician! We'll text you updates here.`
+      : `Hi ${name || "there"}, your Ceejay repair request ${reference} has been received! Our team will reach out soon to schedule your service.`;
+    try {
+      await sendSms(phone, confirmMessage);
+      smsNote = ` — confirmation SMS sent to ${phone}`;
+    } catch (err) {
+      smsNote = ` — confirmation SMS failed to send to ${phone} (${err instanceof Error ? err.message : "unknown error"})`;
+    }
+  }
+  await logActivity("home_service_request", created!.id, `Request ${reference} submitted${assignmentNote}${smsNote}`, "System");
+
+  if (phone) await query("delete from otp_codes where phone=$1", [normalizePhone(phone)]);
 
   revalidatePath("/admin/requests");
   revalidatePath("/admin");
@@ -1093,13 +1111,53 @@ export async function reassignRequest(formData: FormData) {
         requestId,
       ]);
     }
-    await logActivity("home_service_request", req.id, `Manually reassigned to ${tech?.name ?? technicianId} by ${user?.name ?? "Admin"}`, user?.name ?? "Admin");
+    let smsNote = "";
+    if (req.phone && tech && smsConfigured()) {
+      try {
+        await sendSms(
+          req.phone,
+          `Hi ${req.customerName || "there"}, ${tech.name} has been assigned to your Ceejay repair request ${req.reference}. We'll keep you posted!`
+        );
+        smsNote = ` — SMS sent to ${req.phone}`;
+      } catch (err) {
+        smsNote = ` — SMS failed to send to ${req.phone} (${err instanceof Error ? err.message : "unknown error"})`;
+      }
+    }
+    await logActivity(
+      "home_service_request",
+      req.id,
+      `Manually reassigned to ${tech?.name ?? technicianId} by ${user?.name ?? "Admin"}${smsNote}`,
+      user?.name ?? "Admin"
+    );
   } else {
     await query("update home_service_requests set assigned_technician_id=null, auto_assigned=false where id=$1", [requestId]);
     await logActivity("home_service_request", req.id, `Unassigned by ${user?.name ?? "Admin"}`, user?.name ?? "Admin");
   }
   revalidatePath("/admin/requests");
   revalidatePath(`/admin/requests/${requestId}`);
+}
+
+// SMS copy for the three status changes the customer actually needs to
+// hear about — every other status transition (e.g. "Assigned", which
+// already gets its own message from reassignRequest/auto-assignment) stays
+// silent so a customer isn't texted for every internal state change.
+function statusChangeSmsText(customerName: string, reference: string, statusLabel: string): string | null {
+  const name = customerName || "there";
+  if (statusLabel === "In Progress") return `Hi ${name}, work has started on your Ceejay repair request ${reference}.`;
+  if (statusLabel === "Completed") return `Hi ${name}, your Ceejay repair request ${reference} is complete! Thank you for choosing us.`;
+  if (statusLabel === "Cancelled") return `Hi ${name}, your Ceejay repair request ${reference} has been cancelled.`;
+  return null;
+}
+
+async function sendStatusChangeSms(phone: string, customerName: string, reference: string, statusLabel: string): Promise<string> {
+  const text = statusChangeSmsText(customerName, reference, statusLabel);
+  if (!text || !phone || !smsConfigured()) return "";
+  try {
+    await sendSms(phone, text);
+    return ` — status SMS sent to ${phone}`;
+  } catch (err) {
+    return ` — status SMS failed to send to ${phone} (${err instanceof Error ? err.message : "unknown error"})`;
+  }
 }
 
 export async function changeRequestStatus(formData: FormData) {
@@ -1123,8 +1181,14 @@ export async function changeRequestStatus(formData: FormData) {
       emailNote = ` — cancellation email failed to send to ${req.email} (${err instanceof Error ? err.message : "unknown error"})`;
     }
   }
+  const smsNote = await sendStatusChangeSms(req.phone, req.customerName, req.reference, status.label);
 
-  await logActivity("home_service_request", req.id, `Status changed to "${status.label}" by ${user?.name ?? "Admin"}${emailNote}`, user?.name ?? "Admin");
+  await logActivity(
+    "home_service_request",
+    req.id,
+    `Status changed to "${status.label}" by ${user?.name ?? "Admin"}${emailNote}${smsNote}`,
+    user?.name ?? "Admin"
+  );
   revalidatePath("/admin/requests");
   revalidatePath(`/admin/requests/${requestId}`);
   revalidatePath("/technician");
@@ -1347,11 +1411,12 @@ export async function technicianUpdateStatus(formData: FormData) {
       emailNote = ` — cancellation email failed to send to ${req.email} (${err instanceof Error ? err.message : "unknown error"})`;
     }
   }
+  const smsNote = await sendStatusChangeSms(req.phone, req.customerName, req.reference, status.label);
 
   await logActivity(
     "home_service_request",
     req.id,
-    `Status updated to "${status.label}" by technician ${user?.name ?? ""}${note ? ` — ${note}` : ""}${emailNote}`,
+    `Status updated to "${status.label}" by technician ${user?.name ?? ""}${note ? ` — ${note}` : ""}${emailNote}${smsNote}`,
     user?.name ?? "Technician"
   );
   if (status.label === "In Progress") {
