@@ -185,7 +185,7 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
           <p className="mt-1 text-2xl font-bold text-green-700">{peso(grandTotal.netProfit)}</p>
         </div>
         <div className="card">
-          <p className="text-xs text-slate-400">Final Total Sales (50%)</p>
+          <p className="text-xs text-slate-400">Owner&apos;s Final Total Sales (50%)</p>
           <p className="mt-1 text-2xl font-bold text-blue-300">{peso(grandFinalTotalSales)}</p>
         </div>
         <div className="card">
@@ -243,7 +243,7 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
                     <td className="pt-2 pr-3 font-semibold text-green-700">{peso(r.netProfit)}</td>
                   </tr>
                   <tr className={r.branchFinalDeductions > 0 ? "border-b border-slate-100" : ""}>
-                    <td className="pt-2 pr-3 font-semibold text-slate-800">Final Total Sales (50%)</td>
+                    <td className="pt-2 pr-3 font-semibold text-slate-800">Owner&apos;s Final Total Sales (50%)</td>
                     <td className="pt-2 pr-3 text-slate-500">—</td>
                     <td className="pt-2 pr-3 font-semibold text-blue-300">{peso(r.finalTotalSales)}</td>
                   </tr>
@@ -255,7 +255,7 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
                         <td className="py-2 pr-3 text-red-700">−{peso(r.branchFinalDeductions)}</td>
                       </tr>
                       <tr>
-                        <td className="pt-2 pr-3 font-semibold text-slate-800">Final Total Sales (Net)</td>
+                        <td className="pt-2 pr-3 font-semibold text-slate-800">Owner&apos;s Final Total Sales (Net)</td>
                         <td className="pt-2 pr-3 text-slate-500">—</td>
                         <td className="pt-2 pr-3 font-semibold text-blue-300">{peso(r.finalTotalSalesNet)}</td>
                       </tr>
@@ -264,8 +264,11 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
                 </tbody>
               </table>
               {r.technicians.length > 0 && (
-                <div>
-                  <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400">Technicians</p>
+                <div className="border-t border-slate-200 pt-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Technicians</p>
+                  <p className="mb-1.5 text-xs text-slate-400">
+                    What each technician personally earns from their own share % — separate from the Owner&apos;s Final Total Sales above.
+                  </p>
                   <table className="w-full text-left text-sm">
                     <thead>
                       <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-400">
@@ -324,7 +327,7 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
             <p className="text-base font-bold text-green-700">{peso(grandTotal.netProfit)}</p>
           </div>
           <div className="flex items-center justify-between border-t border-slate-200 pt-1">
-            <h3 className="text-sm font-semibold text-slate-800">Final Total Sales (All Branches, 50%)</h3>
+            <h3 className="text-sm font-semibold text-slate-800">Owner&apos;s Final Total Sales (All Branches, 50%)</h3>
             <p className="text-base font-bold text-blue-300">{peso(grandFinalTotalSales)}</p>
           </div>
         </div>
