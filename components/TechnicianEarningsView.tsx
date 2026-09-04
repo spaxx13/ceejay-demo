@@ -1,7 +1,8 @@
 import Link from "next/link";
-import type { EarningsJob, EarningsPeriod } from "@/lib/earnings";
+import { TECHNICIAN_EARNINGS_SHARE, type EarningsJob, type EarningsPeriod } from "@/lib/earnings";
 
 const peso = (n: number) => `₱${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const sharePct = `${(TECHNICIAN_EARNINGS_SHARE * 100).toFixed(0)}%`;
 
 const PERIOD_LABELS: Record<EarningsPeriod, string> = { day: "Today", week: "This Week", month: "This Month" };
 
@@ -22,7 +23,17 @@ export default function TechnicianEarningsView({
   to: string;
   isCustomRange: boolean;
 }) {
-  const total = jobs.reduce((s, j) => s + j.serviceFee, 0);
+  const totals = jobs.reduce(
+    (acc, j) => ({
+      repairCost: acc.repairCost + j.repairCost,
+      serviceFee: acc.serviceFee + j.serviceFee,
+      partsCost: acc.partsCost + j.partsCost,
+      gross: acc.gross + j.gross,
+      net: acc.net + j.net,
+      earnings: acc.earnings + j.earnings,
+    }),
+    { repairCost: 0, serviceFee: 0, partsCost: 0, gross: 0, net: 0, earnings: 0 }
+  );
 
   return (
     <div className="space-y-4">
@@ -58,12 +69,27 @@ export default function TechnicianEarningsView({
         </div>
       </div>
 
-      <div className="card">
+      <div className="card space-y-1">
         <p className="text-xs text-slate-400">
-          {technicianName} — {isCustomRange ? `${from} to ${to}` : PERIOD_LABELS[period]}
+          {technicianName} — {isCustomRange ? `${from} to ${to}` : PERIOD_LABELS[period]} — {jobs.length} completed job{jobs.length === 1 ? "" : "s"}
         </p>
-        <p className="mt-1 text-2xl font-bold text-green-700">{peso(total)}</p>
-        <p className="text-xs text-slate-400">{jobs.length} completed job{jobs.length === 1 ? "" : "s"}</p>
+        <h3 className="text-sm font-semibold text-slate-800">Earnings Breakdown</h3>
+        <div className="mt-2 flex items-center justify-between text-sm text-slate-600">
+          <span>Gross (Repair Cost + Service Fee)</span>
+          <span>{peso(totals.gross)}</span>
+        </div>
+        <div className="flex items-center justify-between text-sm text-slate-500">
+          <span>Parts/Material Cost</span>
+          <span className="text-red-700">−{peso(totals.partsCost)}</span>
+        </div>
+        <div className="flex items-center justify-between border-t border-slate-200 pt-1 text-sm font-semibold text-slate-800">
+          <span>Net</span>
+          <span>{peso(totals.net)}</span>
+        </div>
+        <div className="mt-2 flex items-center justify-between rounded-lg border-2 border-blue-300 bg-blue-50 px-3 py-2">
+          <span className="text-sm font-semibold text-blue-900">Your Earnings ({sharePct} of Net)</span>
+          <span className="text-lg font-bold text-blue-900">{peso(totals.earnings)}</span>
+        </div>
       </div>
 
       <div className="card overflow-x-auto">
@@ -74,14 +100,18 @@ export default function TechnicianEarningsView({
               <th className="pb-2 pr-3 font-medium">Source</th>
               <th className="pb-2 pr-3 font-medium">Reference</th>
               <th className="pb-2 pr-3 font-medium">Customer</th>
-              <th className="pb-2 pr-3 font-medium">Device</th>
-              <th className="pb-2 font-medium">Service Fee</th>
+              <th className="pb-2 pr-3 font-medium">Repair Cost</th>
+              <th className="pb-2 pr-3 font-medium">Service Fee</th>
+              <th className="pb-2 pr-3 font-medium">Parts Cost</th>
+              <th className="pb-2 pr-3 font-medium">Gross</th>
+              <th className="pb-2 pr-3 font-medium">Net</th>
+              <th className="pb-2 font-medium">Earnings ({sharePct})</th>
             </tr>
           </thead>
           <tbody>
             {jobs.length === 0 && (
               <tr>
-                <td colSpan={6} className="py-6 text-center text-slate-400">
+                <td colSpan={10} className="py-6 text-center text-slate-400">
                   No completed jobs in this period.
                 </td>
               </tr>
@@ -92,16 +122,25 @@ export default function TechnicianEarningsView({
                 <td className="py-2.5 pr-3 text-slate-500">{j.source}</td>
                 <td className="py-2.5 pr-3 font-mono text-xs text-blue-300">{j.reference}</td>
                 <td className="py-2.5 pr-3 text-slate-800">{j.customerName}</td>
-                <td className="py-2.5 pr-3 text-slate-500">{j.deviceLabel}</td>
-                <td className="py-2.5 font-semibold text-slate-800">{peso(j.serviceFee)}</td>
+                <td className="py-2.5 pr-3 text-slate-500">{peso(j.repairCost)}</td>
+                <td className="py-2.5 pr-3 text-slate-500">{peso(j.serviceFee)}</td>
+                <td className="py-2.5 pr-3 text-red-700">−{peso(j.partsCost)}</td>
+                <td className="py-2.5 pr-3 text-slate-500">{peso(j.gross)}</td>
+                <td className="py-2.5 pr-3 text-slate-800">{peso(j.net)}</td>
+                <td className="py-2.5 font-semibold text-green-700">{peso(j.earnings)}</td>
               </tr>
             ))}
             {jobs.length > 0 && (
               <tr className="font-semibold text-slate-900">
-                <td colSpan={5} className="pt-3 pr-3 text-right">
+                <td colSpan={4} className="pt-3 pr-3">
                   Total
                 </td>
-                <td className="pt-3 text-green-700">{peso(total)}</td>
+                <td className="pt-3 pr-3 font-normal text-slate-500">{peso(totals.repairCost)}</td>
+                <td className="pt-3 pr-3 font-normal text-slate-500">{peso(totals.serviceFee)}</td>
+                <td className="pt-3 pr-3 text-red-700">−{peso(totals.partsCost)}</td>
+                <td className="pt-3 pr-3 font-normal text-slate-500">{peso(totals.gross)}</td>
+                <td className="pt-3 pr-3">{peso(totals.net)}</td>
+                <td className="pt-3 text-green-700">{peso(totals.earnings)}</td>
               </tr>
             )}
           </tbody>

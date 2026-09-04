@@ -101,6 +101,14 @@ class Writer {
     }
   }
 
+  // Unconditional page break — used at fixed section boundaries (end of
+  // Pre-Repair, end of Terms and Conditions) so those sections' headers
+  // never share a page and risk mixing with the next section's content.
+  newPage() {
+    this.page = this.doc.addPage([PAGE_W, PAGE_H]);
+    this.y = PAGE_H - MARGIN;
+  }
+
   // Shop logo top-left, branch/home-service contact numbers top-right,
   // both anchored to the same top edge, followed by a rule.
   async header(reference: string, subtitle: string) {
@@ -122,30 +130,30 @@ class Writer {
       cy -= lineHeight;
     }
 
-    this.y = topY - Math.max(logoH, lineHeight * CONTACT_LINES.length + 4) - 10;
+    this.y = topY - Math.max(logoH, lineHeight * CONTACT_LINES.length + 4) - 8;
     this.page.drawLine({ start: { x: MARGIN, y: this.y }, end: { x: MARGIN + CONTENT_W, y: this.y }, thickness: 0.75, color: RULE });
-    this.y -= 18;
+    this.y -= 14;
 
     this.page.drawText("Ceejay Apple Services", { x: MARGIN, y: this.y, size: 15, font: this.bold, color: INK });
-    this.y -= 16;
+    this.y -= 14;
     this.page.drawText(`${subtitle} — ${reference}`, { x: MARGIN, y: this.y, size: 10, font: this.font, color: MUTED });
-    this.y -= 22;
+    this.y -= 18;
   }
 
   heading(text: string) {
-    this.ensureSpace(26);
-    this.y -= 4;
+    this.ensureSpace(24);
+    this.y -= 3;
     this.page.drawText(text, { x: MARGIN, y: this.y, size: 12, font: this.bold, color: INK });
-    this.y -= 6;
+    this.y -= 5;
     this.page.drawLine({ start: { x: MARGIN, y: this.y }, end: { x: MARGIN + CONTENT_W, y: this.y }, thickness: 0.75, color: RULE });
-    this.y -= 14;
+    this.y -= 11;
   }
 
   row(label: string, value: string, opts: { boldValue?: boolean; valueSize?: number } = {}) {
     const size = opts.valueSize ?? 10;
     const lines = wrapText(this.font, value || "—", size, CONTENT_W - 150);
-    const lineHeight = size + 4;
-    this.ensureSpace(lines.length * lineHeight + 4);
+    const lineHeight = size + 3;
+    this.ensureSpace(lines.length * lineHeight + 3);
     this.page.drawText(label, { x: MARGIN, y: this.y, size: 9, font: this.font, color: MUTED });
     lines.forEach((line, i) => {
       this.page.drawText(line, {
@@ -156,7 +164,7 @@ class Writer {
         color: INK,
       });
     });
-    this.y -= lines.length * lineHeight + 4;
+    this.y -= lines.length * lineHeight + 3;
   }
 
   // Repair Cost / Service Fee breakdown, ending in a highlighted Total row —
@@ -164,8 +172,8 @@ class Writer {
   costBreakdown(repairCost: number, serviceFee: number, total: number) {
     const peso = (n: number) => `PHP ${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     const lineSize = 10;
-    const lineHeight = 16;
-    this.ensureSpace(lineHeight * 2 + 40);
+    const lineHeight = 14;
+    this.ensureSpace(lineHeight * 2 + 36);
 
     const drawLine = (label: string, value: string, bold = false) => {
       this.page.drawText(label, { x: MARGIN, y: this.y, size: lineSize, font: bold ? this.bold : this.font, color: bold ? INK : MUTED });
@@ -180,17 +188,17 @@ class Writer {
     this.page.drawLine({ start: { x: MARGIN, y: this.y }, end: { x: MARGIN + CONTENT_W, y: this.y }, thickness: 0.5, color: RULE });
     this.y -= 10;
 
-    const boxHeight = 30;
-    this.ensureSpace(boxHeight + 10);
+    const boxHeight = 26;
+    this.ensureSpace(boxHeight + 8);
     const boxTop = this.y;
     const boxY = boxTop - boxHeight;
     this.page.drawRectangle({ x: MARGIN, y: boxY, width: CONTENT_W, height: boxHeight, color: HIGHLIGHT_BG, borderColor: HIGHLIGHT_BORDER, borderWidth: 1.25 });
-    this.page.drawText("Total Amount", { x: MARGIN + 12, y: boxY + boxHeight / 2 - 4.5, size: 11, font: this.bold, color: HIGHLIGHT_TEXT });
-    const valueSize = 15;
+    this.page.drawText("Total Amount", { x: MARGIN + 12, y: boxY + boxHeight / 2 - 4, size: 11, font: this.bold, color: HIGHLIGHT_TEXT });
+    const valueSize = 14;
     const valueText = peso(total);
     const valueWidth = this.bold.widthOfTextAtSize(valueText, valueSize);
-    this.page.drawText(valueText, { x: MARGIN + CONTENT_W - 12 - valueWidth, y: boxY + boxHeight / 2 - 5.5, size: valueSize, font: this.bold, color: HIGHLIGHT_TEXT });
-    this.y = boxY - 10;
+    this.page.drawText(valueText, { x: MARGIN + CONTENT_W - 12 - valueWidth, y: boxY + boxHeight / 2 - 5, size: valueSize, font: this.bold, color: HIGHLIGHT_TEXT });
+    this.y = boxY - 8;
   }
 
   paragraph(text: string, size = 10) {
@@ -206,30 +214,30 @@ class Writer {
   // Lean checklist: item label + PASS/FAIL/N/A on one line, an optional
   // note line only when the technician actually left one.
   checklistTable(items: ChecklistItem[]) {
-    const rowGap = 3;
+    const rowGap = 2;
     for (const item of items) {
       const labelLines = wrapText(this.bold, item.label, 9.5, CONTENT_W - 90);
       const noteLines = item.notes ? wrapText(this.font, item.notes, 8.5, CONTENT_W - 10) : [];
-      const blockHeight = labelLines.length * 13 + noteLines.length * 11 + rowGap * 2;
+      const blockHeight = labelLines.length * 12 + noteLines.length * 10 + rowGap * 2;
       this.ensureSpace(blockHeight);
       labelLines.forEach((line, i) => {
-        this.page.drawText(line, { x: MARGIN, y: this.y - i * 13, size: 9.5, font: this.bold, color: INK });
+        this.page.drawText(line, { x: MARGIN, y: this.y - i * 12, size: 9.5, font: this.bold, color: INK });
       });
       const resultLabel = RESULT_LABEL[item.result ?? ""] ?? "—";
       const resultColor = RESULT_COLOR[item.result ?? ""] ?? MUTED;
       this.page.drawText(resultLabel, { x: MARGIN + CONTENT_W - 40, y: this.y, size: 9.5, font: this.bold, color: resultColor });
-      this.y -= labelLines.length * 13 + rowGap;
+      this.y -= labelLines.length * 12 + rowGap;
       noteLines.forEach((line, i) => {
-        this.page.drawText(line, { x: MARGIN + 10, y: this.y - i * 11, size: 8.5, font: this.font, color: MUTED });
+        this.page.drawText(line, { x: MARGIN + 10, y: this.y - i * 10, size: 8.5, font: this.font, color: MUTED });
       });
-      this.y -= noteLines.length * 11 + rowGap;
+      this.y -= noteLines.length * 10 + rowGap;
       this.page.drawLine({
         start: { x: MARGIN, y: this.y },
         end: { x: MARGIN + CONTENT_W, y: this.y },
         thickness: 0.5,
         color: RULE,
       });
-      this.y -= 8;
+      this.y -= 5;
     }
   }
 
@@ -342,25 +350,33 @@ export async function generateRepairReceiptPdf(opts: {
   w.heading("Cost Breakdown");
   w.costBreakdown(opts.repairCost, opts.serviceFee, opts.repairCost + opts.serviceFee);
 
+  // Page 1: general receipt info + Pre-Repair Checklist + its signatures.
+  w.heading("Pre-Repair Checklist");
+  w.checklistTable(opts.preItems);
+  await w.signatureRow(opts.preCustomerSignature, opts.preTechnicianSignature);
+
+  // Page 2: Post-Repair Checklist + its signatures + Terms and Conditions.
+  // Forced onto its own page so nothing from Page 1 can spill down and mix
+  // with these headers, regardless of how much room was left above.
+  w.newPage();
+  w.heading("Post-Repair Checklist");
+  w.checklistTable(opts.postItems);
+  await w.signatureRow(opts.postCustomerSignature, opts.postTechnicianSignature);
+
   if (opts.postNotes) {
     w.heading("Notes (Post-Repair)");
     w.paragraph(opts.postNotes);
   }
 
-  w.heading("Pre-Repair Checklist");
-  w.checklistTable(opts.preItems);
-  await w.signatureRow(opts.preCustomerSignature, opts.preTechnicianSignature);
-
-  w.heading("Post-Repair Checklist");
-  w.checklistTable(opts.postItems);
-  await w.signatureRow(opts.postCustomerSignature, opts.postTechnicianSignature);
-
   w.heading("Terms and Conditions");
   w.termsAndConditions(SERVICE_AGREEMENT_TERMS, HIGHLIGHTED_TERMS);
 
+  // Page 3: miscellaneous items (device/receipt photo) — also forced onto
+  // its own page, separate from the Terms and Conditions above it.
   if (opts.receiptPhoto) {
     const decoded = dataUrlBytes(opts.receiptPhoto);
     if (decoded) {
+      w.newPage();
       w.heading(opts.photoLabel ?? "Receipt Photo");
       const embedded = decoded.isPng ? await w.doc.embedPng(decoded.bytes) : await w.doc.embedJpg(decoded.bytes);
       const maxW = CONTENT_W;

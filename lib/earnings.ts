@@ -31,6 +31,9 @@ export function resolveEarningsRange(period: EarningsPeriod, customFrom?: string
   return { from: toISO(first), to: toISO(last) };
 }
 
+// The technician's cut of each job's net (gross minus parts cost).
+export const TECHNICIAN_EARNINGS_SHARE = 0.7;
+
 export type EarningsJob = {
   id: string;
   source: "POS" | "Home Service";
@@ -38,14 +41,37 @@ export type EarningsJob = {
   customerName: string;
   date: string;
   deviceLabel: string;
+  repairCost: number;
   serviceFee: number;
+  partsCost: number;
+  gross: number; // repairCost + serviceFee
+  net: number; // gross - partsCost
+  earnings: number; // net * TECHNICIAN_EARNINGS_SHARE — what the technician is paid for this job
 };
+
+function toJob(
+  id: string,
+  source: EarningsJob["source"],
+  reference: string,
+  customerName: string,
+  date: string,
+  deviceLabel: string,
+  repairCost: number,
+  serviceFee: number,
+  partsCost: number
+): EarningsJob {
+  const gross = repairCost + serviceFee;
+  const net = gross - partsCost;
+  return { id, source, reference, customerName, date, deviceLabel, repairCost, serviceFee, partsCost, gross, net, earnings: net * TECHNICIAN_EARNINGS_SHARE };
+}
 
 // Itemized, completed job orders credited to one technician (matched by
 // name — the same identity POS records and service agreements already use
-// for technician attribution elsewhere) within [from, to] inclusive.
-// "Earnings" here is each job's Labor/Service Cost — what's paid out to the
-// technician for their work, distinct from the shop's parts cost or profit.
+// for technician attribution elsewhere) within [from, to] inclusive, with
+// the full Gross → Net → Earnings breakdown for each job:
+//   Gross = Repair Cost + Service Fee
+//   Net = Gross - Parts Cost
+//   Earnings = Net * 70% — what's paid out to the technician for their work
 export function computeTechnicianEarnings(
   technicianName: string,
   repairRecords: RepairRecord[],
@@ -57,29 +83,15 @@ export function computeTechnicianEarnings(
   const name = technicianName.trim();
   if (!name) return [];
 
-  const posJobs: EarningsJob[] = repairRecords
+  const posJobs = repairRecords
     .filter((r) => !r.cancelled && r.technicianName.trim() === name && inRange(r.serviceDate))
-    .map((r) => ({
-      id: r.id,
-      source: "POS" as const,
-      reference: r.reference,
-      customerName: r.customerName,
-      date: r.serviceDate,
-      deviceLabel: r.deviceModel || "—",
-      serviceFee: r.laborCost,
-    }));
+    .map((r) => toJob(r.id, "POS", r.reference, r.customerName, r.serviceDate, r.deviceModel || "—", r.cost, r.laborCost, r.partsCost));
 
-  const homeServiceJobs: EarningsJob[] = agreements
+  const homeServiceJobs = agreements
     .filter((a) => a.phase === "post_repair" && a.requestId && a.technicianName.trim() === name && inRange(a.completedAt.slice(0, 10)))
-    .map((a) => ({
-      id: a.id,
-      source: "Home Service" as const,
-      reference: a.reference,
-      customerName: a.customerName,
-      date: a.completedAt.slice(0, 10),
-      deviceLabel: a.deviceLabel || "—",
-      serviceFee: a.laborCost,
-    }));
+    .map((a) =>
+      toJob(a.id, "Home Service", a.reference, a.customerName, a.completedAt.slice(0, 10), a.deviceLabel || "—", a.cost, a.laborCost, a.partsCost)
+    );
 
   return [...posJobs, ...homeServiceJobs].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
 }
