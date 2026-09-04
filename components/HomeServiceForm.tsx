@@ -49,6 +49,13 @@ type Brand = { id: string; label: string };
 type Model = { id: string; brandId: string; name: string };
 type ServiceType = { id: string; label: string };
 
+// Matches the notice shown right above this dropdown — these require
+// in-branch equipment/parts we don't bring on a home visit, so they're kept
+// out of the options a customer can actually pick here (they're still
+// listed on the public Services page and the in-branch POS/checklist flow,
+// just not bookable as a home service).
+const EXCLUDED_FROM_HOME_SERVICE = new Set(["Camera", "Backhousing(Whole shell including backglass)", "Logic board problem"]);
+
 export default function HomeServiceForm({
   brands,
   models,
@@ -402,11 +409,13 @@ export default function HomeServiceForm({
             </FormNotice>
             <select name="serviceTypeId" required={req} className="input">
               <option value="">Select service type...</option>
-              {serviceTypes.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.label}
-                </option>
-              ))}
+              {serviceTypes
+                .filter((s) => !EXCLUDED_FROM_HOME_SERVICE.has(s.label))
+                .map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.label}
+                  </option>
+                ))}
             </select>
           </div>
         );
