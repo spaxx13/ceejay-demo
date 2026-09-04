@@ -1,10 +1,10 @@
 import Link from "next/link";
 import { getRepairRecords, getServiceAgreements, getExpenses, getTechnicians, isBranchHidden, homeServiceBranchId } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
+import { toJob, DEFAULT_EARNINGS_SHARE_PERCENT } from "@/lib/earnings";
 import SalesTabs from "@/components/SalesTabs";
 
 const peso = (n: number) => `₱${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-const pct = (n: number) => `${n.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`;
 
 export default async function TechnicianSalesPage({ searchParams }: { searchParams: Promise<{ from?: string; to?: string }> }) {
   const sp = await searchParams;
@@ -24,9 +24,14 @@ export default async function TechnicianSalesPage({ searchParams }: { searchPara
   const to = hasFilter ? sp.to : today;
   const inRange = (date: string) => (!from || date >= from) && (!to || date <= to);
 
-  // Same two sources as Branch Sales — POS repair records and completed
+  const techByName = new Map(technicians.map((t) => [t.name, t]));
+  const shareFor = (name: string) => techByName.get(name)?.earningsSharePercent ?? DEFAULT_EARNINGS_SHARE_PERCENT;
+
+  // Same two sources as My Earnings — POS repair records and completed
   // home-service Post-Repair checklists — but grouped by the technician's
-  // name (as typed/recorded on each job) instead of branch.
+  // name (as typed/recorded on each job) instead of per-technician detail.
+  // Uses the exact same Gross/Net/Earnings math (lib/earnings.ts's toJob) so
+  // this summary always agrees with each technician's own Earnings page.
   const posSales = repairRecords.filter((r) => !r.cancelled && inRange(r.serviceDate) && !isBranchHidden(user, r.branchId));
   const homeServiceSales = agreements.filter(
     (a) =>
@@ -39,70 +44,60 @@ export default async function TechnicianSalesPage({ searchParams }: { searchPara
     (e) => e.target === "technician_final_total_sales" && inRange(e.expenseDate) && !isBranchHidden(user, e.branchId)
   );
 
-  type TechTotals = { name: string; count: number; totalSales: number; partsCost: number; laborCost: number; otherExpenses: number };
+  type TechTotals = { name: string; count: number; repairCost: number; serviceFee: number; partsCost: number; gross: number; net: number; earnings: number };
   const totals = new Map<string, TechTotals>();
   const ensure = (rawName: string) => {
     const name = rawName.trim() || "Unassigned";
-    if (!totals.has(name)) totals.set(name, { name, count: 0, totalSales: 0, partsCost: 0, laborCost: 0, otherExpenses: 0 });
+    if (!totals.has(name)) totals.set(name, { name, count: 0, repairCost: 0, serviceFee: 0, partsCost: 0, gross: 0, net: 0, earnings: 0 });
     return totals.get(name)!;
   };
+  const add = (rawName: string, repairCost: number, serviceFee: number, partsCost: number) => {
+    const bucket = ensure(rawName);
+    const job = toJob("", "POS", "", "", "", "", repairCost, serviceFee, partsCost, shareFor(rawName.trim() || "Unassigned"));
+    bucket.count += 1;
+    bucket.repairCost += repairCost;
+    bucket.serviceFee += serviceFee;
+    bucket.partsCost += partsCost;
+    bucket.gross += job.gross;
+    bucket.net += job.net;
+    bucket.earnings += job.earnings;
+  };
 
-  for (const r of posSales) {
-    const bucket = ensure(r.technicianName);
-    bucket.count += 1;
-    bucket.totalSales += r.cost;
-    bucket.partsCost += r.partsCost;
-    bucket.laborCost += r.laborCost;
-    bucket.otherExpenses += r.otherExpenses;
-  }
-  for (const a of homeServiceSales) {
-    const bucket = ensure(a.technicianName);
-    bucket.count += 1;
-    bucket.totalSales += a.cost;
-    bucket.partsCost += a.partsCost;
-    bucket.laborCost += a.laborCost;
-    bucket.otherExpenses += a.otherExpenses;
-  }
+  for (const r of posSales) add(r.technicianName, r.cost, r.laborCost, r.partsCost);
+  for (const a of homeServiceSales) add(a.technicianName, a.cost, a.laborCost, a.partsCost);
 
   const rows = Array.from(totals.values())
     .map((t) => {
-      const totalExpenses = t.partsCost + t.laborCost + t.otherExpenses;
-      const netProfit = t.totalSales - totalExpenses;
-      const profitMargin = t.totalSales > 0 ? (netProfit / t.totalSales) * 100 : 0;
-      const finalTotalSales = netProfit / 2;
       const businessExpenses = technicianExpenses.filter((e) => e.technicianName === t.name).reduce((s, e) => s + e.amount, 0);
-      return { ...t, totalExpenses, netProfit, profitMargin, finalTotalSales, businessExpenses, finalTotalSalesNet: finalTotalSales - businessExpenses };
+      return { ...t, businessExpenses, finalEarningsNet: t.earnings - businessExpenses };
     })
     .sort((a, b) => {
       if (a.name === "Unassigned") return 1;
       if (b.name === "Unassigned") return -1;
-      return b.totalSales - a.totalSales;
+      return b.gross - a.gross;
     });
 
   const grandTotal = rows.reduce(
     (acc, r) => ({
       count: acc.count + r.count,
-      totalSales: acc.totalSales + r.totalSales,
+      repairCost: acc.repairCost + r.repairCost,
+      serviceFee: acc.serviceFee + r.serviceFee,
       partsCost: acc.partsCost + r.partsCost,
-      laborCost: acc.laborCost + r.laborCost,
-      otherExpenses: acc.otherExpenses + r.otherExpenses,
-      totalExpenses: acc.totalExpenses + r.totalExpenses,
-      netProfit: acc.netProfit + r.netProfit,
+      gross: acc.gross + r.gross,
+      net: acc.net + r.net,
+      earnings: acc.earnings + r.earnings,
+      businessExpenses: acc.businessExpenses + r.businessExpenses,
+      finalEarningsNet: acc.finalEarningsNet + r.finalEarningsNet,
     }),
-    { count: 0, totalSales: 0, partsCost: 0, laborCost: 0, otherExpenses: 0, totalExpenses: 0, netProfit: 0 }
+    { count: 0, repairCost: 0, serviceFee: 0, partsCost: 0, gross: 0, net: 0, earnings: 0, businessExpenses: 0, finalEarningsNet: 0 }
   );
-  const grandMargin = grandTotal.totalSales > 0 ? (grandTotal.netProfit / grandTotal.totalSales) * 100 : 0;
-  const grandFinalTotalSales = grandTotal.netProfit / 2;
-  const grandBusinessExpenses = technicianExpenses.reduce((s, e) => s + e.amount, 0);
-  const grandFinalTotalSalesNet = grandFinalTotalSales - grandBusinessExpenses;
-  const techByName = new Map(technicians.map((t) => [t.name, t]));
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-xl font-bold text-slate-900">Sales and Net Profit by Technician</h1>
+        <h1 className="text-xl font-bold text-slate-900">Technician Earnings</h1>
         <p className="mt-1 text-sm text-slate-400">
-          Each technician&apos;s total sales, expenses, and net profit across POS repair records and completed home service jobs.
+          Each technician&apos;s share of completed jobs (POS and home service), computed the same way as their own My Earnings page.
         </p>
       </div>
 
@@ -131,24 +126,23 @@ export default async function TechnicianSalesPage({ searchParams }: { searchPara
           <thead>
             <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-400">
               <th className="pb-2 pr-3 font-medium">Technician</th>
+              <th className="pb-2 pr-3 font-medium">% Earnings</th>
               <th className="pb-2 pr-3 font-medium">Jobs</th>
-              <th className="pb-2 pr-3 font-medium">Total Sales</th>
-              <th className="pb-2 pr-3 font-medium">Parts/Material Cost</th>
-              <th className="pb-2 pr-3 font-medium">Labor/Service Cost</th>
-              <th className="pb-2 pr-3 font-medium">Other Expenses</th>
-              <th className="pb-2 pr-3 font-medium">Total Expenses</th>
-              <th className="pb-2 pr-3 font-medium">Net Profit</th>
-              <th className="pb-2 pr-3 font-medium">Profit Margin</th>
-              <th className="pb-2 pr-3 font-medium">Final Total Sales (50%)</th>
+              <th className="pb-2 pr-3 font-medium">Repair Cost</th>
+              <th className="pb-2 pr-3 font-medium">Service Fee</th>
+              <th className="pb-2 pr-3 font-medium">Parts Cost</th>
+              <th className="pb-2 pr-3 font-medium">Gross</th>
+              <th className="pb-2 pr-3 font-medium">Net</th>
+              <th className="pb-2 pr-3 font-medium">Earnings</th>
               <th className="pb-2 pr-3 font-medium">Business Expenses</th>
-              <th className="pb-2 pr-3 font-medium">Final Total Sales (Net)</th>
-              <th className="pb-2 font-medium">Earnings</th>
+              <th className="pb-2 pr-3 font-medium">Final Earnings (Net)</th>
+              <th className="pb-2 font-medium"></th>
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 && (
               <tr>
-                <td colSpan={13} className="py-6 text-center text-slate-400">
+                <td colSpan={12} className="py-6 text-center text-slate-400">
                   No sales recorded yet.
                 </td>
               </tr>
@@ -156,21 +150,22 @@ export default async function TechnicianSalesPage({ searchParams }: { searchPara
             {rows.map((r) => (
               <tr key={r.name} className={`border-b border-slate-200 last:border-0 ${r.name === "Unassigned" ? "opacity-60" : ""}`}>
                 <td className="py-3 pr-3 font-medium text-slate-800">{r.name}</td>
+                <td className="py-3 pr-3 text-slate-500">
+                  {techByName.get(r.name) ? `${techByName.get(r.name)!.earningsSharePercent}%` : "—"}
+                </td>
                 <td className="py-3 pr-3 text-slate-500">{r.count}</td>
-                <td className="py-3 pr-3 text-slate-800">{peso(r.totalSales)}</td>
-                <td className="py-3 pr-3 text-slate-500">{peso(r.partsCost)}</td>
-                <td className="py-3 pr-3 text-slate-500">{peso(r.laborCost)}</td>
-                <td className="py-3 pr-3 text-slate-500">{peso(r.otherExpenses)}</td>
-                <td className="py-3 pr-3 text-red-700">−{peso(r.totalExpenses)}</td>
-                <td className="py-3 pr-3 font-semibold text-green-700">{peso(r.netProfit)}</td>
-                <td className="py-3 pr-3 font-semibold text-slate-800">{pct(r.profitMargin)}</td>
-                <td className="py-3 pr-3 font-semibold text-blue-300">{peso(r.finalTotalSales)}</td>
+                <td className="py-3 pr-3 text-slate-500">{peso(r.repairCost)}</td>
+                <td className="py-3 pr-3 text-slate-500">{peso(r.serviceFee)}</td>
+                <td className="py-3 pr-3 text-red-700">−{peso(r.partsCost)}</td>
+                <td className="py-3 pr-3 text-slate-800">{peso(r.gross)}</td>
+                <td className="py-3 pr-3 font-semibold text-slate-900">{peso(r.net)}</td>
+                <td className="py-3 pr-3 font-semibold text-green-700">{peso(r.earnings)}</td>
                 <td className="py-3 pr-3 text-red-700">−{peso(r.businessExpenses)}</td>
-                <td className="py-3 pr-3 font-semibold text-blue-300">{peso(r.finalTotalSalesNet)}</td>
+                <td className="py-3 pr-3 font-semibold text-blue-300">{peso(r.finalEarningsNet)}</td>
                 <td className="py-3">
                   {techByName.get(r.name) && (
                     <Link href={`/admin/sales/technicians/${techByName.get(r.name)!.id}`} className="btn-secondary !px-3 !py-1 text-xs">
-                      Earnings
+                      Details
                     </Link>
                   )}
                 </td>
@@ -179,17 +174,16 @@ export default async function TechnicianSalesPage({ searchParams }: { searchPara
             {rows.length > 0 && (
               <tr className="font-semibold text-slate-900">
                 <td className="pt-3 pr-3">Total</td>
+                <td className="pt-3 pr-3"></td>
                 <td className="pt-3 pr-3">{grandTotal.count}</td>
-                <td className="pt-3 pr-3">{peso(grandTotal.totalSales)}</td>
-                <td className="pt-3 pr-3 font-normal text-slate-500">{peso(grandTotal.partsCost)}</td>
-                <td className="pt-3 pr-3 font-normal text-slate-500">{peso(grandTotal.laborCost)}</td>
-                <td className="pt-3 pr-3 font-normal text-slate-500">{peso(grandTotal.otherExpenses)}</td>
-                <td className="pt-3 pr-3 text-red-700">−{peso(grandTotal.totalExpenses)}</td>
-                <td className="pt-3 pr-3 text-green-700">{peso(grandTotal.netProfit)}</td>
-                <td className="pt-3 pr-3">{pct(grandMargin)}</td>
-                <td className="pt-3 pr-3 text-blue-300">{peso(grandFinalTotalSales)}</td>
-                <td className="pt-3 pr-3 text-red-700">−{peso(grandBusinessExpenses)}</td>
-                <td className="pt-3 pr-3 text-blue-300">{peso(grandFinalTotalSalesNet)}</td>
+                <td className="pt-3 pr-3 font-normal text-slate-500">{peso(grandTotal.repairCost)}</td>
+                <td className="pt-3 pr-3 font-normal text-slate-500">{peso(grandTotal.serviceFee)}</td>
+                <td className="pt-3 pr-3 text-red-700">−{peso(grandTotal.partsCost)}</td>
+                <td className="pt-3 pr-3 font-normal text-slate-500">{peso(grandTotal.gross)}</td>
+                <td className="pt-3 pr-3">{peso(grandTotal.net)}</td>
+                <td className="pt-3 pr-3 text-green-700">{peso(grandTotal.earnings)}</td>
+                <td className="pt-3 pr-3 text-red-700">−{peso(grandTotal.businessExpenses)}</td>
+                <td className="pt-3 pr-3 text-blue-300">{peso(grandTotal.finalEarningsNet)}</td>
                 <td className="pt-3"></td>
               </tr>
             )}

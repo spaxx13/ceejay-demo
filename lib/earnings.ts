@@ -52,7 +52,11 @@ export type EarningsJob = {
   earnings: number; // net * (sharePercent / 100) — what the technician is paid for this job
 };
 
-function toJob(
+// Exported so any other view (e.g. the aggregate By Technician table) can
+// compute the exact same Gross/Net/Earnings breakdown per record instead of
+// re-deriving its own formula — that drift is exactly what caused the two
+// pages to disagree before this was factored out.
+export function toJob(
   id: string,
   source: EarningsJob["source"],
   reference: string,

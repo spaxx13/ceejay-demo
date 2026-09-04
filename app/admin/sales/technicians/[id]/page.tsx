@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getRepairRecords, getServiceAgreements, getTechnicians, isBranchHidden, homeServiceBranchId } from "@/lib/db";
+import { getRepairRecords, getServiceAgreements, getTechnicians, getExpenses, isBranchHidden, homeServiceBranchId } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { computeTechnicianEarnings, resolveEarningsRange, type EarningsPeriod } from "@/lib/earnings";
 import SalesTabs from "@/components/SalesTabs";
@@ -15,11 +15,12 @@ export default async function TechnicianEarningsDetailPage({
 }) {
   const { id } = await params;
   const sp = await searchParams;
-  const [user, technicians, allRepairRecords, allAgreements] = await Promise.all([
+  const [user, technicians, allRepairRecords, allAgreements, allExpenses] = await Promise.all([
     getCurrentUser(),
     getTechnicians(),
     getRepairRecords(),
     getServiceAgreements(),
+    getExpenses(),
   ]);
   const technician = technicians.find((t) => t.id === id);
   if (!technician) notFound();
@@ -30,11 +31,16 @@ export default async function TechnicianEarningsDetailPage({
   const agreements = allAgreements.filter(
     (a) => !isBranchHidden(user, a.requestId ? homeServiceBranchId(a.technicianId, a.branchId, technicians) : a.branchId)
   );
+  const expenses = allExpenses.filter((e) => !isBranchHidden(user, e.branchId));
 
   const period: EarningsPeriod = sp.period === "week" || sp.period === "month" ? sp.period : "day";
   const isCustomRange = !!(sp.from || sp.to);
   const { from, to } = resolveEarningsRange(period, sp.from, sp.to);
+  const inRange = (date: string) => (!from || date >= from) && (!to || date <= to);
   const jobs = computeTechnicianEarnings(technician.name, repairRecords, agreements, from, to, technician.earningsSharePercent);
+  const businessExpenses = expenses
+    .filter((e) => e.target === "technician_final_total_sales" && e.technicianName === technician.name && inRange(e.expenseDate))
+    .reduce((s, e) => s + e.amount, 0);
 
   return (
     <div className="space-y-6">
@@ -55,6 +61,7 @@ export default async function TechnicianEarningsDetailPage({
         technicianName={technician.name}
         sharePercent={technician.earningsSharePercent}
         jobs={jobs}
+        businessExpenses={businessExpenses}
         period={period}
         from={from}
         to={to}

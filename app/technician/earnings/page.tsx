@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { getCurrentUser } from "@/lib/auth";
-import { getRepairRecords, getServiceAgreements, getTechnicians } from "@/lib/db";
+import { getRepairRecords, getServiceAgreements, getTechnicians, getExpenses } from "@/lib/db";
 import { computeTechnicianEarnings, resolveEarningsRange, type EarningsPeriod } from "@/lib/earnings";
 import TechnicianEarningsView from "@/components/TechnicianEarningsView";
 
@@ -10,20 +10,27 @@ export default async function TechnicianEarningsPage({
   searchParams: Promise<{ period?: string; from?: string; to?: string }>;
 }) {
   const sp = await searchParams;
-  const [user, technicians, repairRecords, agreements] = await Promise.all([
+  const [user, technicians, repairRecords, agreements, expenses] = await Promise.all([
     getCurrentUser(),
     getTechnicians(),
     getRepairRecords(),
     getServiceAgreements(),
+    getExpenses(),
   ]);
   const technician = technicians.find((t) => t.id === user?.technicianId);
 
   const period: EarningsPeriod = sp.period === "week" || sp.period === "month" ? sp.period : "day";
   const isCustomRange = !!(sp.from || sp.to);
   const { from, to } = resolveEarningsRange(period, sp.from, sp.to);
+  const inRange = (date: string) => (!from || date >= from) && (!to || date <= to);
   const jobs = technician
     ? computeTechnicianEarnings(technician.name, repairRecords, agreements, from, to, technician.earningsSharePercent)
     : [];
+  const businessExpenses = technician
+    ? expenses
+        .filter((e) => e.target === "technician_final_total_sales" && e.technicianName === technician.name && inRange(e.expenseDate))
+        .reduce((s, e) => s + e.amount, 0)
+    : 0;
 
   return (
     <div className="space-y-4">
@@ -45,6 +52,7 @@ export default async function TechnicianEarningsPage({
           technicianName={technician.name}
           sharePercent={technician.earningsSharePercent}
           jobs={jobs}
+          businessExpenses={businessExpenses}
           period={period}
           from={from}
           to={to}

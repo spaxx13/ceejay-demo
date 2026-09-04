@@ -10,6 +10,7 @@ export default function TechnicianEarningsView({
   technicianName,
   sharePercent,
   jobs,
+  businessExpenses,
   period,
   from,
   to,
@@ -19,6 +20,7 @@ export default function TechnicianEarningsView({
   technicianName: string;
   sharePercent: number;
   jobs: EarningsJob[];
+  businessExpenses: number;
   period: EarningsPeriod;
   from: string;
   to: string;
@@ -92,6 +94,18 @@ export default function TechnicianEarningsView({
           <span className="text-sm font-semibold text-blue-900">Your Earnings ({sharePct} of Net)</span>
           <span className="text-lg font-bold text-blue-900">{peso(totals.earnings)}</span>
         </div>
+        {businessExpenses > 0 && (
+          <>
+            <div className="mt-2 flex items-center justify-between text-sm text-slate-500">
+              <span>Business Expenses</span>
+              <span className="text-red-700">−{peso(businessExpenses)}</span>
+            </div>
+            <div className="flex items-center justify-between rounded-lg border-2 border-blue-300 bg-blue-50 px-3 py-2">
+              <span className="text-sm font-semibold text-blue-900">Final Earnings (Net)</span>
+              <span className="text-lg font-bold text-blue-900">{peso(totals.earnings - businessExpenses)}</span>
+            </div>
+          </>
+        )}
       </div>
 
       <div className="card overflow-x-auto">
