@@ -25,8 +25,8 @@ import {
   canManageHomeServiceRequests,
 } from "./db";
 import { getCurrentUser, setSession, clearSession, requireRole } from "./auth";
-import { sendRepairReceiptEmail, sendCancellationEmail } from "./email";
-import { sendOtpSms, sendSms, smsConfigured, normalizePhone } from "./sms";
+import { sendOtpEmail, sendRepairReceiptEmail, sendCancellationEmail } from "./email";
+import { sendSms, smsConfigured } from "./sms";
 import type {
   Role,
   LookupKind,
@@ -797,75 +797,74 @@ export async function updateRepairRecordDetails(formData: FormData) {
   revalidatePath("/admin/crm");
 }
 
-// ---------- Home Service Request: SMS OTP Verification ----------
-// Anti-spam gate — a customer must prove they control the phone number they
-// typed before the Home Service Request form can be submitted at all. One
-// row per phone in otp_codes; a fresh send overwrites whatever was there
-// before rather than accumulating history. Semaphore generates the actual
-// code (routed to their OTP-dedicated SMS path) and hands it back in the
-// send response — this just hashes and stores whatever it returns, so
-// verification below never needed to change when the source of the code
-// moved from a local Math.random() to Semaphore.
-//
-// If SEMAPHORE_API_KEY isn't configured, the gate quietly disables itself
-// (see OTP_GATE_ENABLED usage in submitHomeServiceRequest) rather than
-// blocking every submission — a missing/misconfigured SMS provider should
-// never be able to take the public request form down.
+// ---------- Home Service Request: Email OTP Verification ----------
+// Anti-spam gate — a customer must prove they control the email address
+// they typed before the Home Service Request form can be submitted at
+// all. One row per email in otp_codes; a fresh send overwrites whatever
+// was there before rather than accumulating history.
 
 const OTP_TTL_MS = 10 * 60_000;
 const OTP_RESEND_COOLDOWN_MS = 60_000;
 const OTP_MAX_ATTEMPTS = 5;
 
+function isValidEmail(email: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+function generateOtpCode() {
+  return String(Math.floor(100000 + Math.random() * 900000));
+}
+
 export type SendOtpResult = { ok: true } | { ok: false; error: string };
 
-export async function sendHomeServiceOtp(phoneInput: string): Promise<SendOtpResult> {
-  if (!isValidPhone(phoneInput)) return { ok: false, error: "Enter a valid PH mobile number first, e.g. 0917 123 4567." };
-  if (!smsConfigured()) return { ok: false, error: "SMS verification is temporarily unavailable — please try again later." };
-  const phone = normalizePhone(phoneInput);
+export async function sendHomeServiceOtp(emailInput: string): Promise<SendOtpResult> {
+  const email = emailInput.trim().toLowerCase();
+  if (!isValidEmail(email)) return { ok: false, error: "Enter a valid email address first." };
 
-  const existing = await queryOne<{ created_at: Date }>("select created_at from otp_codes where phone=$1", [phone]);
+  const existing = await queryOne<{ created_at: Date }>("select created_at from otp_codes where email=$1", [email]);
   if (existing && Date.now() - new Date(existing.created_at).getTime() < OTP_RESEND_COOLDOWN_MS) {
     return { ok: false, error: "Please wait a moment before requesting another code." };
   }
 
-  let code: string;
-  try {
-    code = await sendOtpSms(phone);
-  } catch {
-    return { ok: false, error: "Couldn't send the verification SMS — please try again in a moment." };
-  }
+  const code = generateOtpCode();
   const codeHash = await bcrypt.hash(code, 10);
   const expiresAt = new Date(Date.now() + OTP_TTL_MS).toISOString();
 
   await query(
-    `insert into otp_codes (phone, code_hash, attempts, verified, expires_at, created_at)
+    `insert into otp_codes (email, code_hash, attempts, verified, expires_at, created_at)
      values ($1,$2,0,false,$3,now())
-     on conflict (phone) do update set code_hash=$2, attempts=0, verified=false, expires_at=$3, created_at=now()`,
-    [phone, codeHash, expiresAt]
+     on conflict (email) do update set code_hash=$2, attempts=0, verified=false, expires_at=$3, created_at=now()`,
+    [email, codeHash, expiresAt]
   );
+
+  try {
+    await sendOtpEmail(email, code);
+  } catch {
+    return { ok: false, error: "Couldn't send the verification email — please try again in a moment." };
+  }
   return { ok: true };
 }
 
 export type VerifyOtpResult = { ok: true } | { ok: false; error: string };
 
-export async function verifyHomeServiceOtp(phoneInput: string, codeInput: string): Promise<VerifyOtpResult> {
-  const phone = normalizePhone(phoneInput);
+export async function verifyHomeServiceOtp(emailInput: string, codeInput: string): Promise<VerifyOtpResult> {
+  const email = emailInput.trim().toLowerCase();
   const code = codeInput.trim();
   const row = await queryOne<{ code_hash: string; attempts: number; expires_at: Date; verified: boolean }>(
-    "select code_hash, attempts, expires_at, verified from otp_codes where phone=$1",
-    [phone]
+    "select code_hash, attempts, expires_at, verified from otp_codes where email=$1",
+    [email]
   );
   if (!row) return { ok: false, error: "Send a verification code first." };
   if (row.verified) return { ok: true };
   if (new Date(row.expires_at).getTime() < Date.now()) return { ok: false, error: "That code expired — request a new one." };
   if (row.attempts >= OTP_MAX_ATTEMPTS) return { ok: false, error: "Too many incorrect attempts — request a new code." };
 
-  const match = code.length > 0 && (await bcrypt.compare(code, row.code_hash));
+  const match = code.length === 6 && (await bcrypt.compare(code, row.code_hash));
   if (!match) {
-    await query("update otp_codes set attempts = attempts + 1 where phone=$1", [phone]);
+    await query("update otp_codes set attempts = attempts + 1 where email=$1", [email]);
     return { ok: false, error: "Incorrect code. Please try again." };
   }
-  await query("update otp_codes set verified=true where phone=$1", [phone]);
+  await query("update otp_codes set verified=true where email=$1", [email]);
   return { ok: true };
 }
 
@@ -912,12 +911,9 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
     return { ok: false, error: "Please enter a valid PH mobile number, e.g. 0917 123 4567." };
   }
   if (isRequired("email") && !email) return { ok: false, error: `${label("email")} is required.` };
-  // A misconfigured/missing Semaphore key must never be able to take the
-  // public request form down — the gate only actually applies once SMS
-  // sending is really available.
-  if (OTP_GATE_ENABLED && smsConfigured() && isActive("phone") && phone) {
-    const otpRow = await queryOne<{ verified: boolean }>("select verified from otp_codes where phone=$1", [normalizePhone(phone)]);
-    if (!otpRow?.verified) return { ok: false, error: "Please verify your phone number before submitting." };
+  if (OTP_GATE_ENABLED && isActive("email") && email) {
+    const otpRow = await queryOne<{ verified: boolean }>("select verified from otp_codes where email=$1", [email.trim().toLowerCase()]);
+    if (!otpRow?.verified) return { ok: false, error: "Please verify your email address before submitting." };
   }
   if (isRequired("device_brand") && !deviceBrandId) return { ok: false, error: `${label("device_brand")} is required.` };
   if (isRequired("device_model") && !deviceModelId && !deviceOther) return { ok: false, error: `${label("device_model")} is required.` };
@@ -1044,7 +1040,7 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
   }
   await logActivity("home_service_request", created!.id, `Request ${reference} submitted${assignmentNote}${smsNote}`, "System");
 
-  if (phone) await query("delete from otp_codes where phone=$1", [normalizePhone(phone)]);
+  if (email) await query("delete from otp_codes where email=$1", [email.trim().toLowerCase()]);
 
   revalidatePath("/admin/requests");
   revalidatePath("/admin");
