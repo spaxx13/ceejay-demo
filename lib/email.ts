@@ -21,7 +21,8 @@ export async function sendRepairReceiptEmail(
     natureOfRepair: string;
     warrantyCoverage: string;
     postNotes: string;
-    cost: number;
+    repairCost: number;
+    serviceFee: number;
     technicianName: string;
     preItems: ChecklistItem[];
     postItems: ChecklistItem[];
@@ -35,6 +36,7 @@ export async function sendRepairReceiptEmail(
 ) {
   const client = getClient();
   const peso = (n: number) => `₱${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const total = opts.repairCost + opts.serviceFee;
 
   const pdfBytes = await generateRepairReceiptPdf(opts);
 
@@ -44,7 +46,7 @@ export async function sendRepairReceiptEmail(
       <h2 style="margin: 4px 0 16px;">Your repair receipt is ready</h2>
       <p style="font-size: 14px; line-height: 1.5;">
         Hi ${opts.customerName}, thanks for choosing Ceejay Cellphone Repair Shop. Your receipt for
-        <strong>${opts.reference}</strong> (${opts.deviceLabel || "your device"}, ${peso(opts.cost)}) is attached as a PDF —
+        <strong>${opts.reference}</strong> (${opts.deviceLabel || "your device"}, ${peso(total)}) is attached as a PDF —
         it includes the full pre- and post-repair checklist results and both signed copies.
       </p>
       <p style="font-size: 13px; color: #64748b;">If anything looks off, just reply to this email or contact the branch you visited.</p>

@@ -1,11 +1,31 @@
 import "server-only";
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 import type { ChecklistItem } from "./types";
+import { SERVICE_AGREEMENT_TERMS } from "./checklist";
+import { LOGO_PNG_BASE64 } from "./logoAsset";
 
 const MARGIN = 40;
 const PAGE_W = 595.28; // A4
 const PAGE_H = 841.89;
 const CONTENT_W = PAGE_W - MARGIN * 2;
+
+// 1in = 72pt. Signatures are deliberately small on the printed/emailed
+// receipt — just enough to confirm a signature was captured.
+const SIG_W = 1.5 * 72;
+const SIG_H = 0.75 * 72;
+
+// Terms and Conditions items that get a highlighted background on the
+// receipt (1-indexed in the source list, per the shop's request).
+const HIGHLIGHTED_TERMS = new Set([1, 3, 7]);
+
+// Contact numbers shown at the top of every receipt — the shop's fixed
+// branch/home-service lines, not admin-editable data.
+const CONTACT_LINES = [
+  ["Home Service", "0926 012 0007"],
+  ["Cubao Branch", "0945 506 0002"],
+  ["Greenhills Branch", "0915 212 7000"],
+  ["Malolos Branch", "0967 310 0077"],
+] as const;
 
 const INK = rgb(0.12, 0.16, 0.23);
 const MUTED = rgb(0.42, 0.47, 0.55);
@@ -16,6 +36,8 @@ const NA = rgb(0.2, 0.35, 0.75);
 const HIGHLIGHT_BG = rgb(0.9, 0.95, 1);
 const HIGHLIGHT_BORDER = rgb(0.55, 0.72, 0.96);
 const HIGHLIGHT_TEXT = rgb(0.06, 0.22, 0.5);
+const TERM_HIGHLIGHT_BG = rgb(1, 0.97, 0.85);
+const TERM_HIGHLIGHT_BORDER = rgb(0.9, 0.75, 0.35);
 
 const RESULT_LABEL: Record<string, string> = { pass: "PASS", fail: "FAIL", na: "N/A" };
 const RESULT_COLOR: Record<string, ReturnType<typeof rgb>> = { pass: PASS, fail: FAIL, na: NA };
@@ -79,6 +101,37 @@ class Writer {
     }
   }
 
+  // Shop logo top-left, branch/home-service contact numbers top-right,
+  // both anchored to the same top edge, followed by a rule.
+  async header(reference: string, subtitle: string) {
+    const logoBytes = Uint8Array.from(Buffer.from(LOGO_PNG_BASE64, "base64"));
+    const logoImg = await this.doc.embedJpg(logoBytes);
+    const logoH = 46;
+    const logoScale = logoH / logoImg.height;
+    const logoW = logoImg.width * logoScale;
+    const topY = this.y;
+    this.page.drawImage(logoImg, { x: MARGIN, y: topY - logoH, width: logoW, height: logoH });
+
+    const contactSize = 8.5;
+    const lineHeight = 11;
+    let cy = topY - 2;
+    for (const [label, number] of CONTACT_LINES) {
+      const text = `${label}: ${number}`;
+      const textWidth = this.font.widthOfTextAtSize(text, contactSize);
+      this.page.drawText(text, { x: MARGIN + CONTENT_W - textWidth, y: cy - contactSize, size: contactSize, font: this.font, color: MUTED });
+      cy -= lineHeight;
+    }
+
+    this.y = topY - Math.max(logoH, lineHeight * CONTACT_LINES.length + 4) - 10;
+    this.page.drawLine({ start: { x: MARGIN, y: this.y }, end: { x: MARGIN + CONTENT_W, y: this.y }, thickness: 0.75, color: RULE });
+    this.y -= 18;
+
+    this.page.drawText("Ceejay Apple Services", { x: MARGIN, y: this.y, size: 15, font: this.bold, color: INK });
+    this.y -= 16;
+    this.page.drawText(`${subtitle} — ${reference}`, { x: MARGIN, y: this.y, size: 10, font: this.font, color: MUTED });
+    this.y -= 22;
+  }
+
   heading(text: string) {
     this.ensureSpace(26);
     this.y -= 4;
@@ -106,19 +159,37 @@ class Writer {
     this.y -= lines.length * lineHeight + 4;
   }
 
-  // A boxed, high-contrast row for the one figure the customer actually
-  // needs to notice on the printed/emailed receipt (the amount).
-  highlightRow(label: string, value: string) {
+  // Repair Cost / Service Fee breakdown, ending in a highlighted Total row —
+  // the one figure the customer actually needs to notice.
+  costBreakdown(repairCost: number, serviceFee: number, total: number) {
+    const peso = (n: number) => `PHP ${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    const lineSize = 10;
+    const lineHeight = 16;
+    this.ensureSpace(lineHeight * 2 + 40);
+
+    const drawLine = (label: string, value: string, bold = false) => {
+      this.page.drawText(label, { x: MARGIN, y: this.y, size: lineSize, font: bold ? this.bold : this.font, color: bold ? INK : MUTED });
+      const vw = this.font.widthOfTextAtSize(value, lineSize);
+      this.page.drawText(value, { x: MARGIN + CONTENT_W - vw, y: this.y, size: lineSize, font: bold ? this.bold : this.font, color: INK });
+      this.y -= lineHeight;
+    };
+
+    drawLine("Repair Cost", peso(repairCost));
+    drawLine("Service Fee", peso(serviceFee));
+    this.y -= 2;
+    this.page.drawLine({ start: { x: MARGIN, y: this.y }, end: { x: MARGIN + CONTENT_W, y: this.y }, thickness: 0.5, color: RULE });
+    this.y -= 10;
+
     const boxHeight = 30;
     this.ensureSpace(boxHeight + 10);
-    this.y -= 4;
     const boxTop = this.y;
     const boxY = boxTop - boxHeight;
     this.page.drawRectangle({ x: MARGIN, y: boxY, width: CONTENT_W, height: boxHeight, color: HIGHLIGHT_BG, borderColor: HIGHLIGHT_BORDER, borderWidth: 1.25 });
-    this.page.drawText(label, { x: MARGIN + 12, y: boxY + boxHeight / 2 - 4.5, size: 11, font: this.bold, color: HIGHLIGHT_TEXT });
+    this.page.drawText("Total Amount", { x: MARGIN + 12, y: boxY + boxHeight / 2 - 4.5, size: 11, font: this.bold, color: HIGHLIGHT_TEXT });
     const valueSize = 15;
-    const valueWidth = this.bold.widthOfTextAtSize(value, valueSize);
-    this.page.drawText(value, { x: MARGIN + CONTENT_W - 12 - valueWidth, y: boxY + boxHeight / 2 - 5.5, size: valueSize, font: this.bold, color: HIGHLIGHT_TEXT });
+    const valueText = peso(total);
+    const valueWidth = this.bold.widthOfTextAtSize(valueText, valueSize);
+    this.page.drawText(valueText, { x: MARGIN + CONTENT_W - 12 - valueWidth, y: boxY + boxHeight / 2 - 5.5, size: valueSize, font: this.bold, color: HIGHLIGHT_TEXT });
     this.y = boxY - 10;
   }
 
@@ -132,6 +203,8 @@ class Writer {
     }
   }
 
+  // Lean checklist: item label + PASS/FAIL/N/A on one line, an optional
+  // note line only when the technician actually left one.
   checklistTable(items: ChecklistItem[]) {
     const rowGap = 3;
     for (const item of items) {
@@ -160,29 +233,73 @@ class Writer {
     }
   }
 
-  async signatureBox(x: number, width: number, label: string, dataUrl: string | null) {
-    const boxHeight = 90;
-    this.ensureSpace(boxHeight + 20);
+  // A single small (1.5in x 0.75in) signature box.
+  async signatureBox(x: number, label: string, dataUrl: string | null) {
     const topY = this.y;
     const decoded = dataUrl ? dataUrlBytes(dataUrl) : null;
+    this.page.drawRectangle({ x, y: topY - SIG_H, width: SIG_W, height: SIG_H, borderColor: RULE, borderWidth: 0.75 });
     if (decoded) {
       const embedded = decoded.isPng ? await this.doc.embedPng(decoded.bytes) : await this.doc.embedJpg(decoded.bytes);
-      const maxW = width - 10;
-      const maxH = boxHeight - 10;
+      const pad = 4;
+      const maxW = SIG_W - pad * 2;
+      const maxH = SIG_H - pad * 2;
       const scale = Math.min(maxW / embedded.width, maxH / embedded.height, 1) || 1;
       const w = embedded.width * scale;
       const h = embedded.height * scale;
-      this.page.drawImage(embedded, { x: x + (width - w) / 2, y: topY - boxHeight + (boxHeight - h) / 2, width: w, height: h });
+      this.page.drawImage(embedded, { x: x + (SIG_W - w) / 2, y: topY - SIG_H + (SIG_H - h) / 2, width: w, height: h });
     } else {
-      this.page.drawText("Not signed", { x: x + 10, y: topY - boxHeight / 2, size: 9, font: this.font, color: MUTED });
+      this.page.drawText("Not signed", { x: x + 8, y: topY - SIG_H / 2 - 3, size: 8, font: this.font, color: MUTED });
     }
-    this.page.drawLine({
-      start: { x: x, y: topY - boxHeight },
-      end: { x: x + width, y: topY - boxHeight },
-      thickness: 0.75,
-      color: RULE,
+    this.page.drawText(label, { x, y: topY - SIG_H - 11, size: 8, font: this.font, color: MUTED });
+  }
+
+  // Customer + technician signatures, side by side, right after the
+  // checklist they belong to — not collected at the bottom of the receipt.
+  async signatureRow(customerDataUrl: string | null, technicianDataUrl: string | null) {
+    const ROW_HEIGHT = SIG_H + 30; // box + label line + clearance before whatever comes next
+    this.ensureSpace(ROW_HEIGHT);
+    const topY = this.y;
+    await this.signatureBox(MARGIN, "Customer Signature", customerDataUrl);
+    this.y = topY;
+    await this.signatureBox(MARGIN + SIG_W + 24, "Technician Signature", technicianDataUrl);
+    this.y = topY - ROW_HEIGHT;
+  }
+
+  // Terms and Conditions, numbered, with select items (1-indexed) called
+  // out in a highlighted box per the shop's request.
+  termsAndConditions(terms: string[], highlighted: Set<number>) {
+    const size = 8.75;
+    const lineHeight = size + 3.5;
+    terms.forEach((term, i) => {
+      const n = i + 1;
+      const isHi = highlighted.has(n);
+      const prefix = `${n}. `;
+      const maxWidth = CONTENT_W - (isHi ? 16 : 0) - this.font.widthOfTextAtSize(prefix, size);
+      const lines = wrapText(this.font, term, size, maxWidth);
+      const blockHeight = lines.length * lineHeight + (isHi ? 8 : 4);
+      this.ensureSpace(blockHeight);
+
+      if (isHi) {
+        const boxTop = this.y + 4;
+        const boxHeight = lines.length * lineHeight + 6;
+        this.page.drawRectangle({
+          x: MARGIN - 4,
+          y: boxTop - boxHeight,
+          width: CONTENT_W + 8,
+          height: boxHeight,
+          color: TERM_HIGHLIGHT_BG,
+          borderColor: TERM_HIGHLIGHT_BORDER,
+          borderWidth: 1,
+        });
+      }
+
+      const textX = MARGIN + this.font.widthOfTextAtSize(prefix, size);
+      this.page.drawText(prefix, { x: MARGIN, y: this.y, size, font: isHi ? this.bold : this.font, color: isHi ? HIGHLIGHT_TEXT : INK });
+      lines.forEach((line, li) => {
+        this.page.drawText(line, { x: textX, y: this.y - li * lineHeight, size, font: isHi ? this.bold : this.font, color: isHi ? HIGHLIGHT_TEXT : INK });
+      });
+      this.y -= blockHeight;
     });
-    this.page.drawText(label, { x, y: topY - boxHeight - 12, size: 8.5, font: this.font, color: MUTED });
   }
 
   async save() {
@@ -198,7 +315,8 @@ export async function generateRepairReceiptPdf(opts: {
   natureOfRepair: string;
   warrantyCoverage: string;
   postNotes: string;
-  cost: number;
+  repairCost: number;
+  serviceFee: number;
   technicianName: string;
   preItems: ChecklistItem[];
   postItems: ChecklistItem[];
@@ -210,12 +328,8 @@ export async function generateRepairReceiptPdf(opts: {
   photoLabel?: string;
 }): Promise<Uint8Array> {
   const w = await Writer.create();
-  const peso = (n: number) => `PHP ${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-  w.page.drawText("Ceejay Cellphone Repair Shop", { x: MARGIN, y: w.y, size: 16, font: w.bold, color: INK });
-  w.y -= 20;
-  w.page.drawText(`Repair Receipt — ${opts.reference}`, { x: MARGIN, y: w.y, size: 11, font: w.font, color: MUTED });
-  w.y -= 24;
+  await w.header(opts.reference, "Repair Receipt");
 
   w.heading("Service Details");
   w.row("Customer Name", opts.customerName, { boldValue: true });
@@ -224,7 +338,9 @@ export async function generateRepairReceiptPdf(opts: {
   w.row("Nature of Repair", opts.natureOfRepair);
   w.row("Technician", opts.technicianName || "—");
   w.row("Warranty Coverage", opts.warrantyCoverage);
-  w.highlightRow("Amount", peso(opts.cost));
+
+  w.heading("Cost Breakdown");
+  w.costBreakdown(opts.repairCost, opts.serviceFee, opts.repairCost + opts.serviceFee);
 
   if (opts.postNotes) {
     w.heading("Notes (Post-Repair)");
@@ -233,29 +349,14 @@ export async function generateRepairReceiptPdf(opts: {
 
   w.heading("Pre-Repair Checklist");
   w.checklistTable(opts.preItems);
+  await w.signatureRow(opts.preCustomerSignature, opts.preTechnicianSignature);
 
   w.heading("Post-Repair Checklist");
   w.checklistTable(opts.postItems);
+  await w.signatureRow(opts.postCustomerSignature, opts.postTechnicianSignature);
 
-  w.heading("Signatures");
-  const colWidth = (CONTENT_W - 20) / 2;
-  w.ensureSpace(110);
-  // signatureBox draws at a fixed 90pt-tall box plus a label below it, but
-  // never advances the writer's y cursor itself (it's called twice per row,
-  // side by side, both starting from the same y) — so the row height below
-  // must be tracked here explicitly, not left for signatureBox to handle.
-  const SIGNATURE_ROW_HEIGHT = 130;
-  const rowTopY = w.y;
-  await w.signatureBox(MARGIN, colWidth, "Pre-Repair — Customer Signature", opts.preCustomerSignature);
-  w.y = rowTopY;
-  await w.signatureBox(MARGIN + colWidth + 20, colWidth, "Pre-Repair — Technician Signature", opts.preTechnicianSignature);
-  w.y = rowTopY - SIGNATURE_ROW_HEIGHT;
-  w.ensureSpace(110);
-  const rowTopY2 = w.y;
-  await w.signatureBox(MARGIN, colWidth, "Post-Repair — Customer Signature", opts.postCustomerSignature);
-  w.y = rowTopY2;
-  await w.signatureBox(MARGIN + colWidth + 20, colWidth, "Post-Repair — Technician Signature", opts.postTechnicianSignature);
-  w.y = rowTopY2 - SIGNATURE_ROW_HEIGHT;
+  w.heading("Terms and Conditions");
+  w.termsAndConditions(SERVICE_AGREEMENT_TERMS, HIGHLIGHTED_TERMS);
 
   if (opts.receiptPhoto) {
     const decoded = dataUrlBytes(opts.receiptPhoto);

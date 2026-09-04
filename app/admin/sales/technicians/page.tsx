@@ -95,6 +95,7 @@ export default async function TechnicianSalesPage({ searchParams }: { searchPara
   const grandFinalTotalSales = grandTotal.netProfit / 2;
   const grandBusinessExpenses = technicianExpenses.reduce((s, e) => s + e.amount, 0);
   const grandFinalTotalSalesNet = grandFinalTotalSales - grandBusinessExpenses;
+  const techByName = new Map(technicians.map((t) => [t.name, t]));
 
   return (
     <div className="space-y-6">
@@ -140,13 +141,14 @@ export default async function TechnicianSalesPage({ searchParams }: { searchPara
               <th className="pb-2 pr-3 font-medium">Profit Margin</th>
               <th className="pb-2 pr-3 font-medium">Final Total Sales (50%)</th>
               <th className="pb-2 pr-3 font-medium">Business Expenses</th>
-              <th className="pb-2 font-medium">Final Total Sales (Net)</th>
+              <th className="pb-2 pr-3 font-medium">Final Total Sales (Net)</th>
+              <th className="pb-2 font-medium">Earnings</th>
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 && (
               <tr>
-                <td colSpan={12} className="py-6 text-center text-slate-400">
+                <td colSpan={13} className="py-6 text-center text-slate-400">
                   No sales recorded yet.
                 </td>
               </tr>
@@ -164,7 +166,14 @@ export default async function TechnicianSalesPage({ searchParams }: { searchPara
                 <td className="py-3 pr-3 font-semibold text-slate-800">{pct(r.profitMargin)}</td>
                 <td className="py-3 pr-3 font-semibold text-blue-300">{peso(r.finalTotalSales)}</td>
                 <td className="py-3 pr-3 text-red-700">−{peso(r.businessExpenses)}</td>
-                <td className="py-3 font-semibold text-blue-300">{peso(r.finalTotalSalesNet)}</td>
+                <td className="py-3 pr-3 font-semibold text-blue-300">{peso(r.finalTotalSalesNet)}</td>
+                <td className="py-3">
+                  {techByName.get(r.name) && (
+                    <Link href={`/admin/sales/technicians/${techByName.get(r.name)!.id}`} className="btn-secondary !px-3 !py-1 text-xs">
+                      Earnings
+                    </Link>
+                  )}
+                </td>
               </tr>
             ))}
             {rows.length > 0 && (
@@ -180,7 +189,8 @@ export default async function TechnicianSalesPage({ searchParams }: { searchPara
                 <td className="pt-3 pr-3">{pct(grandMargin)}</td>
                 <td className="pt-3 pr-3 text-blue-300">{peso(grandFinalTotalSales)}</td>
                 <td className="pt-3 pr-3 text-red-700">−{peso(grandBusinessExpenses)}</td>
-                <td className="pt-3 text-blue-300">{peso(grandFinalTotalSalesNet)}</td>
+                <td className="pt-3 pr-3 text-blue-300">{peso(grandFinalTotalSalesNet)}</td>
+                <td className="pt-3"></td>
               </tr>
             )}
           </tbody>

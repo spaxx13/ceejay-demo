@@ -13,6 +13,7 @@ export const CHECKLIST_TEMPLATE: Omit<ChecklistItem, "result" | "notes">[] = [
   { key: "wifi_network", label: "Wi-Fi Network", helpText: "Test connection to a known Wi-Fi network" },
   { key: "power_volume", label: "Power/Volume Trigger", helpText: "Test all buttons for responsiveness" },
   { key: "microphone", label: "Microphone (Call/Voice Memo)", helpText: "Test during a call or voice recording" },
+  { key: "face_id", label: "Face ID Test", helpText: "Confirm Face ID unlocks the device and enrolls/re-enrolls correctly" },
   { key: "physical_condition", label: "Overall Physical Condition", helpText: "Check for new damage or changes from pre-repair condition" },
   { key: "system_errors", label: "Parts-Fit / Liquid Damage / Other System Errors", helpText: "System error showing up on the device" },
 ];
