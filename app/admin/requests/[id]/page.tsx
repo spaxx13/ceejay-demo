@@ -15,7 +15,8 @@ import {
 import { getCurrentUser } from "@/lib/auth";
 import StatusBadge from "@/components/StatusBadge";
 import ResendReceiptButton from "@/components/ResendReceiptButton";
-import { reassignRequest, changeRequestStatus, updateRequestNotes } from "@/lib/actions";
+import DeleteButton from "@/components/DeleteButton";
+import { reassignRequest, changeRequestStatus, updateRequestNotes, deleteHomeServiceRequest } from "@/lib/actions";
 import type { ServiceAgreement } from "@/lib/types";
 import { formatDate, formatDateTime } from "@/lib/format";
 
@@ -228,6 +229,23 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
               </button>
             </form>
           </div>
+
+          {user?.role === "owner_admin" && (
+            <div className="card space-y-2">
+              <h3 className="text-sm font-semibold text-red-600">Delete Request</h3>
+              <p className="text-xs text-slate-500">
+                Permanently erases this request and its checklists — unlike Cancelled status, this can&apos;t be undone and removes it from
+                history entirely.
+              </p>
+              <DeleteButton
+                id={req.id}
+                action={deleteHomeServiceRequest}
+                confirmMessage={`Permanently delete home service request ${req.reference}? This can't be undone.`}
+                label="Delete Request"
+                className="btn-secondary w-full !text-red-600"
+              />
+            </div>
+          )}
         </div>
       </div>
 

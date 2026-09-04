@@ -3,6 +3,8 @@ import { redirect } from "next/navigation";
 import { getLookups, getTechnicians, getRequests, canManageHomeServiceRequests } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import StatusBadge from "@/components/StatusBadge";
+import DeleteButton from "@/components/DeleteButton";
+import { deleteHomeServiceRequest } from "@/lib/actions";
 import { formatDate } from "@/lib/format";
 
 export default async function RequestsPage({
@@ -110,9 +112,18 @@ export default async function RequestsPage({
                   <StatusBadge label={labelFor(r.statusId, statuses)} />
                 </td>
                 <td className="py-3">
-                  <Link href={`/admin/requests/${r.id}`} className="btn-secondary !px-3 !py-1 text-xs">
-                    View
-                  </Link>
+                  <div className="flex gap-1.5">
+                    <Link href={`/admin/requests/${r.id}`} className="btn-secondary !px-3 !py-1 text-xs">
+                      View
+                    </Link>
+                    {user?.role === "owner_admin" && (
+                      <DeleteButton
+                        id={r.id}
+                        action={deleteHomeServiceRequest}
+                        confirmMessage={`Permanently delete home service request ${r.reference}? This can't be undone.`}
+                      />
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}

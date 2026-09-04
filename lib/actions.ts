@@ -724,6 +724,24 @@ export async function cancelRepairRecord(formData: FormData) {
   revalidatePath("/admin");
 }
 
+// Permanently removes a repair record — unlike cancelling (which keeps the
+// record for history, just excluded from revenue), this actually deletes
+// it and its checklists (service_agreements.repair_record_id cascades).
+// Owner-only: a branch admin can cancel a mistaken entry, but only the
+// owner can erase it outright.
+export async function deleteRepairRecord(formData: FormData) {
+  const actor = await requireRole("owner_admin");
+  if (!actor) return;
+
+  const recordId = str(formData, "id");
+  await query("delete from repair_records where id=$1", [recordId]);
+  revalidatePath("/admin/pos");
+  revalidatePath("/admin/sales");
+  revalidatePath("/admin/sales/daily");
+  revalidatePath("/admin/sales/technicians");
+  revalidatePath("/admin");
+}
+
 // Lets a ticket's customer/repair details be filled in or corrected — while
 // pending (e.g. a phone number that wasn't captured at intake) or after
 // it's been marked Completed (e.g. a typo noticed later). Only locked once
@@ -1110,6 +1128,25 @@ export async function changeRequestStatus(formData: FormData) {
   revalidatePath("/admin/requests");
   revalidatePath(`/admin/requests/${requestId}`);
   revalidatePath("/technician");
+}
+
+// Permanently removes a home service request — its checklists
+// (service_agreements), notifications, and progress notes all cascade with
+// it; any POS sale tied to it just loses that reference (kept, not
+// deleted). Cancelling a request keeps it for history; this actually
+// erases it, so it's owner-only.
+export async function deleteHomeServiceRequest(formData: FormData) {
+  const actor = await requireRole("owner_admin");
+  if (!actor) return;
+
+  const requestId = str(formData, "id");
+  await query("delete from home_service_requests where id=$1", [requestId]);
+  revalidatePath("/admin/requests");
+  revalidatePath("/admin/pos");
+  revalidatePath("/admin/sales/home-service");
+  revalidatePath("/admin/sales/materials");
+  revalidatePath("/technician");
+  revalidatePath("/admin");
 }
 
 export async function updateRequestNotes(formData: FormData) {

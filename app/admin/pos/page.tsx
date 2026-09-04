@@ -3,6 +3,8 @@ import { getRepairRecords, getServiceAgreements, getRepairRecordStatus, getBranc
 import { getCurrentUser } from "@/lib/auth";
 import { formatDateTime } from "@/lib/format";
 import PopupLink from "@/components/PopupLink";
+import DeleteButton from "@/components/DeleteButton";
+import { deleteRepairRecord } from "@/lib/actions";
 
 const peso = (n: number) => `₱${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
@@ -212,6 +214,13 @@ export default async function PosPage({ searchParams }: { searchParams: Promise<
                       <Link href={r.viewHref} className="btn-secondary !px-3 !py-1 text-xs">
                         View
                       </Link>
+                    )}
+                    {r.kind === "pos" && user?.role === "owner_admin" && (
+                      <DeleteButton
+                        id={r.id}
+                        action={deleteRepairRecord}
+                        confirmMessage={`Permanently delete repair record ${r.reference}? This can't be undone.`}
+                      />
                     )}
                   </div>
                 </td>

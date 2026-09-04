@@ -6,7 +6,8 @@ import { formatDateTime, formatDate } from "@/lib/format";
 import PrintReceiptButton from "@/components/PrintReceiptButton";
 import PopupLink from "@/components/PopupLink";
 import ResendReceiptButton from "@/components/ResendReceiptButton";
-import { cancelRepairRecord, updateRepairRecordDetails } from "@/lib/actions";
+import DeleteButton from "@/components/DeleteButton";
+import { cancelRepairRecord, updateRepairRecordDetails, deleteRepairRecord } from "@/lib/actions";
 
 const peso = (n: number) => `₱${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const RESULT_LABEL: Record<string, string> = { pass: "Pass", fail: "Fail", na: "N/A" };
@@ -329,6 +330,25 @@ export default async function RepairRecordDetailPage({ params }: { params: Promi
               Confirm Cancellation
             </button>
           </form>
+        </details>
+      )}
+
+      {user?.role === "owner_admin" && (
+        <details className="card print:hidden">
+          <summary className="cursor-pointer text-sm font-medium text-red-600">Delete this record</summary>
+          <div className="mt-3 space-y-2">
+            <p className="text-xs text-slate-500">
+              Permanently erases this record and its checklists — unlike cancelling, this can&apos;t be undone and removes it from history
+              entirely.
+            </p>
+            <DeleteButton
+              id={record.id}
+              action={deleteRepairRecord}
+              confirmMessage={`Permanently delete repair record ${record.reference}? This can't be undone.`}
+              label="Delete Record"
+              className="btn-secondary !text-red-600"
+            />
+          </div>
         </details>
       )}
     </div>
