@@ -1,18 +1,22 @@
 import Link from "next/link";
-import { getBranches, getRepairRecords, getExpenses, isBranchHidden, canViewAllBranchSales } from "@/lib/db";
+import { getBranches, getRepairRecords, getExpenses, getTechnicians, isBranchHidden, canViewAllBranchSales } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
+import { toJob, DEFAULT_EARNINGS_SHARE_PERCENT } from "@/lib/earnings";
 import SalesTabs from "@/components/SalesTabs";
 
 const peso = (n: number) => `₱${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 export default async function BranchSalesPage({ searchParams }: { searchParams: Promise<{ from?: string; to?: string }> }) {
   const sp = await searchParams;
-  const [user, allBranches, repairRecords, expenses] = await Promise.all([
+  const [user, allBranches, repairRecords, expenses, technicians] = await Promise.all([
     getCurrentUser(),
     getBranches(),
     getRepairRecords(),
     getExpenses(),
+    getTechnicians(),
   ]);
+  const techByName = new Map(technicians.map((t) => [t.name, t]));
+  const shareFor = (name: string) => techByName.get(name)?.earningsSharePercent ?? DEFAULT_EARNINGS_SHARE_PERCENT;
   // Backend-only branches (no address, e.g. "Home Service") exist purely for
   // sales/expense attribution — they don't get their own card here since
   // that data has its own dedicated Sales > Home Service tab instead.
@@ -40,16 +44,18 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
     return totals.get(k)!;
   };
 
-  // Which technicians handled a transaction at each branch, and how much
-  // they brought in — shown as a sub-table on each branch's card.
-  type TechBucket = { name: string; count: number; revenue: number };
+  // Which technicians handled a transaction at each branch, and their
+  // earnings share of it — shown as a sub-table on each branch's card.
+  // Uses the same Gross/Net/Earnings math (lib/earnings.ts's toJob) as the
+  // By Technician and My Earnings pages, so figures always agree.
+  type TechBucket = { name: string; count: number; earnings: number };
   const techByBranch = new Map<string, Map<string, TechBucket>>();
   const ensureTech = (branchId: string | null, rawName: string) => {
     const bk = key(branchId);
     const name = rawName.trim() || "Unassigned";
     if (!techByBranch.has(bk)) techByBranch.set(bk, new Map());
     const branchMap = techByBranch.get(bk)!;
-    if (!branchMap.has(name)) branchMap.set(name, { name, count: 0, revenue: 0 });
+    if (!branchMap.has(name)) branchMap.set(name, { name, count: 0, earnings: 0 });
     return branchMap.get(name)!;
   };
 
@@ -61,9 +67,11 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
     bucket.posCount += 1;
     bucket.posRevenue += r.cost;
     bucket.expenses += r.partsCost + r.laborCost + r.otherExpenses;
+    const techName = r.technicianName.trim() || "Unassigned";
     const techBucket = ensureTech(r.branchId, r.technicianName);
+    const job = toJob("", "POS", "", "", "", "", r.cost, r.laborCost, r.partsCost, shareFor(techName));
     techBucket.count += 1;
-    techBucket.revenue += r.cost;
+    techBucket.earnings += job.earnings;
   }
 
   const rows = Array.from(totals.values())
@@ -105,7 +113,7 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
     const technicians = Array.from(techByBranch.get(key(r.branchId))?.values() ?? []).sort((a, b) => {
       if (a.name === "Unassigned") return 1;
       if (b.name === "Unassigned") return -1;
-      return b.revenue - a.revenue;
+      return b.earnings - a.earnings;
     });
     return {
       ...r,
@@ -252,18 +260,26 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
                     <thead>
                       <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-400">
                         <th className="pb-2 pr-3 font-medium">Technician</th>
+                        <th className="pb-2 pr-3 font-medium">% Earnings</th>
                         <th className="pb-2 pr-3 font-medium">Jobs</th>
-                        <th className="pb-2 font-medium">Revenue</th>
+                        <th className="pb-2 font-medium">Earnings</th>
                       </tr>
                     </thead>
                     <tbody>
                       {r.technicians.map((t) => (
                         <tr key={t.name} className={`border-b border-slate-100 last:border-0 ${t.name === "Unassigned" ? "opacity-60" : ""}`}>
                           <td className="py-2 pr-3 text-slate-700">{t.name}</td>
+                          <td className="py-2 pr-3 text-slate-500">{techByName.get(t.name) ? `${techByName.get(t.name)!.earningsSharePercent}%` : "—"}</td>
                           <td className="py-2 pr-3 text-slate-500">{t.count}</td>
-                          <td className="py-2 text-slate-800">{peso(t.revenue)}</td>
+                          <td className="py-2 text-slate-800">{peso(t.earnings)}</td>
                         </tr>
                       ))}
+                      <tr className="font-semibold text-slate-900">
+                        <td className="pt-2 pr-3">Total</td>
+                        <td className="pt-2 pr-3"></td>
+                        <td className="pt-2 pr-3">{r.technicians.reduce((s, t) => s + t.count, 0)}</td>
+                        <td className="pt-2 text-green-700">{peso(r.technicians.reduce((s, t) => s + t.earnings, 0))}</td>
+                      </tr>
                     </tbody>
                   </table>
                 </div>
