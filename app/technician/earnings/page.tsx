@@ -21,7 +21,9 @@ export default async function TechnicianEarningsPage({
   const period: EarningsPeriod = sp.period === "week" || sp.period === "month" ? sp.period : "day";
   const isCustomRange = !!(sp.from || sp.to);
   const { from, to } = resolveEarningsRange(period, sp.from, sp.to);
-  const jobs = technician ? computeTechnicianEarnings(technician.name, repairRecords, agreements, from, to) : [];
+  const jobs = technician
+    ? computeTechnicianEarnings(technician.name, repairRecords, agreements, from, to, technician.earningsSharePercent)
+    : [];
 
   return (
     <div className="space-y-4">
@@ -41,6 +43,7 @@ export default async function TechnicianEarningsPage({
         <TechnicianEarningsView
           baseHref="/technician/earnings"
           technicianName={technician.name}
+          sharePercent={technician.earningsSharePercent}
           jobs={jobs}
           period={period}
           from={from}

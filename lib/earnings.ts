@@ -31,8 +31,11 @@ export function resolveEarningsRange(period: EarningsPeriod, customFrom?: string
   return { from: toISO(first), to: toISO(last) };
 }
 
-// The technician's cut of each job's net (gross minus parts cost).
-export const TECHNICIAN_EARNINGS_SHARE = 0.7;
+// Fallback technician's cut of each job's net (gross minus parts cost) when
+// a technician has no earningsSharePercent of their own — kept as the
+// shop-wide default. Prefer passing each technician's own share (from
+// their Technician record) into computeTechnicianEarnings below.
+export const DEFAULT_EARNINGS_SHARE_PERCENT = 70;
 
 export type EarningsJob = {
   id: string;
@@ -46,7 +49,7 @@ export type EarningsJob = {
   partsCost: number;
   gross: number; // repairCost + serviceFee
   net: number; // gross - partsCost
-  earnings: number; // net * TECHNICIAN_EARNINGS_SHARE — what the technician is paid for this job
+  earnings: number; // net * (sharePercent / 100) — what the technician is paid for this job
 };
 
 function toJob(
@@ -58,11 +61,12 @@ function toJob(
   deviceLabel: string,
   repairCost: number,
   serviceFee: number,
-  partsCost: number
+  partsCost: number,
+  sharePercent: number
 ): EarningsJob {
   const gross = repairCost + serviceFee;
   const net = gross - partsCost;
-  return { id, source, reference, customerName, date, deviceLabel, repairCost, serviceFee, partsCost, gross, net, earnings: net * TECHNICIAN_EARNINGS_SHARE };
+  return { id, source, reference, customerName, date, deviceLabel, repairCost, serviceFee, partsCost, gross, net, earnings: net * (sharePercent / 100) };
 }
 
 // Itemized, completed job orders credited to one technician (matched by
@@ -71,13 +75,16 @@ function toJob(
 // the full Gross → Net → Earnings breakdown for each job:
 //   Gross = Repair Cost + Service Fee
 //   Net = Gross - Parts Cost
-//   Earnings = Net * 70% — what's paid out to the technician for their work
+//   Earnings = Net * sharePercent — what's paid out to the technician for
+//   their work (their own earningsSharePercent, e.g. 100% for an
+//   owner-technician, defaulting to 70% for everyone else)
 export function computeTechnicianEarnings(
   technicianName: string,
   repairRecords: RepairRecord[],
   agreements: ServiceAgreement[],
   from: string,
-  to: string
+  to: string,
+  sharePercent: number = DEFAULT_EARNINGS_SHARE_PERCENT
 ): EarningsJob[] {
   const inRange = (date: string) => (!from || date >= from) && (!to || date <= to);
   const name = technicianName.trim();
@@ -85,12 +92,12 @@ export function computeTechnicianEarnings(
 
   const posJobs = repairRecords
     .filter((r) => !r.cancelled && r.technicianName.trim() === name && inRange(r.serviceDate))
-    .map((r) => toJob(r.id, "POS", r.reference, r.customerName, r.serviceDate, r.deviceModel || "—", r.cost, r.laborCost, r.partsCost));
+    .map((r) => toJob(r.id, "POS", r.reference, r.customerName, r.serviceDate, r.deviceModel || "—", r.cost, r.laborCost, r.partsCost, sharePercent));
 
   const homeServiceJobs = agreements
     .filter((a) => a.phase === "post_repair" && a.requestId && a.technicianName.trim() === name && inRange(a.completedAt.slice(0, 10)))
     .map((a) =>
-      toJob(a.id, "Home Service", a.reference, a.customerName, a.completedAt.slice(0, 10), a.deviceLabel || "—", a.cost, a.laborCost, a.partsCost)
+      toJob(a.id, "Home Service", a.reference, a.customerName, a.completedAt.slice(0, 10), a.deviceLabel || "—", a.cost, a.laborCost, a.partsCost, sharePercent)
     );
 
   return [...posJobs, ...homeServiceJobs].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));

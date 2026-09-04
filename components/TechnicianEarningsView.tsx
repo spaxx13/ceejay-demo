@@ -1,14 +1,14 @@
 import Link from "next/link";
-import { TECHNICIAN_EARNINGS_SHARE, type EarningsJob, type EarningsPeriod } from "@/lib/earnings";
+import type { EarningsJob, EarningsPeriod } from "@/lib/earnings";
 
 const peso = (n: number) => `₱${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-const sharePct = `${(TECHNICIAN_EARNINGS_SHARE * 100).toFixed(0)}%`;
 
 const PERIOD_LABELS: Record<EarningsPeriod, string> = { day: "Today", week: "This Week", month: "This Month" };
 
 export default function TechnicianEarningsView({
   baseHref,
   technicianName,
+  sharePercent,
   jobs,
   period,
   from,
@@ -17,12 +17,14 @@ export default function TechnicianEarningsView({
 }: {
   baseHref: string;
   technicianName: string;
+  sharePercent: number;
   jobs: EarningsJob[];
   period: EarningsPeriod;
   from: string;
   to: string;
   isCustomRange: boolean;
 }) {
+  const sharePct = `${sharePercent}%`;
   const totals = jobs.reduce(
     (acc, j) => ({
       repairCost: acc.repairCost + j.repairCost,

@@ -128,6 +128,7 @@ export type Technician = {
   employmentStatus: EmploymentStatus;
   branchIds: string[];
   active: boolean;
+  earningsSharePercent: number; // this technician's cut of a job's Net (Gross - Parts Cost) on My Earnings — defaults to 70, editable per technician (e.g. 100 for an owner-technician)
 };
 
 export type CustomerSource = string; // admin-addable lookup value ("Walk-in", "Home Service", "Referral", ...)
