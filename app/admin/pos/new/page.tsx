@@ -1,11 +1,12 @@
 import Link from "next/link";
-import { getBranches, isBranchHidden } from "@/lib/db";
+import { getBranches, getTechnicians, isBranchHidden } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import NewRepairRecordForm from "@/components/NewRepairRecordForm";
 
 export default async function NewRepairRecordPage() {
-  const [user, allBranches] = await Promise.all([getCurrentUser(), getBranches()]);
+  const [user, allBranches, allTechnicians] = await Promise.all([getCurrentUser(), getBranches(), getTechnicians()]);
   const branches = allBranches.filter((b) => b.active && !isBranchHidden(user, b.id));
+  const technicians = allTechnicians.filter((t) => t.active).map((t) => ({ name: t.name, branchIds: t.branchIds }));
 
   return (
     <div className="space-y-6">
@@ -19,7 +20,7 @@ export default async function NewRepairRecordPage() {
           checklist now, or come back to it later to close it out and email the customer&apos;s receipt.
         </p>
       </div>
-      <NewRepairRecordForm branches={branches.map((b) => ({ id: b.id, name: b.name }))} />
+      <NewRepairRecordForm branches={branches.map((b) => ({ id: b.id, name: b.name }))} technicians={technicians} />
     </div>
   );
 }

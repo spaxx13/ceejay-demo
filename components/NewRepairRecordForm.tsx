@@ -65,10 +65,21 @@ function ChecklistItems({
   );
 }
 
-export default function NewRepairRecordForm({ branches }: { branches: { id: string; name: string }[] }) {
+export default function NewRepairRecordForm({
+  branches,
+  technicians,
+}: {
+  branches: { id: string; name: string }[];
+  technicians: { name: string; branchIds: string[] }[];
+}) {
   const formRef = useRef<HTMLFormElement>(null);
   const wasPending = useRef(false);
   const [state, formAction, pending] = useActionState(createRepairRecordDraft, undefined);
+
+  const [branchId, setBranchId] = useState("");
+  const [technicianName, setTechnicianName] = useState("");
+  const [showOtherTechnician, setShowOtherTechnician] = useState(false);
+  const availableTechnicians = technicians.filter((t) => branchId && t.branchIds.includes(branchId));
 
   const [preResults, setPreResults] = useState<Record<string, ChecklistResult>>(() =>
     Object.fromEntries(CHECKLIST_TEMPLATE.map((i) => [i.key, null]))
@@ -148,7 +159,17 @@ export default function NewRepairRecordForm({ branches }: { branches: { id: stri
           </div>
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-slate-500">Branch *</label>
-            <select name="branchId" required defaultValue="" className="input">
+            <select
+              name="branchId"
+              required
+              value={branchId}
+              onChange={(e) => {
+                setBranchId(e.target.value);
+                setTechnicianName("");
+                setShowOtherTechnician(false);
+              }}
+              className="input"
+            >
               <option value="" disabled>
                 Select branch...
               </option>
@@ -195,7 +216,44 @@ export default function NewRepairRecordForm({ branches }: { branches: { id: stri
           </div>
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-slate-500">Technician</label>
-            <input name="technicianName" className="input" placeholder="Type technician's name" />
+            {showOtherTechnician ? (
+              <input
+                value={technicianName}
+                onChange={(e) => setTechnicianName(e.target.value)}
+                className="input"
+                placeholder="Type technician's name"
+                autoFocus
+              />
+            ) : (
+              <select
+                value={technicianName}
+                onChange={(e) => {
+                  if (e.target.value === "__other__") {
+                    setShowOtherTechnician(true);
+                    setTechnicianName("");
+                  } else {
+                    setTechnicianName(e.target.value);
+                  }
+                }}
+                disabled={!branchId}
+                className="input"
+              >
+                <option value="">{branchId ? "Select technician..." : "Select a branch first"}</option>
+                {availableTechnicians.map((t) => (
+                  <option key={t.name} value={t.name}>
+                    {t.name}
+                  </option>
+                ))}
+                <option value="__other__">Other — type manually</option>
+              </select>
+            )}
+            {/* The visible control above is a plain <select>/<input> without a
+                name so it never submits a literal "__other__" — this hidden
+                field carries the actual chosen/typed name for the action. */}
+            <input type="hidden" name="technicianName" value={technicianName} />
+            {branchId && availableTechnicians.length === 0 && !showOtherTechnician && (
+              <p className="text-[11px] text-amber-700">No technicians are assigned to this branch yet — add one in Settings &gt; Technicians, or pick &quot;Other&quot; to type a name.</p>
+            )}
           </div>
         </div>
 
