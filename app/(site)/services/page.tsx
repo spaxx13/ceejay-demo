@@ -9,6 +9,8 @@ const DESCRIPTIONS: Record<string, string> = {
   "Software / Data Recovery": "OS issues, boot loops, and data recovery from devices that won't power on normally.",
   "Diagnostic Checkup": "Not sure what's wrong? A full diagnostic pinpoints the issue before you commit to a repair.",
   "Logic board problem": "Component-level diagnosis and repair for logic board issues — no power, short circuits, or boot failures.",
+  "Camera": "Blurry photos, autofocus issues, or a cracked camera lens fixed with a genuine replacement module.",
+  "Backhousing(Whole shell including backglass)": "Full back housing replacement, including the rear glass — for a cracked back or a damaged frame.",
 };
 
 const FALLBACK = "Professional service to get your device back to perfect condition, backed by our technicians.";
