@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
@@ -16,6 +16,13 @@ export const metadata: Metadata = {
   title: "Ceejay Cellphone Repair Shop",
   description:
     "Ceejay Cellphone Repair Shop — home service booking, technician assignment, and CRM (Phase 1 demo).",
+  appleWebApp: {
+    title: "Ceejay",
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#f97316",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
