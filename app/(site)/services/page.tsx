@@ -8,6 +8,7 @@ const DESCRIPTIONS: Record<string, string> = {
   "Charging Port": "Loose, dirty, or damaged charging ports cleaned or replaced so your device charges reliably again.",
   "Software / Data Recovery": "OS issues, boot loops, and data recovery from devices that won't power on normally.",
   "Diagnostic Checkup": "Not sure what's wrong? A full diagnostic pinpoints the issue before you commit to a repair.",
+  "Logic board problem": "Component-level diagnosis and repair for logic board issues — no power, short circuits, or boot failures.",
 };
 
 const FALLBACK = "Professional service to get your device back to perfect condition, backed by our technicians.";
