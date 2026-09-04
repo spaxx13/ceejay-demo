@@ -74,8 +74,46 @@ export default function PanicLogChecker() {
       )}
 
       {summary && (
+        <div className="card space-y-4 border-2 border-blue-300 bg-blue-50/40">
+          <h3 className="text-sm font-semibold text-blue-900">Diagnostic Result</h3>
+          {summary.diagnosis ? (
+            <div className="space-y-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-blue-400">1. Detected Problem</p>
+                <p className="mt-0.5 text-sm font-medium text-slate-800">{summary.diagnosis.detectedProblem}</p>
+              </div>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-blue-400">2. Primary Cause</p>
+                <p className="mt-0.5 text-sm text-slate-700">{summary.diagnosis.primaryCause}</p>
+              </div>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-blue-400">3. Possible Affected Parts</p>
+                <ul className="mt-0.5 list-disc space-y-0.5 pl-5 text-sm text-slate-700">
+                  {summary.diagnosis.affectedParts.map((p, i) => (
+                    <li key={i}>{p}</li>
+                  ))}
+                </ul>
+              </div>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-blue-400">4. Diagnostic Recommendation</p>
+                <p className="mt-0.5 text-sm text-slate-700">{summary.diagnosis.recommendation}</p>
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-slate-500">
+              No specific problem could be determined automatically from this log. Review the raw log below for details.
+            </p>
+          )}
+          <p className="border-t border-blue-200 pt-2 text-[11px] text-slate-500">
+            Automated triage based on known panic patterns — a helpful starting point, not a confirmed diagnosis. Always verify with a
+            physical inspection.
+          </p>
+        </div>
+      )}
+
+      {summary && (
         <div className="card space-y-3">
-          <h3 className="text-sm font-semibold text-slate-800">Summary</h3>
+          <h3 className="text-sm font-semibold text-slate-800">Log Details</h3>
           <dl className="grid grid-cols-1 gap-x-4 gap-y-2 text-sm sm:grid-cols-2">
             <div>
               <dt className="text-xs text-slate-400">Device</dt>
@@ -113,24 +151,6 @@ export default function PanicLogChecker() {
               </pre>
             </div>
           )}
-
-          <div>
-            <p className="text-xs font-medium text-slate-500">Possible Cause — Hints</p>
-            {summary.hints.length === 0 ? (
-              <p className="mt-1 text-xs text-slate-400">
-                No specific hardware subsystem was auto-detected — read the panic string above for more detail.
-              </p>
-            ) : (
-              <ul className="mt-1 list-disc space-y-1 pl-5 text-xs text-slate-600">
-                {summary.hints.map((h, i) => (
-                  <li key={i}>{h}</li>
-                ))}
-              </ul>
-            )}
-            <p className="mt-2 text-[11px] text-slate-400">
-              These are automated keyword-based hints for triage, not a confirmed diagnosis — always verify with a physical inspection.
-            </p>
-          </div>
 
           <div>
             <button type="button" onClick={() => setShowRaw((v) => !v)} className="text-xs font-medium text-blue-500 hover:underline">

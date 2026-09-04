@@ -8,8 +8,16 @@
 // devices, a two-line JSON envelope+payload on newer ones), so this reads
 // defensively: try structured JSON first, fall back to line-based regex
 // extraction, and if neither finds a field just leave it blank rather than
-// guessing wrong. The keyword hints are informational triage aids for a
-// technician, not a certified diagnosis.
+// guessing wrong. The diagnosis below is a rule-based triage aid for a
+// technician — informed best guesses from known panic patterns, not a
+// certified diagnosis; always confirm with a physical inspection.
+
+export type PanicDiagnosis = {
+  detectedProblem: string;
+  primaryCause: string;
+  affectedParts: string[];
+  recommendation: string;
+};
 
 export type PanicLogSummary = {
   device: string | null;
@@ -19,7 +27,7 @@ export type PanicLogSummary = {
   incidentId: string | null;
   panicType: string | null;
   panicString: string | null;
-  hints: string[];
+  diagnosis: PanicDiagnosis | null;
   looksLikePanicLog: boolean;
   raw: string;
 };
@@ -67,17 +75,112 @@ function lineValue(content: string, labels: string[]): string | null {
   return null;
 }
 
-const HINT_RULES: { pattern: RegExp; hint: string }[] = [
-  { pattern: /watchdog/i, hint: "Mentions a watchdog timeout — usually a software hang (an app or daemon stopped responding) rather than a hardware fault." },
-  { pattern: /backlight|display pipe|iobacklight/i, hint: "Mentions the display/backlight subsystem — may point to a display module or display cable/connector fault." },
-  { pattern: /\bsmc\b|battery/i, hint: "Mentions the battery or power management (SMC) — may indicate a battery or power-related fault." },
-  { pattern: /baseband|modem|cellular|qmi/i, hint: "Mentions the baseband/modem — may indicate a cellular/baseband hardware fault or a bad connection to it." },
-  { pattern: /\bi2c\b|\bspi\b/i, hint: "Mentions an I2C/SPI bus timeout — often a specific chip/component failing to respond, worth checking its connector/flex cable." },
-  { pattern: /thermal|overheat/i, hint: "Mentions a thermal event — check for a cause of overheating (blocked vents, damaged battery, etc.)." },
-  { pattern: /jetsam|out of memory|low memory/i, hint: "Memory-pressure related (jetsam) — usually a software/app issue, not hardware." },
-  { pattern: /kernel panic|fatal exception|trap number|panic\(cpu/i, hint: "This is a kernel-level panic — the device crashed at the OS level, not just a single app." },
-  { pattern: /nand|flash storage|filesystem/i, hint: "Mentions NAND/flash storage or the filesystem — may indicate a storage-related fault." },
-  { pattern: /touch|multitouch/i, hint: "Mentions the touch/multitouch subsystem — may point to a digitizer or display-touch fault." },
+// Ordered most-specific-first: the first rule whose pattern matches the
+// panic text is taken as the top likely cause. A watchdog timeout is
+// checked before subsystem-keyword rules because it names the *mechanism*
+// of the crash (a process stopped responding) regardless of which daemon
+// is named — e.g. "watchdog timeout: backlightd" is a hung software
+// process, not a hardware backlight fault, even though "backlight" appears.
+const DIAGNOSIS_RULES: { pattern: RegExp; diagnosis: (m: RegExpMatchArray) => PanicDiagnosis }[] = [
+  {
+    pattern: /watchdog timeout:?\s*([A-Za-z0-9_.\-]+)?/i,
+    diagnosis: (m) => ({
+      detectedProblem: m[1] ? `Software watchdog timeout — "${m[1]}" stopped responding and was force-restarted.` : "Software watchdog timeout — a process stopped responding and was force-restarted.",
+      primaryCause: "A frozen app or system process failed to respond within its allotted time, so the watchdog restarted the device. This is a software/firmware symptom, not a component failure.",
+      affectedParts: ["No specific hardware part implicated — software/firmware issue"],
+      recommendation: "Update to the latest iOS version and monitor for recurrence. If it keeps happening after a clean restart, back up and restore the device via DFU before suspecting hardware.",
+    }),
+  },
+  {
+    pattern: /\b(i2c|spi)\b[^\n]*(timeout|time-?out|error|fail|no ack|not responding)/i,
+    diagnosis: (m) => ({
+      detectedProblem: `Hardware communication failure on the ${m[1].toUpperCase()} bus — a component failed to respond to the system controller.`,
+      primaryCause: "A chip on this bus (commonly the display's backlight/touch controller, or another peripheral IC) isn't responding — usually a damaged flex cable/connector, or a failed IC.",
+      affectedParts: ["Display assembly (backlight/touch controller)", "Display flex cable / connector", "Logic board connector for the affected bus"],
+      recommendation: "Reseat the display flex cable/connector first. If the panic recurs, test with a known-good display; if it still occurs, the fault is likely on the logic board and may need board-level repair.",
+    }),
+  },
+  {
+    pattern: /backlight|iobacklight|display pipe|iomobileframebuffer/i,
+    diagnosis: () => ({
+      detectedProblem: "Display/backlight subsystem fault reported by the kernel.",
+      primaryCause: "The display pipeline or backlight driver reported an error — often a display assembly or its connecting flex cable, less commonly the display driver IC on the logic board.",
+      affectedParts: ["Display assembly (LCD/OLED)", "Display flex cable / connector"],
+      recommendation: "Inspect and reseat the display connector. If the issue persists with a known-good display installed, escalate to logic-board-level display driver inspection.",
+    }),
+  },
+  {
+    pattern: /applesmc|\bsmc\b|\bpmu\b|power management/i,
+    diagnosis: () => ({
+      detectedProblem: "Power management (SMC/PMU) fault detected.",
+      primaryCause: "The System Management Controller flagged an abnormal power condition — commonly a degraded battery, a loose battery connector, or a fault in the power management IC.",
+      affectedParts: ["Battery", "Battery connector / flex cable", "Power management IC (logic board)"],
+      recommendation: "Check battery health/cycle count and replace if degraded. If the panic recurs with a new, properly seated battery, the power management IC likely needs board-level repair.",
+    }),
+  },
+  {
+    pattern: /battery/i,
+    diagnosis: () => ({
+      detectedProblem: "Battery-related fault mentioned in the panic log.",
+      primaryCause: "Likely a degraded, swollen, or poorly connected battery causing an unstable power supply.",
+      affectedParts: ["Battery", "Battery connector / flex cable"],
+      recommendation: "Check battery health and physical condition (swelling); replace if degraded, and confirm the connector is fully seated after replacement.",
+    }),
+  },
+  {
+    pattern: /baseband|modem panic|\bqmi\b/i,
+    diagnosis: () => ({
+      detectedProblem: "Baseband (cellular modem) crash detected.",
+      primaryCause: "The cellular baseband processor crashed or stopped responding — often baseband firmware corruption, occasionally a hardware fault in the modem/RF section.",
+      affectedParts: ["Baseband/modem IC (logic board)", "Antenna flex cables / RF connectors"],
+      recommendation: "Try a full iOS reinstall via DFU restore first to rule out firmware corruption. If baseband panics continue, inspect antenna connectors and consider modem IC-level repair.",
+    }),
+  },
+  {
+    pattern: /thermal (shutdown|panic|trap)|over-?temp/i,
+    diagnosis: () => ({
+      detectedProblem: "Thermal shutdown — the device exceeded a safe operating temperature.",
+      primaryCause: "Excessive internal heat, often from a failing battery, a shorted component, or heavy sustained use/charging in a hot environment.",
+      affectedParts: ["Battery", "Charging IC", "Logic board (possible short)"],
+      recommendation: "Check the battery for swelling/damage, test with a different (certified) charger and cable, and inspect the logic board for signs of a short or liquid damage.",
+    }),
+  },
+  {
+    pattern: /\bnand\b|ans2|flash storage[^\n]*(error|fail)/i,
+    diagnosis: () => ({
+      detectedProblem: "Storage (NAND flash) or filesystem error reported by the kernel.",
+      primaryCause: "The flash storage or its controller reported a read/write failure — from NAND wear/corruption, or a logic board-level storage fault.",
+      affectedParts: ["NAND flash storage (logic board)"],
+      recommendation: "Back up any recoverable data immediately, then attempt a DFU restore. If storage errors persist, the NAND chip likely needs replacement — data recovery may be required first.",
+    }),
+  },
+  {
+    pattern: /multitouch|digitizer[^\n]*(fail|timeout|error)/i,
+    diagnosis: () => ({
+      detectedProblem: "Touch/digitizer controller fault detected.",
+      primaryCause: "The touch controller failed to respond — usually a damaged digitizer/display assembly or its connector.",
+      affectedParts: ["Display assembly (digitizer)", "Display flex cable / connector"],
+      recommendation: "Reseat the display connector and retest. If touch issues continue, replace the display assembly.",
+    }),
+  },
+  {
+    pattern: /jetsam|out of memory|low memory/i,
+    diagnosis: () => ({
+      detectedProblem: "Memory-pressure crash (jetsam) — the system ran critically low on memory.",
+      primaryCause: "Usually caused by a misbehaving app consuming excessive memory, not a hardware fault.",
+      affectedParts: ["No specific hardware part implicated — software/app issue"],
+      recommendation: "Identify and update/remove the offending app if named in the log. Rarely indicates a hardware problem unless it recurs after a clean restore.",
+    }),
+  },
+  {
+    pattern: /panic\(cpu|kernel panic|fatal exception|trap number/i,
+    diagnosis: () => ({
+      detectedProblem: "Kernel-level panic (system crash) with no specific hardware subsystem identified in the log.",
+      primaryCause: "The exact trigger couldn't be pinpointed from the available text — commonly a software/firmware fault, though hardware can't be ruled out without further testing.",
+      affectedParts: ["Undetermined from this log — review the full panic string/backtrace, or reproduce and capture a fresh log"],
+      recommendation: "Update to the latest iOS version and monitor. If panics continue, run a full hardware diagnostic and inspect the logic board for physical damage or corrosion.",
+    }),
+  },
 ];
 
 export function parsePanicLog(content: string): PanicLogSummary {
@@ -118,8 +221,17 @@ export function parsePanicLog(content: string): PanicLogSummary {
     }
   }
 
-  const searchText = `${panicString ?? ""}\n${content}`;
-  const hints = HINT_RULES.filter((r) => r.pattern.test(searchText)).map((r) => r.hint);
+  // Search the panic string first (it's the authoritative signal) and fall
+  // back to the whole log only if there's no panic string to go on.
+  const searchText = panicString ?? content;
+  let diagnosis: PanicDiagnosis | null = null;
+  for (const rule of DIAGNOSIS_RULES) {
+    const m = searchText.match(rule.pattern);
+    if (m) {
+      diagnosis = rule.diagnosis(m);
+      break;
+    }
+  }
 
   let panicType: string | null = null;
   if (panicString) {
@@ -135,5 +247,5 @@ export function parsePanicLog(content: string): PanicLogSummary {
   // just the word "panic" appearing incidentally somewhere in the input.
   const looksLikePanicLog = !!(device || osVersion || incidentId || panicString);
 
-  return { device, osVersion, buildVersion, incidentDate, incidentId, panicType, panicString, hints, looksLikePanicLog, raw };
+  return { device, osVersion, buildVersion, incidentDate, incidentId, panicType, panicString, diagnosis, looksLikePanicLog, raw };
 }
