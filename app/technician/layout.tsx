@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import { logoutAction } from "@/lib/actions";
@@ -17,6 +18,15 @@ export default async function TechnicianLayout({ children }: { children: React.R
             <span className="text-sm font-bold brand-gradient-text">Ceejay · Technician</span>
           </span>
           <div className="flex items-center gap-3">
+            <Link href="/technician" className="text-xs font-medium text-slate-500 hover:text-slate-800">
+              My Jobs
+            </Link>
+            <Link href="/technician/earnings" className="text-xs font-medium text-slate-500 hover:text-slate-800">
+              My Earnings
+            </Link>
+            <Link href="/technician/panic-log" className="text-xs font-medium text-slate-500 hover:text-slate-800">
+              Panic Log
+            </Link>
             <span className="text-xs text-slate-400">{user.name}</span>
             <form action={logoutAction}>
               <button className="btn-secondary !px-3 !py-1.5 text-xs" type="submit">

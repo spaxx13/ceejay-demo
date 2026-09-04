@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getRepairRecords, getServiceAgreements, getExpenses, getTechnicians, isBranchHidden, homeServiceBranchId, technicianSharePercent } from "@/lib/db";
+import { getRepairRecords, getExpenses, getTechnicians, isBranchHidden, technicianSharePercent } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import SalesTabs from "@/components/SalesTabs";
 
@@ -8,10 +8,9 @@ const pct = (n: number) => `${n.toLocaleString(undefined, { minimumFractionDigit
 
 export default async function TechnicianSalesPage({ searchParams }: { searchParams: Promise<{ from?: string; to?: string }> }) {
   const sp = await searchParams;
-  const [user, repairRecords, agreements, expenses, technicians] = await Promise.all([
+  const [user, repairRecords, expenses, technicians] = await Promise.all([
     getCurrentUser(),
     getRepairRecords(),
-    getServiceAgreements(),
     getExpenses(),
     getTechnicians(),
   ]);
@@ -24,17 +23,13 @@ export default async function TechnicianSalesPage({ searchParams }: { searchPara
   const to = hasFilter ? sp.to : today;
   const inRange = (date: string) => (!from || date >= from) && (!to || date <= to);
 
-  // Same two sources as Branch Sales — POS repair records and completed
-  // home-service Post-Repair checklists — but grouped by the technician's
-  // name (as typed/recorded on each job) instead of branch.
+  // Same source as Branch Sales — POS repair records only — but grouped by
+  // the technician's name (as typed/recorded on each job) instead of
+  // branch. Completed home service jobs have their own dedicated Home
+  // Service Sales report instead (its 30/70 split and Total Amount basis
+  // differ from POS, so mixing the two here would make this table disagree
+  // with itself depending on which kind of job a row came from).
   const posSales = repairRecords.filter((r) => !r.cancelled && inRange(r.serviceDate) && !isBranchHidden(user, r.branchId));
-  const homeServiceSales = agreements.filter(
-    (a) =>
-      a.phase === "post_repair" &&
-      a.requestId &&
-      inRange(a.completedAt.slice(0, 10)) &&
-      !isBranchHidden(user, homeServiceBranchId(a.technicianId, a.branchId, technicians))
-  );
   const technicianExpenses = expenses.filter(
     (e) => e.target === "technician_final_total_sales" && inRange(e.expenseDate) && !isBranchHidden(user, e.branchId)
   );
@@ -54,14 +49,6 @@ export default async function TechnicianSalesPage({ searchParams }: { searchPara
     bucket.partsCost += r.partsCost;
     bucket.laborCost += r.laborCost;
     bucket.otherExpenses += r.otherExpenses;
-  }
-  for (const a of homeServiceSales) {
-    const bucket = ensure(a.technicianName);
-    bucket.count += 1;
-    bucket.totalSales += a.cost;
-    bucket.partsCost += a.partsCost;
-    bucket.laborCost += a.laborCost;
-    bucket.otherExpenses += a.otherExpenses;
   }
 
   const rows = Array.from(totals.values())
@@ -116,12 +103,12 @@ export default async function TechnicianSalesPage({ searchParams }: { searchPara
       <div>
         <h1 className="text-xl font-bold text-slate-900">Sales and Net Profit by Technician</h1>
         <p className="mt-1 text-sm text-slate-400">
-          Each technician&apos;s total sales, expenses, and net profit across POS repair records and completed home service jobs. Net Profit
-          splits by each technician&apos;s own earnings share (set per technician on{" "}
+          Each technician&apos;s total sales, expenses, and net profit across POS repair records — same figures as Branch Sales, just grouped
+          by technician instead of branch. Net Profit splits by each technician&apos;s own earnings share (set per technician on{" "}
           <Link href="/admin/technicians" className="underline">
             Settings &gt; Technicians
           </Link>
-          ) — the rest is the business&apos;s Remaining share.
+          ) — the rest is the business&apos;s Remaining share. Home service earnings are tracked separately — see the Home Service tab.
         </p>
       </div>
 

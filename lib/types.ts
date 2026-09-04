@@ -130,9 +130,10 @@ export type Technician = {
   active: boolean;
   // This technician's cut of their own Net Profit, as a percent (e.g. 50,
   // 70, 100 for an owner-technician who keeps everything) — set per
-  // technician on Settings > Technicians. Falls back to 50 for a
-  // technician name with no matching record (e.g. a typo, or a name no
-  // longer in the system).
+  // technician on Settings > Technicians, used everywhere a technician's
+  // earnings are computed (Branch Sales, Sales by Technician, My Earnings).
+  // Falls back to 50 for a technician name with no matching record (e.g. a
+  // typo, or a name no longer in the system).
   earningsSharePercent: number;
 };
 

@@ -83,8 +83,8 @@ export default function TechnicianManager({ technicians, branches }: { technicia
                 className="input"
               />
               <p className="text-[11px] text-slate-400">
-                This technician&apos;s cut of their own Net Profit on Sales &gt; Branch Sales and Sales &gt; By Technician. Set to 100% for an
-                owner-technician who keeps everything.
+                This technician&apos;s cut of their own Net Profit — used on Branch Sales, Sales by Technician, and My Earnings. Set to 100%
+                for an owner-technician who keeps everything.
               </p>
             </div>
           </div>
