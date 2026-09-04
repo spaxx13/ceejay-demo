@@ -96,6 +96,11 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
   const inRangeExpenses = expenses.filter((e) => inRange(e.expenseDate));
   const ownerFinalDeductions = inRangeExpenses.filter((e) => e.target === "owner_final_total_sales").reduce((s, e) => s + e.amount, 0);
   const ownerTotalSalesDeductions = inRangeExpenses.filter((e) => e.target === "owner_total_sales").reduce((s, e) => s + e.amount, 0);
+  // Same business-expense deductions used on the By Technician page — matched
+  // by technician name only (not branch), so a technician's total stays the
+  // same everywhere they're shown.
+  const technicianExpenses = inRangeExpenses.filter((e) => e.target === "technician_final_total_sales" && !isBranchHidden(user, e.branchId));
+  const businessExpensesFor = (name: string) => technicianExpenses.filter((e) => e.technicianName === name).reduce((s, e) => s + e.amount, 0);
   const ownerTotalSalesNet = grandTotal.posRevenue - ownerTotalSalesDeductions;
   const ownerFinalTotalSalesNet = grandFinalTotalSales - ownerFinalDeductions;
   const showAllBranches = canViewAllBranchSales(user);
@@ -110,11 +115,16 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
   const rowsWithDeductions = rows.map((r) => {
     const branchTotalSalesDeductions = deductionsFor("owner_total_sales", r.branchId);
     const branchFinalDeductions = deductionsFor("owner_final_total_sales", r.branchId);
-    const technicians = Array.from(techByBranch.get(key(r.branchId))?.values() ?? []).sort((a, b) => {
-      if (a.name === "Unassigned") return 1;
-      if (b.name === "Unassigned") return -1;
-      return b.earnings - a.earnings;
-    });
+    const technicians = Array.from(techByBranch.get(key(r.branchId))?.values() ?? [])
+      .map((t) => {
+        const businessExpenses = businessExpensesFor(t.name);
+        return { ...t, businessExpenses, finalEarningsNet: t.earnings - businessExpenses };
+      })
+      .sort((a, b) => {
+        if (a.name === "Unassigned") return 1;
+        if (b.name === "Unassigned") return -1;
+        return b.earnings - a.earnings;
+      });
     return {
       ...r,
       branchTotalSalesDeductions,
@@ -262,7 +272,9 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
                         <th className="pb-2 pr-3 font-medium">Technician</th>
                         <th className="pb-2 pr-3 font-medium">% Earnings</th>
                         <th className="pb-2 pr-3 font-medium">Jobs</th>
-                        <th className="pb-2 font-medium">Earnings</th>
+                        <th className="pb-2 pr-3 font-medium">Earnings</th>
+                        <th className="pb-2 pr-3 font-medium">Business Expenses</th>
+                        <th className="pb-2 font-medium">Final Earnings (Net)</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -271,14 +283,18 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
                           <td className="py-2 pr-3 text-slate-700">{t.name}</td>
                           <td className="py-2 pr-3 text-slate-500">{techByName.get(t.name) ? `${techByName.get(t.name)!.earningsSharePercent}%` : "—"}</td>
                           <td className="py-2 pr-3 text-slate-500">{t.count}</td>
-                          <td className="py-2 text-slate-800">{peso(t.earnings)}</td>
+                          <td className="py-2 pr-3 text-slate-800">{peso(t.earnings)}</td>
+                          <td className="py-2 pr-3 text-red-700">−{peso(t.businessExpenses)}</td>
+                          <td className="py-2 font-semibold text-blue-300">{peso(t.finalEarningsNet)}</td>
                         </tr>
                       ))}
                       <tr className="font-semibold text-slate-900">
                         <td className="pt-2 pr-3">Total</td>
                         <td className="pt-2 pr-3"></td>
                         <td className="pt-2 pr-3">{r.technicians.reduce((s, t) => s + t.count, 0)}</td>
-                        <td className="pt-2 text-green-700">{peso(r.technicians.reduce((s, t) => s + t.earnings, 0))}</td>
+                        <td className="pt-2 pr-3 text-green-700">{peso(r.technicians.reduce((s, t) => s + t.earnings, 0))}</td>
+                        <td className="pt-2 pr-3 text-red-700">−{peso(r.technicians.reduce((s, t) => s + t.businessExpenses, 0))}</td>
+                        <td className="pt-2 text-blue-300">{peso(r.technicians.reduce((s, t) => s + t.finalEarningsNet, 0))}</td>
                       </tr>
                     </tbody>
                   </table>
