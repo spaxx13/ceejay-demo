@@ -163,6 +163,7 @@ export async function updateUser(formData: FormData) {
 
   if (role === "technician") {
     const technicianBranchIds = listStr(formData, "technicianBranchIds");
+    const linkingExisting = str(formData, "technicianLinkMode") === "existing";
     if (!technicianId) {
       // No linked Technician record yet — create one now with the chosen
       // branch(es) and link it.
@@ -173,9 +174,12 @@ export async function updateUser(formData: FormData) {
         );
         technicianId = created!.id;
       }
-    } else {
-      // Already linked — update that Technician record's branches in place
-      // rather than spawning a new one on every edit.
+    } else if (!linkingExisting) {
+      // Already linked, and this form is in "new/edit branches" mode —
+      // update that Technician record's branches in place rather than
+      // spawning a new one on every edit. When instead linking to an
+      // *existing* technician picked from the list, its branches are
+      // managed from Settings > Technicians and must not be touched here.
       await query("update technicians set branch_ids=$1 where id=$2", [technicianBranchIds, technicianId]);
     }
   }
