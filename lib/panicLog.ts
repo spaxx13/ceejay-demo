@@ -10,17 +10,32 @@
 // extraction, and if neither finds a field just leave it blank rather than
 // guessing wrong. The diagnosis below is a rule-based triage aid for a
 // technician — informed best guesses from known panic patterns, not a
-// certified diagnosis; always confirm with a physical inspection.
+// certified diagnosis; always confirm with a physical inspection. Confidence
+// and per-part likelihood figures are the shop's own estimates of how often
+// each cause turns out to be right in practice, not a statistic computed
+// from this specific log.
+
+export type AffectedPart = {
+  part: string;
+  // Likelihood (0-100) that this specific part is the culprit, relative to
+  // the other listed parts for this diagnosis. null when the diagnosis is
+  // software-side and no hardware part is implicated at all.
+  likelihood: number | null;
+};
 
 export type PanicDiagnosis = {
   detectedProblem: string;
   primaryCause: string;
-  affectedParts: string[];
+  // Overall confidence (0-100) that this diagnosis correctly identifies the
+  // issue, based on how specific/reliable the matched panic pattern is.
+  confidence: number;
+  affectedParts: AffectedPart[];
   recommendation: string;
 };
 
 export type PanicLogSummary = {
-  device: string | null;
+  device: string | null; // raw Apple model identifier, e.g. "iPhone14,5"
+  deviceName: string | null; // friendly marketing name, e.g. "iPhone 13"
   osVersion: string | null;
   buildVersion: string | null;
   incidentDate: string | null;
@@ -75,6 +90,62 @@ function lineValue(content: string, labels: string[]): string | null {
   return null;
 }
 
+// Apple's internal model identifier -> the name printed on the box. Covers
+// iPhone 6s through the 16 lineup, which is the range a repair shop
+// realistically sees. An identifier not in this table just falls back to
+// showing the raw code — better than guessing wrong on a model we've never
+// seen (e.g. a future release after this list was last updated).
+const IPHONE_MODEL_NAMES: Record<string, string> = {
+  "iPhone8,1": "iPhone 6s",
+  "iPhone8,2": "iPhone 6s Plus",
+  "iPhone8,4": "iPhone SE (1st generation)",
+  "iPhone9,1": "iPhone 7",
+  "iPhone9,3": "iPhone 7",
+  "iPhone9,2": "iPhone 7 Plus",
+  "iPhone9,4": "iPhone 7 Plus",
+  "iPhone10,1": "iPhone 8",
+  "iPhone10,4": "iPhone 8",
+  "iPhone10,2": "iPhone 8 Plus",
+  "iPhone10,5": "iPhone 8 Plus",
+  "iPhone10,3": "iPhone X",
+  "iPhone10,6": "iPhone X",
+  "iPhone11,2": "iPhone XS",
+  "iPhone11,4": "iPhone XS Max",
+  "iPhone11,6": "iPhone XS Max",
+  "iPhone11,8": "iPhone XR",
+  "iPhone12,1": "iPhone 11",
+  "iPhone12,3": "iPhone 11 Pro",
+  "iPhone12,5": "iPhone 11 Pro Max",
+  "iPhone12,8": "iPhone SE (2nd generation)",
+  "iPhone13,1": "iPhone 12 mini",
+  "iPhone13,2": "iPhone 12",
+  "iPhone13,3": "iPhone 12 Pro",
+  "iPhone13,4": "iPhone 12 Pro Max",
+  "iPhone14,4": "iPhone 13 mini",
+  "iPhone14,5": "iPhone 13",
+  "iPhone14,2": "iPhone 13 Pro",
+  "iPhone14,3": "iPhone 13 Pro Max",
+  "iPhone14,6": "iPhone SE (3rd generation)",
+  "iPhone14,7": "iPhone 14",
+  "iPhone14,8": "iPhone 14 Plus",
+  "iPhone15,2": "iPhone 14 Pro",
+  "iPhone15,3": "iPhone 14 Pro Max",
+  "iPhone15,4": "iPhone 15",
+  "iPhone15,5": "iPhone 15 Plus",
+  "iPhone16,1": "iPhone 15 Pro",
+  "iPhone16,2": "iPhone 15 Pro Max",
+  "iPhone17,3": "iPhone 16",
+  "iPhone17,4": "iPhone 16 Plus",
+  "iPhone17,1": "iPhone 16 Pro",
+  "iPhone17,2": "iPhone 16 Pro Max",
+};
+
+function friendlyDeviceName(raw: string | null): string | null {
+  if (!raw) return null;
+  const key = raw.trim().replace(/\s+/g, "");
+  return IPHONE_MODEL_NAMES[key] ?? null;
+}
+
 // Ordered most-specific-first: the first rule whose pattern matches the
 // panic text is taken as the top likely cause. A watchdog timeout is
 // checked before subsystem-keyword rules because it names the *mechanism*
@@ -87,7 +158,8 @@ const DIAGNOSIS_RULES: { pattern: RegExp; diagnosis: (m: RegExpMatchArray) => Pa
     diagnosis: (m) => ({
       detectedProblem: m[1] ? `Software watchdog timeout — "${m[1]}" stopped responding and was force-restarted.` : "Software watchdog timeout — a process stopped responding and was force-restarted.",
       primaryCause: "A frozen app or system process failed to respond within its allotted time, so the watchdog restarted the device. This is a software/firmware symptom, not a component failure.",
-      affectedParts: ["No specific hardware part implicated — software/firmware issue"],
+      confidence: 85,
+      affectedParts: [{ part: "No specific hardware part — software/firmware issue", likelihood: null }],
       recommendation: "Update to the latest iOS version and monitor for recurrence. If it keeps happening after a clean restart, back up and restore the device via DFU before suspecting hardware.",
     }),
   },
@@ -96,7 +168,12 @@ const DIAGNOSIS_RULES: { pattern: RegExp; diagnosis: (m: RegExpMatchArray) => Pa
     diagnosis: (m) => ({
       detectedProblem: `Hardware communication failure on the ${m[1].toUpperCase()} bus — a component failed to respond to the system controller.`,
       primaryCause: "A chip on this bus (commonly the display's backlight/touch controller, or another peripheral IC) isn't responding — usually a damaged flex cable/connector, or a failed IC.",
-      affectedParts: ["Display assembly (backlight/touch controller)", "Display flex cable / connector", "Logic board connector for the affected bus"],
+      confidence: 70,
+      affectedParts: [
+        { part: "Display flex cable / connector", likelihood: 55 },
+        { part: "Display assembly (backlight/touch controller)", likelihood: 30 },
+        { part: "Logic board connector for the affected bus", likelihood: 15 },
+      ],
       recommendation: "Reseat the display flex cable/connector first. If the panic recurs, test with a known-good display; if it still occurs, the fault is likely on the logic board and may need board-level repair.",
     }),
   },
@@ -105,7 +182,11 @@ const DIAGNOSIS_RULES: { pattern: RegExp; diagnosis: (m: RegExpMatchArray) => Pa
     diagnosis: () => ({
       detectedProblem: "Display/backlight subsystem fault reported by the kernel.",
       primaryCause: "The display pipeline or backlight driver reported an error — often a display assembly or its connecting flex cable, less commonly the display driver IC on the logic board.",
-      affectedParts: ["Display assembly (LCD/OLED)", "Display flex cable / connector"],
+      confidence: 55,
+      affectedParts: [
+        { part: "Display assembly (LCD/OLED)", likelihood: 60 },
+        { part: "Display flex cable / connector", likelihood: 40 },
+      ],
       recommendation: "Inspect and reseat the display connector. If the issue persists with a known-good display installed, escalate to logic-board-level display driver inspection.",
     }),
   },
@@ -114,7 +195,12 @@ const DIAGNOSIS_RULES: { pattern: RegExp; diagnosis: (m: RegExpMatchArray) => Pa
     diagnosis: () => ({
       detectedProblem: "Power management (SMC/PMU) fault detected.",
       primaryCause: "The System Management Controller flagged an abnormal power condition — commonly a degraded battery, a loose battery connector, or a fault in the power management IC.",
-      affectedParts: ["Battery", "Battery connector / flex cable", "Power management IC (logic board)"],
+      confidence: 65,
+      affectedParts: [
+        { part: "Battery", likelihood: 60 },
+        { part: "Battery connector / flex cable", likelihood: 25 },
+        { part: "Power management IC (logic board)", likelihood: 15 },
+      ],
       recommendation: "Check battery health/cycle count and replace if degraded. If the panic recurs with a new, properly seated battery, the power management IC likely needs board-level repair.",
     }),
   },
@@ -123,7 +209,11 @@ const DIAGNOSIS_RULES: { pattern: RegExp; diagnosis: (m: RegExpMatchArray) => Pa
     diagnosis: () => ({
       detectedProblem: "Battery-related fault mentioned in the panic log.",
       primaryCause: "Likely a degraded, swollen, or poorly connected battery causing an unstable power supply.",
-      affectedParts: ["Battery", "Battery connector / flex cable"],
+      confidence: 45,
+      affectedParts: [
+        { part: "Battery", likelihood: 70 },
+        { part: "Battery connector / flex cable", likelihood: 30 },
+      ],
       recommendation: "Check battery health and physical condition (swelling); replace if degraded, and confirm the connector is fully seated after replacement.",
     }),
   },
@@ -132,7 +222,11 @@ const DIAGNOSIS_RULES: { pattern: RegExp; diagnosis: (m: RegExpMatchArray) => Pa
     diagnosis: () => ({
       detectedProblem: "Baseband (cellular modem) crash detected.",
       primaryCause: "The cellular baseband processor crashed or stopped responding — often baseband firmware corruption, occasionally a hardware fault in the modem/RF section.",
-      affectedParts: ["Baseband/modem IC (logic board)", "Antenna flex cables / RF connectors"],
+      confidence: 60,
+      affectedParts: [
+        { part: "Baseband/modem IC (logic board)", likelihood: 60 },
+        { part: "Antenna flex cables / RF connectors", likelihood: 40 },
+      ],
       recommendation: "Try a full iOS reinstall via DFU restore first to rule out firmware corruption. If baseband panics continue, inspect antenna connectors and consider modem IC-level repair.",
     }),
   },
@@ -141,7 +235,12 @@ const DIAGNOSIS_RULES: { pattern: RegExp; diagnosis: (m: RegExpMatchArray) => Pa
     diagnosis: () => ({
       detectedProblem: "Thermal shutdown — the device exceeded a safe operating temperature.",
       primaryCause: "Excessive internal heat, often from a failing battery, a shorted component, or heavy sustained use/charging in a hot environment.",
-      affectedParts: ["Battery", "Charging IC", "Logic board (possible short)"],
+      confidence: 60,
+      affectedParts: [
+        { part: "Battery", likelihood: 50 },
+        { part: "Charging IC", likelihood: 30 },
+        { part: "Logic board (possible short)", likelihood: 20 },
+      ],
       recommendation: "Check the battery for swelling/damage, test with a different (certified) charger and cable, and inspect the logic board for signs of a short or liquid damage.",
     }),
   },
@@ -150,7 +249,8 @@ const DIAGNOSIS_RULES: { pattern: RegExp; diagnosis: (m: RegExpMatchArray) => Pa
     diagnosis: () => ({
       detectedProblem: "Storage (NAND flash) or filesystem error reported by the kernel.",
       primaryCause: "The flash storage or its controller reported a read/write failure — from NAND wear/corruption, or a logic board-level storage fault.",
-      affectedParts: ["NAND flash storage (logic board)"],
+      confidence: 65,
+      affectedParts: [{ part: "NAND flash storage (logic board)", likelihood: 100 }],
       recommendation: "Back up any recoverable data immediately, then attempt a DFU restore. If storage errors persist, the NAND chip likely needs replacement — data recovery may be required first.",
     }),
   },
@@ -159,7 +259,11 @@ const DIAGNOSIS_RULES: { pattern: RegExp; diagnosis: (m: RegExpMatchArray) => Pa
     diagnosis: () => ({
       detectedProblem: "Touch/digitizer controller fault detected.",
       primaryCause: "The touch controller failed to respond — usually a damaged digitizer/display assembly or its connector.",
-      affectedParts: ["Display assembly (digitizer)", "Display flex cable / connector"],
+      confidence: 60,
+      affectedParts: [
+        { part: "Display assembly (digitizer)", likelihood: 70 },
+        { part: "Display flex cable / connector", likelihood: 30 },
+      ],
       recommendation: "Reseat the display connector and retest. If touch issues continue, replace the display assembly.",
     }),
   },
@@ -168,7 +272,8 @@ const DIAGNOSIS_RULES: { pattern: RegExp; diagnosis: (m: RegExpMatchArray) => Pa
     diagnosis: () => ({
       detectedProblem: "Memory-pressure crash (jetsam) — the system ran critically low on memory.",
       primaryCause: "Usually caused by a misbehaving app consuming excessive memory, not a hardware fault.",
-      affectedParts: ["No specific hardware part implicated — software/app issue"],
+      confidence: 80,
+      affectedParts: [{ part: "No specific hardware part — software/app issue", likelihood: null }],
       recommendation: "Identify and update/remove the offending app if named in the log. Rarely indicates a hardware problem unless it recurs after a clean restore.",
     }),
   },
@@ -177,7 +282,8 @@ const DIAGNOSIS_RULES: { pattern: RegExp; diagnosis: (m: RegExpMatchArray) => Pa
     diagnosis: () => ({
       detectedProblem: "Kernel-level panic (system crash) with no specific hardware subsystem identified in the log.",
       primaryCause: "The exact trigger couldn't be pinpointed from the available text — commonly a software/firmware fault, though hardware can't be ruled out without further testing.",
-      affectedParts: ["Undetermined from this log — review the full panic string/backtrace, or reproduce and capture a fresh log"],
+      confidence: 30,
+      affectedParts: [{ part: "Undetermined from this log — review the full panic string/backtrace, or reproduce and capture a fresh log", likelihood: null }],
       recommendation: "Update to the latest iOS version and monitor. If panics continue, run a full hardware diagnostic and inspect the logic board for physical damage or corrosion.",
     }),
   },
@@ -247,5 +353,17 @@ export function parsePanicLog(content: string): PanicLogSummary {
   // just the word "panic" appearing incidentally somewhere in the input.
   const looksLikePanicLog = !!(device || osVersion || incidentId || panicString);
 
-  return { device, osVersion, buildVersion, incidentDate, incidentId, panicType, panicString, diagnosis, looksLikePanicLog, raw };
+  return {
+    device,
+    deviceName: friendlyDeviceName(device),
+    osVersion,
+    buildVersion,
+    incidentDate,
+    incidentId,
+    panicType,
+    panicString,
+    diagnosis,
+    looksLikePanicLog,
+    raw,
+  };
 }

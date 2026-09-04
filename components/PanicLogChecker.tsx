@@ -75,7 +75,14 @@ export default function PanicLogChecker() {
 
       {summary && (
         <div className="card space-y-4 border-2 border-blue-300 bg-blue-50/40">
-          <h3 className="text-sm font-semibold text-blue-900">Diagnostic Result</h3>
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="text-sm font-semibold text-blue-900">Diagnostic Result</h3>
+            {summary.diagnosis && (
+              <span className="shrink-0 rounded-full bg-blue-200 px-2.5 py-1 text-xs font-bold text-blue-900">
+                {summary.diagnosis.confidence}% confidence
+              </span>
+            )}
+          </div>
           {summary.diagnosis ? (
             <div className="space-y-3">
               <div>
@@ -88,9 +95,16 @@ export default function PanicLogChecker() {
               </div>
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wide text-blue-400">3. Possible Affected Parts</p>
-                <ul className="mt-0.5 list-disc space-y-0.5 pl-5 text-sm text-slate-700">
+                <ul className="mt-0.5 space-y-1 text-sm text-slate-700">
                   {summary.diagnosis.affectedParts.map((p, i) => (
-                    <li key={i}>{p}</li>
+                    <li key={i} className="flex items-center justify-between gap-2 rounded-md bg-white/70 px-2.5 py-1.5">
+                      <span>{p.part}</span>
+                      {p.likelihood !== null && (
+                        <span className="shrink-0 rounded-full bg-slate-200 px-2 py-0.5 text-xs font-semibold text-slate-700">
+                          {p.likelihood}%
+                        </span>
+                      )}
+                    </li>
                   ))}
                 </ul>
               </div>
@@ -105,8 +119,8 @@ export default function PanicLogChecker() {
             </p>
           )}
           <p className="border-t border-blue-200 pt-2 text-[11px] text-slate-500">
-            Automated triage based on known panic patterns — a helpful starting point, not a confirmed diagnosis. Always verify with a
-            physical inspection.
+            Confidence and likelihood figures are the shop&apos;s own estimates from known panic patterns — a helpful starting point, not
+            a confirmed diagnosis. Always verify with a physical inspection.
           </p>
         </div>
       )}
@@ -117,7 +131,15 @@ export default function PanicLogChecker() {
           <dl className="grid grid-cols-1 gap-x-4 gap-y-2 text-sm sm:grid-cols-2">
             <div>
               <dt className="text-xs text-slate-400">Device</dt>
-              <dd className="text-slate-800">{summary.device ?? "—"}</dd>
+              <dd className="text-slate-800">
+                {summary.deviceName ? (
+                  <>
+                    {summary.deviceName} <span className="text-xs text-slate-400">({summary.device})</span>
+                  </>
+                ) : (
+                  (summary.device ?? "—")
+                )}
+              </dd>
             </div>
             <div>
               <dt className="text-xs text-slate-400">OS Version</dt>
