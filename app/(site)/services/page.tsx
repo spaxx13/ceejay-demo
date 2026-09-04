@@ -42,7 +42,11 @@ export default async function ServicesPage() {
           {serviceTypes.length === 0 && <p className="text-sm text-slate-400">No services published yet.</p>}
           {serviceTypes.map((s) => (
             <div key={s.id} className="card">
-              <p className="font-semibold text-slate-800">{s.label}</p>
+              {/* min-h reserves 2 lines' worth of space so a long label
+                  (e.g. "Backhousing(...)") wrapping to a second line doesn't
+                  push its description out of alignment with the shorter,
+                  single-line titles next to it in the same grid row. */}
+              <p className="min-h-12 font-semibold text-slate-800">{s.label}</p>
               <p className="mt-2 text-sm text-slate-400">{DESCRIPTIONS[s.label] ?? FALLBACK}</p>
             </div>
           ))}
