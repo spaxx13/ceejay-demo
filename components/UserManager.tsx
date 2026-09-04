@@ -40,18 +40,31 @@ export default function UserManager({
   const [role, setRole] = useState<Role>("branch_admin");
   const [showPassword, setShowPassword] = useState(false);
   const [technicianBranchSel, setTechnicianBranchSel] = useState<string[]>([]);
+  const [technicianLinkMode, setTechnicianLinkMode] = useState<"new" | "existing">("new");
+  const [linkedTechnicianId, setLinkedTechnicianId] = useState("");
   const editing = users.find((u) => u.id === editingId);
+
+  // A technician already linked to a different staff account shouldn't be
+  // offered again here — one technician, one login. The account currently
+  // being edited (if any) keeps seeing its own link in the list.
+  const linkableTechnicians = technicians.filter(
+    (t) => t.id === editing?.technicianId || !users.some((u) => u.technicianId === t.id && u.id !== editingId)
+  );
 
   function startEdit(u: UserRow) {
     setEditingId(u.id);
     setRole(u.role);
     setTechnicianBranchSel(technicians.find((t) => t.id === u.technicianId)?.branchIds ?? []);
+    setTechnicianLinkMode(u.technicianId ? "existing" : "new");
+    setLinkedTechnicianId(u.technicianId ?? "");
   }
   function reset() {
     setEditingId(null);
     setRole("branch_admin");
     setShowPassword(false);
     setTechnicianBranchSel([]);
+    setTechnicianLinkMode("new");
+    setLinkedTechnicianId("");
     formRef.current?.reset();
   }
 
@@ -127,40 +140,92 @@ export default function UserManager({
             </div>
           </div>
           {role === "technician" && (
-            <>
-              <input type="hidden" name="technicianId" value={editing?.technicianId ?? ""} />
+            <div className="space-y-3">
+              <input type="hidden" name="technicianId" value={technicianLinkMode === "existing" ? linkedTechnicianId : ""} />
+              <input type="hidden" name="technicianLinkMode" value={technicianLinkMode} />
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-slate-500">Branch(es)</label>
-                <div className="flex flex-wrap gap-2">
-                  {branches.map((b) => (
-                    <label
-                      key={b.id}
-                      className={`badge cursor-pointer border ${
-                        technicianBranchSel.includes(b.id) ? "border-blue-300 bg-blue-100 text-blue-300" : "border-slate-300 bg-slate-100 text-slate-500"
-                      }`}
-                    >
-                      <input
-                        type="checkbox"
-                        name="technicianBranchIds"
-                        value={b.id}
-                        checked={technicianBranchSel.includes(b.id)}
-                        onChange={() =>
-                          setTechnicianBranchSel((s) => (s.includes(b.id) ? s.filter((x) => x !== b.id) : [...s, b.id]))
-                        }
-                        className="sr-only"
-                      />
-                      {b.name}
-                    </label>
-                  ))}
-                  {branches.length === 0 && <p className="text-xs text-slate-400">No branches set up yet.</p>}
+                <label className="text-xs font-medium text-slate-500">Technician Record</label>
+                <div className="flex gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setTechnicianLinkMode("new")}
+                    className={`badge cursor-pointer border ${
+                      technicianLinkMode === "new" ? "border-blue-300 bg-blue-100 text-blue-300" : "border-slate-300 bg-slate-100 text-slate-500"
+                    }`}
+                  >
+                    Create new
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTechnicianLinkMode("existing")}
+                    className={`badge cursor-pointer border ${
+                      technicianLinkMode === "existing" ? "border-blue-300 bg-blue-100 text-blue-300" : "border-slate-300 bg-slate-100 text-slate-500"
+                    }`}
+                  >
+                    Link to existing
+                  </button>
                 </div>
-                <p className="text-[11px] text-slate-400">
-                  {editing?.technicianId
-                    ? "Updates the linked Technician record's branch(es), so they only see jobs assigned to them."
-                    : "Creates a linked Technician record with these branch(es), so they only see jobs assigned to them."}
-                </p>
               </div>
-            </>
+
+              {technicianLinkMode === "existing" ? (
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-slate-500">Technician *</label>
+                  <select
+                    value={linkedTechnicianId}
+                    onChange={(e) => setLinkedTechnicianId(e.target.value)}
+                    required
+                    className="input"
+                  >
+                    <option value="" disabled>
+                      Select technician...
+                    </option>
+                    {linkableTechnicians.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.name}
+                      </option>
+                    ))}
+                  </select>
+                  {linkableTechnicians.length === 0 && (
+                    <p className="text-[11px] text-amber-700">
+                      No unlinked technicians available — every existing technician already has a login, or none exist yet. Add one from
+                      Settings &gt; Technicians first, or create a new one here instead.
+                    </p>
+                  )}
+                  <p className="text-[11px] text-slate-400">
+                    Links this login to that Technician record&apos;s existing branch(es) — manage their branches from Settings &gt;
+                    Technicians.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-slate-500">Branch(es)</label>
+                  <div className="flex flex-wrap gap-2">
+                    {branches.map((b) => (
+                      <label
+                        key={b.id}
+                        className={`badge cursor-pointer border ${
+                          technicianBranchSel.includes(b.id) ? "border-blue-300 bg-blue-100 text-blue-300" : "border-slate-300 bg-slate-100 text-slate-500"
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          name="technicianBranchIds"
+                          value={b.id}
+                          checked={technicianBranchSel.includes(b.id)}
+                          onChange={() =>
+                            setTechnicianBranchSel((s) => (s.includes(b.id) ? s.filter((x) => x !== b.id) : [...s, b.id]))
+                          }
+                          className="sr-only"
+                        />
+                        {b.name}
+                      </label>
+                    ))}
+                    {branches.length === 0 && <p className="text-xs text-slate-400">No branches set up yet.</p>}
+                  </div>
+                  <p className="text-[11px] text-slate-400">Creates a new linked Technician record with these branch(es).</p>
+                </div>
+              )}
+            </div>
           )}
           {role === "branch_admin" && (
             <div className="space-y-1.5">
