@@ -98,14 +98,16 @@ export default function HomeServiceForm({
   const streetRef = useRef<HTMLInputElement>(null);
   const [vlogConsent, setVlogConsent] = useState(false);
 
-  // Province -> City -> Barangay cascading data for the "near" queue only —
-  // fetched on demand from a static asset (curated/filtered PSGC data for
-  // just these 8 areas) rather than bundled into the JS, since "far"
-  // customers never need it.
+  // Province -> City -> Barangay cascading data, fetched on demand from a
+  // static PSGC-derived asset rather than bundled into the JS — the "near"
+  // queue's 8 areas (~100KB) and the "far" queue's other 74 provinces
+  // nationwide (~470KB, includes Davao City and Zamboanga City under their
+  // PSGC-linked provinces) are separate files so neither customer downloads
+  // data for the queue they didn't pick.
   const [phData, setPhData] = useState<PhProvince[] | null>(null);
   useEffect(() => {
-    if (area !== "near") return;
-    fetch("/ph-addresses-near.json")
+    const file = area === "near" ? "/ph-addresses-near.json" : "/ph-addresses-far.json";
+    fetch(file)
       .then((r) => r.json())
       .then(setPhData)
       .catch(() => setPhData([]));
@@ -208,15 +210,11 @@ export default function HomeServiceForm({
       });
       autocomplete.addListener("place_changed", () => {
         const place = autocomplete.getPlace();
-        // On the "near" queue, City/Province are driven by the cascading
-        // dropdown (which also captures Barangay) — autofilling them here
-        // from Google's own text would just as often mismatch that curated
-        // list's exact option strings and silently reset the selects.
-        if (area !== "near") {
-          const comp = (type: string) => place.address_components?.find((c) => c.types.includes(type))?.long_name ?? "";
-          setCity(comp("locality") || comp("administrative_area_level_2"));
-          setProvince(comp("administrative_area_level_1"));
-        }
+        // City/Province/Barangay are always driven by the cascading dropdown
+        // below (both queues) — autofilling them here from Google's own text
+        // would just as often mismatch that curated list's exact option
+        // strings and silently reset the selects. Only the geocoded
+        // coordinates are useful from this autocomplete now.
         if (place.geometry?.location) {
           setLat(place.geometry.location.lat());
           setLng(place.geometry.location.lng());
@@ -348,105 +346,81 @@ export default function HomeServiceForm({
             </div>
           </Fragment>
         );
-      case "province":
-        // The "near" queue always gets the cascading Province -> City ->
-        // Barangay picker (overriding whatever type the admin configured for
-        // Province/City) since it's the whole point of splitting this queue
-        // out by area — the City field (below) renders nothing here, its
-        // spot in the field order is absorbed into this group.
-        if (area === "near") {
-          const provinces = phData ?? [];
-          return (
-            <div key={field.id} className="space-y-3">
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-slate-500">
-                  Province {asterisk}
-                </label>
-                <select
-                  name="province"
-                  required={req}
-                  value={province}
-                  onChange={(e) => {
-                    setProvince(e.target.value);
-                    setCity("");
-                    setBarangay("");
-                  }}
-                  className="input"
-                  disabled={!phData}
-                >
-                  <option value="">{phData ? "Select province..." : "Loading..."}</option>
-                  {provinces.map((p) => (
-                    <option key={p.key} value={p.label}>
-                      {p.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-slate-500">
-                  City / Municipality {asterisk}
-                </label>
-                <select
-                  name="city"
-                  required={req}
-                  value={city}
-                  onChange={(e) => {
-                    setCity(e.target.value);
-                    setBarangay("");
-                  }}
-                  className="input"
-                  disabled={!selectedPhProvince}
-                >
-                  <option value="">Select city/municipality...</option>
-                  {(selectedPhProvince?.cities ?? []).map((c) => (
-                    <option key={c.name} value={c.name}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-slate-500">
-                  Barangay <span className="text-red-600">*</span>
-                </label>
-                <select
-                  name="barangay"
-                  required
-                  value={barangay}
-                  onChange={(e) => setBarangay(e.target.value)}
-                  className="input"
-                  disabled={!selectedPhCity}
-                >
-                  <option value="">Select barangay...</option>
-                  {(selectedPhCity?.barangays ?? []).map((b) => (
-                    <option key={b} value={b}>
-                      {b}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-          );
-        }
-        // Controlled + synced from the street autocomplete only while this
-        // field is at its natural text type; any other type is a plain,
-        // uncontrolled field (autocomplete has nothing to sync into).
-        if (field.type !== "text") return renderGenericField(field, "province");
+      case "province": {
+        // Both queues get the cascading Province -> City -> Barangay picker
+        // (overriding whatever type the admin configured for Province/City),
+        // each backed by its own curated PSGC dataset — the City field
+        // (below) renders nothing here, its spot in the field order is
+        // absorbed into this group.
+        const provinces = phData ?? [];
         return (
-          <div key={field.id} className="space-y-1.5">
-            <label className="text-xs font-medium text-slate-500">
-              {field.label} {asterisk}
-            </label>
-            <input
-              name="province"
-              required={req}
-              value={province}
-              onChange={(e) => setProvince(e.target.value)}
-              className="input"
-              placeholder={field.placeholder}
-            />
+          <div key={field.id} className="space-y-3">
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-slate-500">Province {asterisk}</label>
+              <select
+                name="province"
+                required={req}
+                value={province}
+                onChange={(e) => {
+                  setProvince(e.target.value);
+                  setCity("");
+                  setBarangay("");
+                }}
+                className="input"
+                disabled={!phData}
+              >
+                <option value="">{phData ? "Select province..." : "Loading..."}</option>
+                {provinces.map((p) => (
+                  <option key={p.key} value={p.label}>
+                    {p.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-slate-500">City / Municipality {asterisk}</label>
+              <select
+                name="city"
+                required={req}
+                value={city}
+                onChange={(e) => {
+                  setCity(e.target.value);
+                  setBarangay("");
+                }}
+                className="input"
+                disabled={!selectedPhProvince}
+              >
+                <option value="">Select city/municipality...</option>
+                {(selectedPhProvince?.cities ?? []).map((c) => (
+                  <option key={c.name} value={c.name}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-slate-500">
+                Barangay <span className="text-red-600">*</span>
+              </label>
+              <select
+                name="barangay"
+                required
+                value={barangay}
+                onChange={(e) => setBarangay(e.target.value)}
+                className="input"
+                disabled={!selectedPhCity}
+              >
+                <option value="">Select barangay...</option>
+                {(selectedPhCity?.barangays ?? []).map((b) => (
+                  <option key={b} value={b}>
+                    {b}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
         );
+      }
       case "datetime":
         return renderGenericField(field, "preferredDatetime");
       case "photo":
@@ -577,7 +551,7 @@ export default function HomeServiceForm({
             <input ref={streetRef} name="street" required={req} className="input" placeholder={field.placeholder} />
             {!GOOGLE_MAPS_KEY && (
               <FormNotice tone="blue" icon="📍">
-                Please enter your City, Province, and Landmark manually below — this helps our technician find you accurately.
+                Please also fill in your Landmark below — this helps our technician find you accurately.
               </FormNotice>
             )}
             <input type="hidden" name="lat" value={lat ?? ""} />
@@ -585,17 +559,9 @@ export default function HomeServiceForm({
           </div>
         );
       case "city":
-        // Absorbed into the cascading group rendered by "province" above.
-        if (area === "near") return null;
-        if (field.type !== "text") return renderGenericField(field, "city");
-        return (
-          <div key={field.id} className="space-y-1.5">
-            <label className="text-xs font-medium text-slate-500">
-              {field.label} {asterisk}
-            </label>
-            <input name="city" required={req} value={city} onChange={(e) => setCity(e.target.value)} className="input" placeholder={field.placeholder} />
-          </div>
-        );
+        // Absorbed into the cascading group rendered by "province" above,
+        // for both queues.
+        return null;
       default:
         return null;
     }

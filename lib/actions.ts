@@ -920,9 +920,9 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
   if (isRequired("city") && !city) return { ok: false, error: `${label("city")} is required.` };
   if (isRequired("province") && !province) return { ok: false, error: `${label("province")} is required.` };
   // Barangay isn't an admin-configurable field like the others — it only
-  // exists as part of the "near" queue's Province -> City -> Barangay
-  // cascading picker, so it's simply required whenever that picker is shown.
-  if (serviceArea === "near" && isActive("province") && isActive("city") && !barangay) {
+  // exists as part of either queue's Province -> City -> Barangay cascading
+  // picker, so it's simply required whenever that picker is shown.
+  if (isActive("province") && isActive("city") && !barangay) {
     return { ok: false, error: "Barangay is required." };
   }
   if (isRequired("landmark") && !landmark) return { ok: false, error: `${label("landmark")} is required.` };
