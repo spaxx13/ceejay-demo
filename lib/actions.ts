@@ -985,6 +985,33 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
   const finalDeviceOther =
     deviceBrandId && !validDeviceBrandId ? [deviceBrandId, deviceOther].filter(Boolean).join(" ") : deviceOther;
 
+  // Guard against accidental double booking — a double-tapped Submit button,
+  // or a customer resubmitting because they weren't sure the first one went
+  // through — by blocking a second non-cancelled request for the same
+  // phone, device, and preferred day instead of silently creating a
+  // duplicate job. Skipped when no preferred date was collected at all,
+  // since there's nothing to disambiguate by then.
+  if (phone) {
+    const cancelledStatus = requestStatuses.find((s) => s.label === "Cancelled");
+    const duplicate = await queryOne<{ id: string }>(
+      `select id from home_service_requests
+       where phone = $1
+         and device_brand_id is not distinct from $2
+         and device_model_id is not distinct from $3
+         and device_other = $4
+         and status_id is distinct from $5
+         and ($6::date is null or preferred_datetime::date = $6::date)
+       limit 1`,
+      [phone, validDeviceBrandId, validDeviceModelId, finalDeviceOther, cancelledStatus?.id ?? null, preferredDatetime || null]
+    );
+    if (duplicate) {
+      return {
+        ok: false,
+        error: "You already have a request for this device on this date. Please wait for us to process it, or contact us if you'd like to make changes.",
+      };
+    }
+  }
+
   const created = await queryOne<{ id: string }>(
     `insert into home_service_requests (
       reference, customer_id, customer_name, phone, email, device_brand_id, device_model_id, device_other, service_type_id,
