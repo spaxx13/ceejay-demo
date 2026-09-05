@@ -192,7 +192,7 @@ function mapLead(r: LeadRow): Lead {
 type RequestRow = {
   id: string; reference: string; customer_id: string | null; customer_name: string; phone: string; email: string;
   device_brand_id: string | null; device_model_id: string | null; device_other: string; service_type_id: string;
-  issue_description: string; photo_data_url: string | null; street: string; landmark: string; province: string; city: string;
+  issue_description: string; photo_data_url: string | null; street: string; landmark: string; province: string; city: string; barangay: string;
   lat: number | null; lng: number | null; preferred_datetime: Date | string | null;
   status_id: string; assigned_technician_id: string | null; auto_assigned: boolean; branch_id: string | null; queue_branch_id: string | null; admin_notes: string;
   status_history: { statusId: string; at: string }[]; custom_fields: Record<string, string | boolean>; created_at: Date;
@@ -202,7 +202,7 @@ function mapRequest(r: RequestRow): HomeServiceRequest {
   return {
     id: r.id, reference: r.reference, customerId: r.customer_id, customerName: r.customer_name, phone: r.phone, email: r.email,
     deviceBrandId: r.device_brand_id, deviceModelId: r.device_model_id, deviceOther: r.device_other, serviceTypeId: r.service_type_id,
-    issueDescription: r.issue_description, photoDataUrl: r.photo_data_url, street: r.street, landmark: r.landmark, province: r.province, city: r.city,
+    issueDescription: r.issue_description, photoDataUrl: r.photo_data_url, street: r.street, landmark: r.landmark, province: r.province, city: r.city, barangay: r.barangay,
     lat: r.lat, lng: r.lng, preferredDatetime: toDateStr(r.preferred_datetime),
     statusId: r.status_id, assignedTechnicianId: r.assigned_technician_id, autoAssigned: r.auto_assigned, branchId: r.branch_id, queueBranchId: r.queue_branch_id, adminNotes: r.admin_notes,
     createdAt: toIso(r.created_at), statusHistory: r.status_history ?? [], customFields: r.custom_fields ?? {},

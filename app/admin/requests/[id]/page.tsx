@@ -162,7 +162,8 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
             <dd className="text-slate-800">{req.issueDescription}</dd>
             <dt className="text-slate-400">Address</dt>
             <dd className="text-slate-800">
-              {req.street}, {req.city}
+              {req.street}
+              {req.barangay ? `, Brgy. ${req.barangay}` : ""}, {req.city}
               {req.province ? `, ${req.province}` : ""}
               {req.landmark ? ` (near ${req.landmark})` : ""}
             </dd>

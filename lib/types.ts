@@ -218,6 +218,7 @@ export type HomeServiceRequest = {
   landmark: string;
   province: string;
   city: string; // raw city/municipality text as typed/selected by the customer
+  barangay: string; // only populated on the "near" queue's cascading Province -> City -> Barangay picker; blank on "far" requests
   lat: number | null;
   lng: number | null;
   preferredDatetime: string;

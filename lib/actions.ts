@@ -877,6 +877,7 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
   const street = str(formData, "street");
   const city = str(formData, "city");
   const province = str(formData, "province");
+  const barangay = str(formData, "barangay");
   const serviceTypeId = str(formData, "serviceTypeId");
   const issueDescription = str(formData, "issueDescription");
   const photoDataUrlRaw = str(formData, "photoDataUrl");
@@ -918,6 +919,12 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
   if (isRequired("street") && !street) return { ok: false, error: `${label("street")} is required.` };
   if (isRequired("city") && !city) return { ok: false, error: `${label("city")} is required.` };
   if (isRequired("province") && !province) return { ok: false, error: `${label("province")} is required.` };
+  // Barangay isn't an admin-configurable field like the others — it only
+  // exists as part of the "near" queue's Province -> City -> Barangay
+  // cascading picker, so it's simply required whenever that picker is shown.
+  if (serviceArea === "near" && isActive("province") && isActive("city") && !barangay) {
+    return { ok: false, error: "Barangay is required." };
+  }
   if (isRequired("landmark") && !landmark) return { ok: false, error: `${label("landmark")} is required.` };
   if (isRequired("datetime") && !preferredDatetime) return { ok: false, error: `${label("datetime")} is required.` };
 
@@ -981,10 +988,10 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
   const created = await queryOne<{ id: string }>(
     `insert into home_service_requests (
       reference, customer_id, customer_name, phone, email, device_brand_id, device_model_id, device_other, service_type_id,
-      issue_description, photo_data_url, street, landmark, province, city, lat, lng, preferred_datetime,
+      issue_description, photo_data_url, street, landmark, province, city, barangay, lat, lng, preferred_datetime,
       status_id, status_history, custom_fields, vlog_consent, vlog_blur_preference,
       assigned_technician_id, auto_assigned, branch_id, queue_branch_id
-    ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27)
+    ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28)
     returning id`,
     [
       reference,
@@ -1002,6 +1009,7 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
       landmark,
       province,
       city,
+      barangay,
       str(formData, "lat") ? Number(str(formData, "lat")) : null,
       str(formData, "lng") ? Number(str(formData, "lng")) : null,
       preferredDatetime || null,
