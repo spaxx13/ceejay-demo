@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { getLookups, getTechnicians, getRequests, canManageHomeServiceRequests } from "@/lib/db";
+import { getLookups, getTechnicians, getRequests, canManageHomeServiceRequests, canDeleteHomeServiceRequests } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import StatusBadge from "@/components/StatusBadge";
 import DeleteButton from "@/components/DeleteButton";
@@ -116,7 +116,7 @@ export default async function RequestsPage({
                     <Link href={`/admin/requests/${r.id}`} className="btn-secondary !px-3 !py-1 text-xs">
                       View
                     </Link>
-                    {user?.role === "owner_admin" && (
+                    {canDeleteHomeServiceRequests(user) && (
                       <DeleteButton
                         id={r.id}
                         action={deleteHomeServiceRequest}

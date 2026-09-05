@@ -11,6 +11,7 @@ import {
   getServiceAgreements,
   getRepairProgressByRequestId,
   canManageHomeServiceRequests,
+  canDeleteHomeServiceRequests,
 } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import StatusBadge from "@/components/StatusBadge";
@@ -230,7 +231,7 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
             </form>
           </div>
 
-          {user?.role === "owner_admin" && (
+          {canDeleteHomeServiceRequests(user) && (
             <div className="card space-y-2">
               <h3 className="text-sm font-semibold text-red-600">Delete Request</h3>
               <p className="text-xs text-slate-500">

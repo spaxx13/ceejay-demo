@@ -8,6 +8,7 @@ export type User = {
   technicianId: string | null; // set when role === "technician"
   assignedBranchIds: string[]; // branches this account is allowed to access (branch_admin scoping) — empty means no restriction, sees all
   canManageRequests: boolean; // whether this account can access/manage Home Service Requests (branch_admin scoping)
+  canDeleteRequests: boolean; // whether this account can permanently delete Home Service Requests (branch_admin scoping) — owner_admin always can regardless
   canViewAllBranches: boolean; // whether this account can see combined "All Branches" sales figures (branch_admin scoping) — false means own branch(es) only
   active: boolean;
 };

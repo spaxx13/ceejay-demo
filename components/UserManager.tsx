@@ -14,6 +14,7 @@ type UserRow = {
   technicianId: string | null;
   assignedBranchIds: string[];
   canManageRequests: boolean;
+  canDeleteRequests: boolean;
   canViewAllBranches: boolean;
   active: boolean;
 };
@@ -260,6 +261,23 @@ export default function UserManager({
               <p className="text-[11px] text-slate-400">
                 Uncheck to hide the Home Service Requests section from this account entirely — no viewing, reassigning, or updating request
                 status or notes.
+              </p>
+            </div>
+          )}
+          {role === "branch_admin" && (
+            <div className="space-y-1.5">
+              <label className="flex items-center gap-1.5 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  name="canDeleteRequests"
+                  defaultChecked={editing?.canDeleteRequests ?? false}
+                  className="h-4 w-4 rounded border-slate-300"
+                />
+                Can permanently delete Home Service Requests
+              </label>
+              <p className="text-[11px] text-slate-400">
+                Off by default. Separate from &quot;Can Manage Requests&quot; above — this specifically allows the irreversible Delete Request
+                action, not just reassigning/updating status.
               </p>
             </div>
           )}

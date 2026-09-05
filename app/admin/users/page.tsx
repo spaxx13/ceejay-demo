@@ -17,6 +17,7 @@ export default async function UsersPage() {
     technicianId: u.technicianId,
     assignedBranchIds: u.assignedBranchIds,
     canManageRequests: u.canManageRequests,
+    canDeleteRequests: u.canDeleteRequests,
     canViewAllBranches: u.canViewAllBranches,
     active: u.active,
   }));

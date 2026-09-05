@@ -22,6 +22,7 @@ import {
   logActivity,
   notifyAdmins,
   canManageHomeServiceRequests,
+  canDeleteHomeServiceRequests,
 } from "./db";
 import { getCurrentUser, setSession, clearSession, requireRole } from "./auth";
 import { sendOtpEmail, sendRepairReceiptEmail, sendCancellationEmail } from "./email";
@@ -80,6 +81,7 @@ export async function createUser(formData: FormData) {
   let technicianId = str(formData, "technicianId") || null;
   const assignedBranchIds = role === "branch_admin" ? formData.getAll("assignedBranchIds").map(String) : [];
   const canManageRequests = role === "branch_admin" ? formData.get("canManageRequests") === "on" : true;
+  const canDeleteRequests = role === "branch_admin" ? formData.get("canDeleteRequests") === "on" : true;
   const canViewAllBranches = role === "branch_admin" ? formData.get("canViewAllBranches") === "on" : true;
   if (!name || !email || !password || !role) return;
 
@@ -102,8 +104,8 @@ export async function createUser(formData: FormData) {
 
   const passwordHash = await bcrypt.hash(password, 10);
   await query(
-    "insert into users (name, email, password_hash, role, technician_id, assigned_branch_ids, can_manage_requests, can_view_all_branches) values ($1,$2,$3,$4,$5,$6,$7,$8)",
-    [name, email, passwordHash, role, role === "technician" ? technicianId : null, assignedBranchIds, canManageRequests, canViewAllBranches]
+    "insert into users (name, email, password_hash, role, technician_id, assigned_branch_ids, can_manage_requests, can_delete_requests, can_view_all_branches) values ($1,$2,$3,$4,$5,$6,$7,$8,$9)",
+    [name, email, passwordHash, role, role === "technician" ? technicianId : null, assignedBranchIds, canManageRequests, canDeleteRequests, canViewAllBranches]
   );
   revalidatePath("/admin/users");
   revalidatePath("/admin/technicians");
@@ -130,6 +132,7 @@ export async function updateUser(formData: FormData) {
   const password = str(formData, "password");
   const assignedBranchIds = role === "branch_admin" ? formData.getAll("assignedBranchIds").map(String) : [];
   const canManageRequests = role === "branch_admin" ? formData.get("canManageRequests") === "on" : true;
+  const canDeleteRequests = role === "branch_admin" ? formData.get("canDeleteRequests") === "on" : true;
   const canViewAllBranches = role === "branch_admin" ? formData.get("canViewAllBranches") === "on" : true;
 
   if (role === "technician") {
@@ -158,7 +161,7 @@ export async function updateUser(formData: FormData) {
   if (password) {
     const passwordHash = await bcrypt.hash(password, 10);
     await query(
-      "update users set name=$1, email=$2, password_hash=$3, role=$4, technician_id=$5, assigned_branch_ids=$6, can_manage_requests=$7, can_view_all_branches=$8 where id=$9",
+      "update users set name=$1, email=$2, password_hash=$3, role=$4, technician_id=$5, assigned_branch_ids=$6, can_manage_requests=$7, can_delete_requests=$8, can_view_all_branches=$9 where id=$10",
       [
         name,
         email || user.email,
@@ -167,14 +170,25 @@ export async function updateUser(formData: FormData) {
         role === "technician" ? technicianId : null,
         assignedBranchIds,
         canManageRequests,
+        canDeleteRequests,
         canViewAllBranches,
         userId,
       ]
     );
   } else {
     await query(
-      "update users set name=$1, email=$2, role=$3, technician_id=$4, assigned_branch_ids=$5, can_manage_requests=$6, can_view_all_branches=$7 where id=$8",
-      [name, email || user.email, role, role === "technician" ? technicianId : null, assignedBranchIds, canManageRequests, canViewAllBranches, userId]
+      "update users set name=$1, email=$2, role=$3, technician_id=$4, assigned_branch_ids=$5, can_manage_requests=$6, can_delete_requests=$7, can_view_all_branches=$8 where id=$9",
+      [
+        name,
+        email || user.email,
+        role,
+        role === "technician" ? technicianId : null,
+        assignedBranchIds,
+        canManageRequests,
+        canDeleteRequests,
+        canViewAllBranches,
+        userId,
+      ]
     );
   }
   revalidatePath("/admin/users");
@@ -1161,11 +1175,12 @@ export async function changeRequestStatus(formData: FormData) {
 // Permanently removes a home service request — its checklists
 // (service_agreements), notifications, and progress notes all cascade with
 // it; any POS sale tied to it just loses that reference (kept, not
-// deleted). Cancelling a request keeps it for history; this actually
-// erases it, so it's owner-only.
+// deleted). Cancelling a request keeps it for history; this actually erases
+// it, so it's gated by canDeleteHomeServiceRequests — owner admins always,
+// branch admins only when explicitly granted (Staff Accounts).
 export async function deleteHomeServiceRequest(formData: FormData) {
-  const actor = await requireRole("owner_admin");
-  if (!actor) return;
+  const actor = await getCurrentUser();
+  if (!canDeleteHomeServiceRequests(actor)) return;
 
   const requestId = str(formData, "id");
   await query("delete from home_service_requests where id=$1", [requestId]);

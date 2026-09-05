@@ -72,6 +72,7 @@ type UserRow = {
   technician_id: string | null;
   assigned_branch_ids: string[];
   can_manage_requests: boolean;
+  can_delete_requests: boolean;
   can_view_all_branches: boolean;
   active: boolean;
 };
@@ -84,6 +85,7 @@ function mapUser(r: UserRow): User {
     technicianId: r.technician_id,
     assignedBranchIds: r.assigned_branch_ids ?? [],
     canManageRequests: r.can_manage_requests,
+    canDeleteRequests: r.can_delete_requests,
     canViewAllBranches: r.can_view_all_branches,
     active: r.active,
   };
@@ -103,6 +105,15 @@ export function isBranchHidden(user: Pick<User, "assignedBranchIds"> | null, bra
 export function canManageHomeServiceRequests(user: Pick<User, "role" | "canManageRequests"> | null) {
   if (!user) return false;
   return user.role === "owner_admin" || (user.role === "branch_admin" && user.canManageRequests);
+}
+
+// True when this account is allowed to permanently delete Home Service
+// Requests. Owner admins always can; branch admins need the separate
+// canDeleteRequests flag (off by default) even if they can otherwise manage
+// requests — deleting is a stronger, irreversible action than managing one.
+export function canDeleteHomeServiceRequests(user: Pick<User, "role" | "canDeleteRequests"> | null) {
+  if (!user) return false;
+  return user.role === "owner_admin" || (user.role === "branch_admin" && user.canDeleteRequests);
 }
 
 // The branch stored on a home-service request/agreement is only ever a
