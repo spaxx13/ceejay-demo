@@ -58,6 +58,17 @@ type PhProvince = { key: string; label: string; cities: PhCity[] };
 // just not bookable as a home service).
 const EXCLUDED_FROM_HOME_SERVICE = new Set(["Camera", "Backhousing(Whole shell including backglass)", "Logic board problem"]);
 
+// A customer must tick "I Agree" after reading this before they can submit —
+// set-expectation notices for parts Apple serializes/verifies, so a
+// "Unverified"/"Important Message" prompt on the customer's device later
+// isn't mistaken for something the technician did wrong.
+const SERVICE_TYPE_AGREEMENT_NOTICES: Record<string, string> = {
+  "Battery Replacement":
+    'For series 12 and above we use batteries that can be verified. The "unverified" message can be fixed after the replacement. The technician will provide instructions on how to do the fix. Please click "Agree" if you wish to proceed',
+  "Screen Repair":
+    'Since Apple serialized some parts like LCD and camera, please expect that a message that says "Important Message" message will show up within settings. This is normal for both OLED and original replacement since the part serial number is attached on the original one. This is normal and this will not affect the performance of the device',
+};
+
 export default function HomeServiceForm({
   brands,
   models,
@@ -80,6 +91,8 @@ export default function HomeServiceForm({
   const [city, setCity] = useState("");
   const [province, setProvince] = useState("");
   const [barangay, setBarangay] = useState("");
+  const [serviceTypeId, setServiceTypeId] = useState("");
+  const [agreedToServiceNotice, setAgreedToServiceNotice] = useState(false);
   const [lat, setLat] = useState<number | null>(null);
   const [lng, setLng] = useState<number | null>(null);
   const streetRef = useRef<HTMLInputElement>(null);
@@ -501,8 +514,10 @@ export default function HomeServiceForm({
             )}
           </div>
         );
-      case "service_type":
+      case "service_type": {
         if (field.type !== "select") return renderGenericField(field, "serviceTypeId");
+        const selectedServiceType = serviceTypes.find((s) => s.id === serviceTypeId);
+        const agreementNotice = selectedServiceType ? SERVICE_TYPE_AGREEMENT_NOTICES[selectedServiceType.label] : undefined;
         return (
           <div key={field.id} className="space-y-1.5">
             <label className="text-xs font-medium text-slate-500">
@@ -512,7 +527,16 @@ export default function HomeServiceForm({
               We do not offer backglass replacement, camera repair, and board/power related issues on home service. You may contact our
               branches for any concerns that is not listed on the dropdown list below.
             </FormNotice>
-            <select name="serviceTypeId" required={req} className="input">
+            <select
+              name="serviceTypeId"
+              required={req}
+              value={serviceTypeId}
+              onChange={(e) => {
+                setServiceTypeId(e.target.value);
+                setAgreedToServiceNotice(false);
+              }}
+              className="input"
+            >
               <option value="">Select service type...</option>
               {serviceTypes
                 .filter((s) => !EXCLUDED_FROM_HOME_SERVICE.has(s.label))
@@ -522,8 +546,24 @@ export default function HomeServiceForm({
                   </option>
                 ))}
             </select>
+            {agreementNotice && (
+              <div className="space-y-2">
+                <FormNotice tone="blue">{agreementNotice}</FormNotice>
+                <label className="flex items-start gap-2 text-sm font-medium text-slate-700">
+                  <input
+                    type="checkbox"
+                    required
+                    checked={agreedToServiceNotice}
+                    onChange={(e) => setAgreedToServiceNotice(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 rounded border-slate-300"
+                  />
+                  I Agree <span className="text-red-600">*</span>
+                </label>
+              </div>
+            )}
           </div>
         );
+      }
       case "street":
         // Places autocomplete only attaches while this field is at its
         // natural text type — otherwise there's no single text input to
