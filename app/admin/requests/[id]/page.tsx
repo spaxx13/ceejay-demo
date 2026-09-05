@@ -12,6 +12,7 @@ import {
   getRepairProgressByRequestId,
   canManageHomeServiceRequests,
   canDeleteHomeServiceRequests,
+  isBranchHidden,
 } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import StatusBadge from "@/components/StatusBadge";
@@ -89,6 +90,10 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
   const { id } = await params;
   const req = await getRequestById(id);
   if (!req) notFound();
+  // Same queue scoping as the list page — a branch admin assigned to only
+  // one queue's backend branch can't open the other queue's request even by
+  // guessing/bookmarking its URL directly.
+  if (isBranchHidden(user, req.queueBranchId)) redirect("/admin/requests");
 
   const [lookups, deviceModels, technicians, branches, activityLog, customFormFields, agreements, repairProgress] = await Promise.all([
     getLookups(),
@@ -105,12 +110,14 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
   const brand = lookups.find((l) => l.id === req.deviceBrandId);
   const model = deviceModels.find((m) => m.id === req.deviceModelId);
   // Home service requests should only ever be assignable to technicians who
-  // actually work Home Service — not every technician in the system (e.g.
-  // branch-specific POS technicians who never take these jobs). The
+  // actually work this request's queue — not every technician in the system
+  // (e.g. branch-specific POS technicians, or technicians who only cover the
+  // other queue). Falls back to any address-less backend branch for legacy
+  // requests submitted before queues existed (no queueBranchId stored). The
   // currently assigned technician (if any) always stays selectable even if
   // they're no longer in that pool, so an existing assignment never
   // silently disappears from the dropdown.
-  const homeServiceBranch = branches.find((b) => !b.address);
+  const homeServiceBranch = branches.find((b) => b.id === req.queueBranchId) ?? branches.find((b) => !b.address);
   const allTechs = technicians.filter(
     (t) =>
       (t.active && (homeServiceBranch ? t.branchIds.includes(homeServiceBranch.id) : true)) || t.id === req.assignedTechnicianId

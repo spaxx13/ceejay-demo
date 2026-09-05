@@ -111,11 +111,17 @@ export type CustomFormField = {
   active: boolean;
 };
 
+// "near"/"far" mark the two address-less backend branches used purely as
+// Home Service queue buckets — near = Metro Manila/Laguna/Batangas/Quezon,
+// far = Other Provinces. Null on every real (address-having) branch.
+export type HomeServiceQueue = "near" | "far";
+
 export type Branch = {
   id: string;
   name: string;
   address: string;
   contactNumber: string;
+  homeServiceQueue: HomeServiceQueue | null;
   active: boolean;
 };
 
@@ -219,6 +225,7 @@ export type HomeServiceRequest = {
   assignedTechnicianId: string | null;
   autoAssigned: boolean;
   branchId: string | null;
+  queueBranchId: string | null; // set once at submission from the customer's chosen area (HomeServiceQueue) — never changes; distinct from branchId, which tracks the assigned technician's actual branch
   adminNotes: string;
   createdAt: string;
   statusHistory: { statusId: string; at: string }[];

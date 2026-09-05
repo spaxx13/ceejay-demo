@@ -11,6 +11,7 @@ import {
   getUserAuthByEmail,
   getUsers,
   getTechnicians,
+  getBranches,
   getLookups,
   getCustomers,
   getRequests,
@@ -861,6 +862,16 @@ export type SubmitResult = { ok: true; reference: string } | { ok: false; error:
 // arranged — only whether each one is active/required, from the
 // custom_form_fields table, changes what's enforced.
 export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, formData: FormData): Promise<SubmitResult> {
+  // Which queue this lands in — set by which of the two duplicated forms the
+  // customer came from (app/(site)/request/page.tsx), never guessed from
+  // their address, so it always matches the option they actually clicked.
+  const serviceArea = str(formData, "serviceArea");
+  if (serviceArea !== "near" && serviceArea !== "far") {
+    return { ok: false, error: "Please start your request from the Book a Home Service page so we know your service area." };
+  }
+  const branches = await getBranches();
+  const queueBranch = branches.find((b) => b.homeServiceQueue === serviceArea);
+
   const name = str(formData, "name");
   const phone = str(formData, "phone");
   const street = str(formData, "street");
@@ -972,8 +983,8 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
       reference, customer_id, customer_name, phone, email, device_brand_id, device_model_id, device_other, service_type_id,
       issue_description, photo_data_url, street, landmark, province, city, lat, lng, preferred_datetime,
       status_id, status_history, custom_fields, vlog_consent, vlog_blur_preference,
-      assigned_technician_id, auto_assigned, branch_id
-    ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26)
+      assigned_technician_id, auto_assigned, branch_id, queue_branch_id
+    ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27)
     returning id`,
     [
       reference,
@@ -1002,6 +1013,7 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
       null,
       false,
       null,
+      queueBranch?.id ?? null,
     ]
   );
 

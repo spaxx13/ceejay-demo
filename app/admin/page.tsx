@@ -9,13 +9,14 @@ import {
   getServiceAgreements,
   getRepairRecordStatus,
   canManageHomeServiceRequests,
+  isBranchHidden,
 } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import StatusBadge from "@/components/StatusBadge";
 import { formatDateTime } from "@/lib/format";
 
 export default async function AdminDashboard() {
-  const [user, requests, technicians, leads, customers, lookups, repairRecords, agreements] = await Promise.all([
+  const [user, allRequests, technicians, leads, customers, lookups, repairRecords, agreements] = await Promise.all([
     getCurrentUser(),
     getRequests(),
     getTechnicians(),
@@ -25,6 +26,9 @@ export default async function AdminDashboard() {
     getRepairRecords(),
     getServiceAgreements(),
   ]);
+  // Same queue scoping as Admin > Requests — a branch admin assigned to only
+  // one queue's backend branch never sees the other queue's totals here.
+  const requests = allRequests.filter((r) => !isBranchHidden(user, r.queueBranchId));
   const totalRequests = requests.length;
   const unassigned = requests.filter((r) => !r.assignedTechnicianId);
   const activeTechs = technicians.filter((t) => t.active).length;

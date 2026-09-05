@@ -153,9 +153,9 @@ export function canViewAllBranchSales(user: Pick<User, "role" | "canViewAllBranc
   return user.role === "owner_admin" || (user.role === "branch_admin" && user.canViewAllBranches);
 }
 
-type BranchRow = { id: string; name: string; address: string; contact_number: string; active: boolean };
+type BranchRow = { id: string; name: string; address: string; contact_number: string; home_service_queue: Branch["homeServiceQueue"]; active: boolean };
 function mapBranch(r: BranchRow): Branch {
-  return { id: r.id, name: r.name, address: r.address, contactNumber: r.contact_number, active: r.active };
+  return { id: r.id, name: r.name, address: r.address, contactNumber: r.contact_number, homeServiceQueue: r.home_service_queue, active: r.active };
 }
 
 type TechnicianRow = {
@@ -194,7 +194,7 @@ type RequestRow = {
   device_brand_id: string | null; device_model_id: string | null; device_other: string; service_type_id: string;
   issue_description: string; photo_data_url: string | null; street: string; landmark: string; province: string; city: string;
   lat: number | null; lng: number | null; preferred_datetime: Date | string | null;
-  status_id: string; assigned_technician_id: string | null; auto_assigned: boolean; branch_id: string | null; admin_notes: string;
+  status_id: string; assigned_technician_id: string | null; auto_assigned: boolean; branch_id: string | null; queue_branch_id: string | null; admin_notes: string;
   status_history: { statusId: string; at: string }[]; custom_fields: Record<string, string | boolean>; created_at: Date;
   vlog_consent: boolean; vlog_blur_preference: HomeServiceRequest["vlogBlurPreference"]; reminder_sent_at: Date | null;
 };
@@ -204,7 +204,7 @@ function mapRequest(r: RequestRow): HomeServiceRequest {
     deviceBrandId: r.device_brand_id, deviceModelId: r.device_model_id, deviceOther: r.device_other, serviceTypeId: r.service_type_id,
     issueDescription: r.issue_description, photoDataUrl: r.photo_data_url, street: r.street, landmark: r.landmark, province: r.province, city: r.city,
     lat: r.lat, lng: r.lng, preferredDatetime: toDateStr(r.preferred_datetime),
-    statusId: r.status_id, assignedTechnicianId: r.assigned_technician_id, autoAssigned: r.auto_assigned, branchId: r.branch_id, adminNotes: r.admin_notes,
+    statusId: r.status_id, assignedTechnicianId: r.assigned_technician_id, autoAssigned: r.auto_assigned, branchId: r.branch_id, queueBranchId: r.queue_branch_id, adminNotes: r.admin_notes,
     createdAt: toIso(r.created_at), statusHistory: r.status_history ?? [], customFields: r.custom_fields ?? {},
     vlogConsent: r.vlog_consent, vlogBlurPreference: r.vlog_blur_preference || "", reminderSentAt: toIsoOrNull(r.reminder_sent_at),
   };

@@ -5,7 +5,7 @@ import { submitHomeServiceRequest, sendHomeServiceOtp, verifyHomeServiceOtp } fr
 import { OTP_GATE_ENABLED } from "@/lib/config";
 import PhotoUpload from "./PhotoUpload";
 import DynamicFormField from "./DynamicFormField";
-import type { RequestFormContent, CustomFormField } from "@/lib/types";
+import type { RequestFormContent, CustomFormField, HomeServiceQueue } from "@/lib/types";
 
 // Shared styling for every customer-facing note/reminder on this form —
 // bolder border, background, and text than a plain hint so it actually
@@ -62,12 +62,14 @@ export default function HomeServiceForm({
   serviceTypes,
   content,
   fields,
+  area,
 }: {
   brands: Brand[];
   models: Model[];
   serviceTypes: ServiceType[];
   content: RequestFormContent;
   fields: CustomFormField[];
+  area: HomeServiceQueue;
 }) {
   const [state, formAction, pending] = useActionState(submitHomeServiceRequest, undefined);
   const formRef = useRef<HTMLFormElement>(null);
@@ -213,7 +215,7 @@ export default function HomeServiceForm({
           <span className="font-mono text-base font-semibold text-blue-300">{state.reference}</span>
         </p>
         <p className="text-sm text-slate-400">{content.successBody}</p>
-        <a href="/request" className="btn-secondary inline-block">
+        <a href={`/request?area=${area}`} className="btn-secondary inline-block">
           Submit another request
         </a>
       </div>
@@ -456,6 +458,7 @@ export default function HomeServiceForm({
 
   return (
     <form ref={formRef} action={formAction} className="card space-y-5">
+      <input type="hidden" name="serviceArea" value={area} />
       {fields.map((f) => (f.systemKey ? renderSystemField(f) : <DynamicFormField key={f.id} field={f} />))}
 
       {state && !state.ok && <p className="text-sm text-red-600">{state.error}</p>}

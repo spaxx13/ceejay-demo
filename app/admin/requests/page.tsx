@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { getLookups, getTechnicians, getRequests, canManageHomeServiceRequests, canDeleteHomeServiceRequests } from "@/lib/db";
+import { getLookups, getTechnicians, getRequests, canManageHomeServiceRequests, canDeleteHomeServiceRequests, isBranchHidden } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import StatusBadge from "@/components/StatusBadge";
 import DeleteButton from "@/components/DeleteButton";
@@ -19,14 +19,18 @@ export default async function RequestsPage({
   const [lookups, technicians, allRequests] = await Promise.all([getLookups(), getTechnicians(), getRequests()]);
   const statuses = lookups.filter((l) => l.kind === "request_status").sort((a, b) => a.order - b.order);
 
-  let requests = [...allRequests];
+  // Queue scoping — a branch admin assigned to only one queue's backend
+  // branch never sees the other queue's requests here, even via filters.
+  const visibleRequests = allRequests.filter((r) => !isBranchHidden(user, r.queueBranchId));
+
+  let requests = [...visibleRequests];
   if (sp.status) requests = requests.filter((r) => r.statusId === sp.status);
   if (sp.technician) requests = requests.filter((r) => r.assignedTechnicianId === sp.technician);
   if (sp.date) requests = requests.filter((r) => r.preferredDatetime.startsWith(sp.date!));
   if (sp.unassigned === "1") requests = requests.filter((r) => !r.assignedTechnicianId);
   requests.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
 
-  const unassignedCount = allRequests.filter((r) => !r.assignedTechnicianId).length;
+  const unassignedCount = visibleRequests.filter((r) => !r.assignedTechnicianId).length;
 
   function labelFor(id: string | null, list: { id: string; label?: string; name?: string }[]) {
     if (!id) return "—";
