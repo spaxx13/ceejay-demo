@@ -1,10 +1,15 @@
 import Link from "next/link";
-import { getLookups, getLeads, getCustomers, getUsers } from "@/lib/db";
+import { redirect } from "next/navigation";
+import { getLookups, getLeads, getCustomers, getUsers, canAccessCrm } from "@/lib/db";
+import { getCurrentUser } from "@/lib/auth";
 import StatusBadge from "@/components/StatusBadge";
 import { createLead, createCustomer } from "@/lib/actions";
 import { formatDate } from "@/lib/format";
 
 export default async function CrmPage({ searchParams }: { searchParams: Promise<{ tab?: string; q?: string; status?: string }> }) {
+  const user = await getCurrentUser();
+  if (!canAccessCrm(user)) redirect("/admin");
+
   const { tab: rawTab, q, status: statusFilter } = await searchParams;
   const tab = rawTab === "customers" ? "customers" : "leads";
   const query = (q ?? "").toLowerCase();

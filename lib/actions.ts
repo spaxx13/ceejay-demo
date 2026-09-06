@@ -24,6 +24,7 @@ import {
   notifyAdmins,
   canManageHomeServiceRequests,
   canDeleteHomeServiceRequests,
+  canAccessCrm,
 } from "./db";
 import { getCurrentUser, setSession, clearSession, requireRole } from "./auth";
 import { sendOtpEmail, sendRepairReceiptEmail, sendCancellationEmail } from "./email";
@@ -84,6 +85,7 @@ export async function createUser(formData: FormData) {
   const canManageRequests = role === "branch_admin" ? formData.get("canManageRequests") === "on" : true;
   const canDeleteRequests = role === "branch_admin" ? formData.get("canDeleteRequests") === "on" : true;
   const canViewAllBranches = role === "branch_admin" ? formData.get("canViewAllBranches") === "on" : true;
+  const canAccessCrmFlag = role === "branch_admin" ? formData.get("canAccessCrm") === "on" : true;
   if (!name || !email || !password || !role) return;
 
   const existing = await getUserAuthByEmail(email);
@@ -105,8 +107,8 @@ export async function createUser(formData: FormData) {
 
   const passwordHash = await bcrypt.hash(password, 10);
   await query(
-    "insert into users (name, email, password_hash, role, technician_id, assigned_branch_ids, can_manage_requests, can_delete_requests, can_view_all_branches) values ($1,$2,$3,$4,$5,$6,$7,$8,$9)",
-    [name, email, passwordHash, role, role === "technician" ? technicianId : null, assignedBranchIds, canManageRequests, canDeleteRequests, canViewAllBranches]
+    "insert into users (name, email, password_hash, role, technician_id, assigned_branch_ids, can_manage_requests, can_delete_requests, can_view_all_branches, can_access_crm) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)",
+    [name, email, passwordHash, role, role === "technician" ? technicianId : null, assignedBranchIds, canManageRequests, canDeleteRequests, canViewAllBranches, canAccessCrmFlag]
   );
   revalidatePath("/admin/users");
   revalidatePath("/admin/technicians");
@@ -135,6 +137,7 @@ export async function updateUser(formData: FormData) {
   const canManageRequests = role === "branch_admin" ? formData.get("canManageRequests") === "on" : true;
   const canDeleteRequests = role === "branch_admin" ? formData.get("canDeleteRequests") === "on" : true;
   const canViewAllBranches = role === "branch_admin" ? formData.get("canViewAllBranches") === "on" : true;
+  const canAccessCrmFlag = role === "branch_admin" ? formData.get("canAccessCrm") === "on" : true;
 
   if (role === "technician") {
     const technicianBranchIds = listStr(formData, "technicianBranchIds");
@@ -162,7 +165,7 @@ export async function updateUser(formData: FormData) {
   if (password) {
     const passwordHash = await bcrypt.hash(password, 10);
     await query(
-      "update users set name=$1, email=$2, password_hash=$3, role=$4, technician_id=$5, assigned_branch_ids=$6, can_manage_requests=$7, can_delete_requests=$8, can_view_all_branches=$9 where id=$10",
+      "update users set name=$1, email=$2, password_hash=$3, role=$4, technician_id=$5, assigned_branch_ids=$6, can_manage_requests=$7, can_delete_requests=$8, can_view_all_branches=$9, can_access_crm=$10 where id=$11",
       [
         name,
         email || user.email,
@@ -173,12 +176,13 @@ export async function updateUser(formData: FormData) {
         canManageRequests,
         canDeleteRequests,
         canViewAllBranches,
+        canAccessCrmFlag,
         userId,
       ]
     );
   } else {
     await query(
-      "update users set name=$1, email=$2, role=$3, technician_id=$4, assigned_branch_ids=$5, can_manage_requests=$6, can_delete_requests=$7, can_view_all_branches=$8 where id=$9",
+      "update users set name=$1, email=$2, role=$3, technician_id=$4, assigned_branch_ids=$5, can_manage_requests=$6, can_delete_requests=$7, can_view_all_branches=$8, can_access_crm=$9 where id=$10",
       [
         name,
         email || user.email,
@@ -188,6 +192,7 @@ export async function updateUser(formData: FormData) {
         canManageRequests,
         canDeleteRequests,
         canViewAllBranches,
+        canAccessCrmFlag,
         userId,
       ]
     );
@@ -1287,6 +1292,7 @@ export async function deleteExpense(formData: FormData) {
 
 export async function createLead(formData: FormData) {
   const user = await getCurrentUser();
+  if (!canAccessCrm(user)) return;
   const name = str(formData, "name");
   if (!name) return;
   const lookups = await getLookups();
@@ -1310,6 +1316,7 @@ export async function createLead(formData: FormData) {
 
 export async function updateLeadStatus(formData: FormData) {
   const user = await getCurrentUser();
+  if (!canAccessCrm(user)) return;
   const leadId = str(formData, "id");
   const statusId = str(formData, "statusId");
   const lookups = await getLookups();
@@ -1323,6 +1330,7 @@ export async function updateLeadStatus(formData: FormData) {
 
 export async function assignLead(formData: FormData) {
   const user = await getCurrentUser();
+  if (!canAccessCrm(user)) return;
   const leadId = str(formData, "id");
   const assignedTo = str(formData, "assignedTo") || null;
   const users = await getUsers();
@@ -1335,6 +1343,7 @@ export async function assignLead(formData: FormData) {
 
 export async function addLeadNote(formData: FormData) {
   const user = await getCurrentUser();
+  if (!canAccessCrm(user)) return;
   const leadId = str(formData, "id");
   const note = str(formData, "note");
   const followUpDate = str(formData, "followUpDate");
@@ -1350,6 +1359,7 @@ export async function addLeadNote(formData: FormData) {
 
 export async function convertLeadToCustomer(formData: FormData) {
   const user = await getCurrentUser();
+  if (!canAccessCrm(user)) return;
   const leadId = str(formData, "id");
   const lead = await queryOne<{ id: string; customer_id: string | null; name: string; phone: string; email: string; source: string }>(
     "select id, customer_id, name, phone, email, source from leads where id=$1",
@@ -1378,6 +1388,7 @@ export async function convertLeadToCustomer(formData: FormData) {
 
 export async function createCustomer(formData: FormData) {
   const user = await getCurrentUser();
+  if (!canAccessCrm(user)) return;
   const name = str(formData, "name");
   if (!name) return;
   const customer = await queryOne<{ id: string }>(
@@ -1399,6 +1410,7 @@ export async function createCustomer(formData: FormData) {
 
 export async function addCustomerNote(formData: FormData) {
   const user = await getCurrentUser();
+  if (!canAccessCrm(user)) return;
   const customerId = str(formData, "id");
   const note = str(formData, "note");
   if (!note) return;

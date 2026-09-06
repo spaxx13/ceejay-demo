@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { logoutAction } from "@/lib/actions";
 import Logo from "@/components/Logo";
 
-const NAV_GROUPS: { label: string | null; links: { href: string; label: string; ownerOnly?: boolean; requestsGated?: boolean }[] }[] = [
+const NAV_GROUPS: { label: string | null; links: { href: string; label: string; ownerOnly?: boolean; requestsGated?: boolean; crmGated?: boolean }[] }[] = [
   { label: null, links: [{ href: "/admin", label: "Dashboard" }] },
   {
     label: "Operations",
@@ -15,7 +15,7 @@ const NAV_GROUPS: { label: string | null; links: { href: string; label: string; 
       { href: "/admin/sales", label: "Branch Sales" },
     ],
   },
-  { label: "Customers", links: [{ href: "/admin/crm", label: "CRM" }] },
+  { label: "Customers", links: [{ href: "/admin/crm", label: "CRM", crmGated: true }] },
   { label: "Tools", links: [{ href: "/admin/tools/panic-log", label: "Panic Log Checker" }] },
   { label: null, links: [{ href: "/admin/notifications", label: "Notifications" }] },
 ];
@@ -36,11 +36,13 @@ export default function AdminNav({
   userName,
   role,
   canManageRequests = true,
+  canAccessCrm = true,
   unreadCount = 0,
 }: {
   userName: string;
   role: string;
   canManageRequests?: boolean;
+  canAccessCrm?: boolean;
   unreadCount?: number;
 }) {
   const pathname = usePathname();
@@ -60,6 +62,7 @@ export default function AdminNav({
             {group.links
               .filter((l) => !l.ownerOnly || role === "owner_admin")
               .filter((l) => !l.requestsGated || canManageRequests)
+              .filter((l) => !l.crmGated || canAccessCrm)
               .map((l) => {
               const active = l.href === "/admin" ? pathname === "/admin" : pathname.startsWith(l.href);
               return (

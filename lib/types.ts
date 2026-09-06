@@ -10,6 +10,7 @@ export type User = {
   canManageRequests: boolean; // whether this account can access/manage Home Service Requests (branch_admin scoping)
   canDeleteRequests: boolean; // whether this account can permanently delete Home Service Requests (branch_admin scoping) — owner_admin always can regardless
   canViewAllBranches: boolean; // whether this account can see combined "All Branches" sales figures (branch_admin scoping) — false means own branch(es) only
+  canAccessCrm: boolean; // whether this account can access the CRM (leads/customers) section (branch_admin scoping) — owner_admin always can regardless
   active: boolean;
 };
 

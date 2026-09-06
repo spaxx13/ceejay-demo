@@ -74,6 +74,7 @@ type UserRow = {
   can_manage_requests: boolean;
   can_delete_requests: boolean;
   can_view_all_branches: boolean;
+  can_access_crm: boolean;
   active: boolean;
 };
 function mapUser(r: UserRow): User {
@@ -87,6 +88,7 @@ function mapUser(r: UserRow): User {
     canManageRequests: r.can_manage_requests,
     canDeleteRequests: r.can_delete_requests,
     canViewAllBranches: r.can_view_all_branches,
+    canAccessCrm: r.can_access_crm,
     active: r.active,
   };
 }
@@ -151,6 +153,13 @@ export function technicianSharePercent(technicianName: string, technicians: Pick
 export function canViewAllBranchSales(user: Pick<User, "role" | "canViewAllBranches"> | null) {
   if (!user) return false;
   return user.role === "owner_admin" || (user.role === "branch_admin" && user.canViewAllBranches);
+}
+
+// True when this account is allowed to access the CRM (Leads/Customers).
+// Owner admins always can; branch admins are scoped by canAccessCrm.
+export function canAccessCrm(user: Pick<User, "role" | "canAccessCrm"> | null) {
+  if (!user) return false;
+  return user.role === "owner_admin" || (user.role === "branch_admin" && user.canAccessCrm);
 }
 
 type BranchRow = { id: string; name: string; address: string; contact_number: string; home_service_queue: Branch["homeServiceQueue"]; active: boolean };

@@ -16,6 +16,7 @@ type UserRow = {
   canManageRequests: boolean;
   canDeleteRequests: boolean;
   canViewAllBranches: boolean;
+  canAccessCrm: boolean;
   active: boolean;
 };
 
@@ -295,6 +296,22 @@ export default function UserManager({
               <p className="text-[11px] text-slate-400">
                 Off by default: this account only sees the individual card(s) for their own assigned branch(es) on Branch Sales — never the
                 combined &quot;All Branches&quot; totals or the Owner Deductions section. Check this to grant that combined view.
+              </p>
+            </div>
+          )}
+          {role === "branch_admin" && (
+            <div className="space-y-1.5">
+              <label className="flex items-center gap-1.5 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  name="canAccessCrm"
+                  defaultChecked={editing?.canAccessCrm ?? true}
+                  className="h-4 w-4 rounded border-slate-300"
+                />
+                Can access the CRM (Leads &amp; Customers)
+              </label>
+              <p className="text-[11px] text-slate-400">
+                Uncheck to hide the CRM section from this account entirely — no viewing or managing leads or customers.
               </p>
             </div>
           )}

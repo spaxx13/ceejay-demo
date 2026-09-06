@@ -19,6 +19,7 @@ export default async function UsersPage() {
     canManageRequests: u.canManageRequests,
     canDeleteRequests: u.canDeleteRequests,
     canViewAllBranches: u.canViewAllBranches,
+    canAccessCrm: u.canAccessCrm,
     active: u.active,
   }));
   const technicians = allTechnicians.filter((t) => t.active).map((t) => ({ id: t.id, name: t.name, branchIds: t.branchIds }));

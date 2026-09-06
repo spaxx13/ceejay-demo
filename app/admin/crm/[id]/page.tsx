@@ -1,6 +1,7 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
-import { getLeadById, getCustomerById, getLookups, getActivity, getRequests, getRepairRecords, getUsers, getServiceAgreements, getRepairRecordStatus } from "@/lib/db";
+import { notFound, redirect } from "next/navigation";
+import { getLeadById, getCustomerById, getLookups, getActivity, getRequests, getRepairRecords, getUsers, getServiceAgreements, getRepairRecordStatus, canAccessCrm } from "@/lib/db";
+import { getCurrentUser } from "@/lib/auth";
 import StatusBadge from "@/components/StatusBadge";
 import { updateLeadStatus, addLeadNote, convertLeadToCustomer, addCustomerNote, assignLead } from "@/lib/actions";
 import { formatDate, formatDateTime } from "@/lib/format";
@@ -8,6 +9,9 @@ import { formatDate, formatDateTime } from "@/lib/format";
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export default async function CrmDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const user = await getCurrentUser();
+  if (!canAccessCrm(user)) redirect("/admin");
+
   const { id } = await params;
   if (!UUID_RE.test(id)) notFound();
 
