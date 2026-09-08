@@ -62,3 +62,34 @@ export async function sendSms(phone: string, message: string): Promise<void> {
   const res = await fetch(`${API_BASE}/messages`, { method: "POST", body: buildBody(phone, message) });
   if (!res.ok) throw new Error(`Semaphore SMS send failed (${res.status})`);
 }
+
+export type SmsAccountStatus =
+  | { ok: true; accountName: string; status: string; creditBalance: number }
+  | { ok: false; error: string };
+
+// Hits Semaphore's account endpoint to confirm the configured API key is
+// live and surface the remaining credit balance — used by the admin
+// Settings "Check status" action, not by any customer-facing flow.
+export async function getAccountStatus(): Promise<SmsAccountStatus> {
+  if (!smsConfigured()) return { ok: false, error: "SEMAPHORE_API_KEY is not set." };
+
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}/account?apikey=${apiKey()}`, { cache: "no-store" });
+  } catch {
+    return { ok: false, error: "Couldn't reach Semaphore — check network/DNS." };
+  }
+  const data = await res.json().catch(() => null);
+  if (!res.ok || !data) return { ok: false, error: `Semaphore account check failed (${res.status}).` };
+
+  const account = Array.isArray(data) ? data[0] : data;
+  if (!account || typeof account.credit_balance === "undefined") {
+    return { ok: false, error: "Semaphore returned an unexpected response." };
+  }
+  return {
+    ok: true,
+    accountName: String(account.account_name ?? "—"),
+    status: String(account.status ?? "Unknown"),
+    creditBalance: Number(account.credit_balance),
+  };
+}

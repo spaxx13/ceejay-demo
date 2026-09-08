@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getBranches, getTechnicians, getLookups, getUsers, getLoginLogs } from "@/lib/db";
 import { requireRole } from "@/lib/auth";
+import SmsStatusCheck from "@/components/SmsStatusCheck";
 
 const GROUPS = [
   {
@@ -92,6 +93,14 @@ export default async function SettingsHubPage() {
           </div>
         </section>
       ))}
+
+      <section className="space-y-3">
+        <div>
+          <h2 className="text-sm font-semibold text-slate-800">Integrations</h2>
+          <p className="text-xs text-slate-400">Third-party services this app talks to.</p>
+        </div>
+        <SmsStatusCheck />
+      </section>
     </div>
   );
 }

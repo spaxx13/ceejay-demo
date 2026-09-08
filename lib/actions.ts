@@ -28,7 +28,7 @@ import {
 } from "./db";
 import { getCurrentUser, setSession, clearSession, requireRole } from "./auth";
 import { sendOtpEmail, sendRepairReceiptEmail, sendCancellationEmail } from "./email";
-import { sendSms, smsConfigured } from "./sms";
+import { sendSms, smsConfigured, getAccountStatus, type SmsAccountStatus } from "./sms";
 import type {
   Role,
   LookupKind,
@@ -1833,6 +1833,12 @@ export async function updateAgreementPrice(
 // another copy. Reads straight off the already-saved record/agreements
 // (both are locked once the job is completed) rather than re-deriving
 // anything, so the resend is guaranteed to match what was originally sent.
+export async function checkSmsStatus(): Promise<SmsAccountStatus> {
+  const user = await getCurrentUser();
+  if (!user || user.role !== "owner_admin") return { ok: false, error: "Owner admin access required." };
+  return getAccountStatus();
+}
+
 export type ResendReceiptResult = { ok: true; email: string } | { ok: false; error: string };
 
 export async function resendReceiptEmail(_prev: ResendReceiptResult | undefined, formData: FormData): Promise<ResendReceiptResult> {
