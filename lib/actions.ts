@@ -621,39 +621,61 @@ export async function createRepairRecordDraft(
     await logActivity("customer", customerId, "Customer created from a repair record", user.name);
   }
 
-  const count = await queryOne<{ n: number }>("select count(*)::int as n from repair_records");
-  const reference = `REPAIR-${new Date().getFullYear()}-${String((count?.n ?? 0) + 1).padStart(4, "0")}`;
   const cost = Math.max(0, Number(str(formData, "cost")) || 0);
   const partsCost = Math.max(0, Number(str(formData, "partsCost")) || 0);
   const laborCost = Math.max(0, Number(str(formData, "laborCost")) || 0);
   const otherExpenses = Math.max(0, Number(str(formData, "otherExpenses")) || 0);
   const serviceDate = str(formData, "serviceDate") || new Date().toISOString().slice(0, 10);
 
-  const record = await queryOne<{ id: string }>(
-    `insert into repair_records
-       (reference, branch_id, customer_id, customer_name, contact_number, email, device_model, reported_problem, service_performed, parts_used, cost, parts_cost, labor_cost, other_expenses, technician_name, service_date, notes, logged_by)
-     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) returning id`,
-    [
-      reference,
-      branchId,
-      customerId,
-      customerName,
-      contactNumber,
-      email,
-      deviceModel,
-      str(formData, "reportedProblem"),
-      str(formData, "servicePerformed"),
-      str(formData, "partsUsed"),
-      cost,
-      partsCost,
-      laborCost,
-      otherExpenses,
-      technicianName,
-      serviceDate,
-      str(formData, "notes"),
-      user.name,
-    ]
-  );
+  // The reference number is the highest already-used number for this year,
+  // plus one — not a row count, since deleteRepairRecord() can permanently
+  // remove a row from the middle of the sequence and leave a row count that
+  // undercounts references still in use (which a count-based number would
+  // collide with on every attempt, not just a concurrent one). Retry with a
+  // freshly computed reference on a unique-constraint collision to also
+  // cover two submissions landing on the same number at the same time.
+  const year = new Date().getFullYear();
+  let reference = "";
+  let record: { id: string } | null = null;
+  for (let attempt = 1; attempt <= 5; attempt++) {
+    const max = await queryOne<{ n: number }>(
+      "select coalesce(max(split_part(reference, '-', 3)::int), 0)::int as n from repair_records where reference like $1",
+      [`REPAIR-${year}-%`]
+    );
+    reference = `REPAIR-${year}-${String((max?.n ?? 0) + 1).padStart(4, "0")}`;
+    try {
+      record = await queryOne<{ id: string }>(
+        `insert into repair_records
+           (reference, branch_id, customer_id, customer_name, contact_number, email, device_model, reported_problem, service_performed, parts_used, cost, parts_cost, labor_cost, other_expenses, technician_name, service_date, notes, logged_by)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) returning id`,
+        [
+          reference,
+          branchId,
+          customerId,
+          customerName,
+          contactNumber,
+          email,
+          deviceModel,
+          str(formData, "reportedProblem"),
+          str(formData, "servicePerformed"),
+          str(formData, "partsUsed"),
+          cost,
+          partsCost,
+          laborCost,
+          otherExpenses,
+          technicianName,
+          serviceDate,
+          str(formData, "notes"),
+          user.name,
+        ]
+      );
+      break;
+    } catch (e) {
+      const code = e && typeof e === "object" && "code" in e ? (e as { code: string }).code : "";
+      if (code === "23505" && attempt < 5) continue;
+      throw e;
+    }
+  }
   const recordId = record!.id;
 
   const preCount = await queryOne<{ n: number }>("select count(*)::int as n from service_agreements where phase='pre_repair'");
