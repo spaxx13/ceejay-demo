@@ -47,6 +47,23 @@ export async function queryOne<T extends QueryResultRow = QueryResultRow>(text: 
   return rows[0] ?? null;
 }
 
+// Atomically hands out the next `<prefix>-<year>-####` reference number.
+// Backed by reference_counters, where `insert ... on conflict do update
+// set n = n + 1` is serialized by Postgres via the row's own lock — unlike
+// the old `select count(*) + 1` approach, two concurrent callers can never
+// get the same number, and numbers already handed out are never reused
+// even if the record they were assigned to is later deleted.
+export async function nextReference(prefix: string): Promise<string> {
+  const year = new Date().getFullYear();
+  const row = await queryOne<{ n: number }>(
+    `insert into reference_counters (prefix, year, n) values ($1, $2, 1)
+     on conflict (prefix, year) do update set n = reference_counters.n + 1
+     returning n`,
+    [prefix, year]
+  );
+  return `${prefix}-${year}-${String(row!.n).padStart(4, "0")}`;
+}
+
 // ---------- Row mappers (snake_case DB row -> camelCase app type) ----------
 
 function toIso(v: Date | string | null): string {

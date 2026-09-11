@@ -8,6 +8,7 @@ import { CHECKLIST_TEMPLATE } from "./checklist";
 import {
   query,
   queryOne,
+  nextReference,
   getUserAuthByEmail,
   getUsers,
   getTechnicians,
@@ -621,8 +622,7 @@ export async function createRepairRecordDraft(
     await logActivity("customer", customerId, "Customer created from a repair record", user.name);
   }
 
-  const count = await queryOne<{ n: number }>("select count(*)::int as n from repair_records");
-  const reference = `REPAIR-${new Date().getFullYear()}-${String((count?.n ?? 0) + 1).padStart(4, "0")}`;
+  const reference = await nextReference("REPAIR");
   const cost = Math.max(0, Number(str(formData, "cost")) || 0);
   const partsCost = Math.max(0, Number(str(formData, "partsCost")) || 0);
   const laborCost = Math.max(0, Number(str(formData, "laborCost")) || 0);
@@ -656,8 +656,7 @@ export async function createRepairRecordDraft(
   );
   const recordId = record!.id;
 
-  const preCount = await queryOne<{ n: number }>("select count(*)::int as n from service_agreements where phase='pre_repair'");
-  const preReference = `PRC-${new Date().getFullYear()}-${String((preCount?.n ?? 0) + 1).padStart(4, "0")}`;
+  const preReference = await nextReference("PRC");
   await query(
     `insert into service_agreements (repair_record_id, phase, reference, customer_name, device_label, technician_name, items, summary_notes, customer_signature_data_url, technician_signature_data_url)
      values ($1,'pre_repair',$2,$3,$4,$5,$6,$7,$8,$9)`,
@@ -972,8 +971,7 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
   // admin to triage and assign manually.
   const initialStatus = requestStatuses[0];
 
-  const requestsCount = await queryOne<{ n: string }>("select count(*)::int as n from home_service_requests");
-  const reference = `HSR-${new Date().getFullYear()}-${String(Number(requestsCount!.n) + 1).padStart(4, "0")}`;
+  const reference = await nextReference("HSR");
 
   const now = new Date().toISOString();
   const statusHistory = [{ statusId: initialStatus.id, at: now }];
@@ -1619,8 +1617,7 @@ export async function submitChecklist(_prev: SubmitChecklistResult | undefined, 
   }
 
   const prefix = phase === "pre_repair" ? "PRC" : "SA";
-  const phaseCount = await queryOne<{ n: string }>("select count(*)::int as n from service_agreements where phase=$1", [phase]);
-  const reference = `${prefix}-${new Date().getFullYear()}-${String(Number(phaseCount!.n) + 1).padStart(4, "0")}`;
+  const reference = await nextReference(prefix);
 
   const created = await queryOne<{ id: string }>(
     `insert into service_agreements (
