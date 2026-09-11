@@ -627,14 +627,22 @@ export async function createRepairRecordDraft(
   const otherExpenses = Math.max(0, Number(str(formData, "otherExpenses")) || 0);
   const serviceDate = str(formData, "serviceDate") || new Date().toISOString().slice(0, 10);
 
-  // The reference number is derived from a row count, so two concurrent
-  // submissions can land on the same number — retry with a freshly counted
-  // reference on a unique-constraint collision instead of failing the request.
+  // The reference number is the highest already-used number for this year,
+  // plus one — not a row count, since deleteRepairRecord() can permanently
+  // remove a row from the middle of the sequence and leave a row count that
+  // undercounts references still in use (which a count-based number would
+  // collide with on every attempt, not just a concurrent one). Retry with a
+  // freshly computed reference on a unique-constraint collision to also
+  // cover two submissions landing on the same number at the same time.
+  const year = new Date().getFullYear();
   let reference = "";
   let record: { id: string } | null = null;
   for (let attempt = 1; attempt <= 5; attempt++) {
-    const count = await queryOne<{ n: number }>("select count(*)::int as n from repair_records");
-    reference = `REPAIR-${new Date().getFullYear()}-${String((count?.n ?? 0) + 1).padStart(4, "0")}`;
+    const max = await queryOne<{ n: number }>(
+      "select coalesce(max(split_part(reference, '-', 3)::int), 0)::int as n from repair_records where reference like $1",
+      [`REPAIR-${year}-%`]
+    );
+    reference = `REPAIR-${year}-${String((max?.n ?? 0) + 1).padStart(4, "0")}`;
     try {
       record = await queryOne<{ id: string }>(
         `insert into repair_records
