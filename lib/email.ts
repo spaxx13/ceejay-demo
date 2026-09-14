@@ -93,6 +93,8 @@ export async function sendQuotationEmail(
     address: string;
     repairCost: number | null;
     serviceFee: number | null;
+    confirmationUrl: string | null;
+    confirmationWindowHours: number;
   }
 ) {
   const client = getClient();
@@ -103,6 +105,24 @@ export async function sendQuotationEmail(
       ? `an estimated total of <strong>${peso(opts.repairCost + opts.serviceFee)}</strong> (repair cost + service fee)`
       : "an estimate — our technician will confirm the exact repair cost upon inspection";
 
+  const confirmationBlock = opts.confirmationUrl
+    ? `
+      <div style="margin: 20px 0; padding: 16px; border: 2px solid #f59e0b; border-radius: 8px; background: #fffbeb; text-align: center;">
+        <p style="font-size: 14px; font-weight: 700; color: #92400e; margin: 0 0 4px;">Action required</p>
+        <p style="font-size: 13px; color: #78350f; margin: 0 0 12px; line-height: 1.5;">
+          Please confirm your booking within <strong>${opts.confirmationWindowHours} hours</strong>, or it will be automatically
+          cancelled.
+        </p>
+        <a
+          href="${opts.confirmationUrl}"
+          style="display: inline-block; background: #2563eb; color: #ffffff; font-size: 14px; font-weight: 600; text-decoration: none; padding: 10px 24px; border-radius: 999px;"
+        >
+          Confirm My Booking
+        </a>
+      </div>
+    `
+    : "";
+
   const html = `
     <div style="font-family: -apple-system, sans-serif; max-width: 480px; margin: 0 auto; color: #1e293b;">
       <p style="font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8;">Ceejay Cellphone Repair Shop</p>
@@ -111,6 +131,7 @@ export async function sendQuotationEmail(
         Hi ${opts.customerName}, thanks for booking a home service repair with us. Your quotation for
         <strong>${opts.reference}</strong> (${opts.deviceLabel || "your device"}) is attached as a PDF — ${totalLine}.
       </p>
+      ${confirmationBlock}
       <p style="font-size: 13px; color: #64748b;">
         This is an estimate based on our standard price list. Final pricing will be confirmed by our technician before any repair work
         begins.

@@ -269,6 +269,11 @@ export default function HomeServiceForm({
           <span className="font-mono text-base font-semibold text-blue-300">{state.reference}</span>
         </p>
         <p className="text-sm text-slate-400">{content.successBody}</p>
+        {sentEmail && (
+          <p className="text-sm text-slate-400">
+            Please check your email (<span className="font-medium text-slate-600">{sentEmail}</span>) for your repair quotation.
+          </p>
+        )}
         <a href={`/request?area=${area}`} className="btn-secondary inline-block">
           Submit another request
         </a>

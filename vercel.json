@@ -1,5 +1,6 @@
 {
   "crons": [
-    { "path": "/api/cron/appointment-reminders", "schedule": "0 0 * * *" }
+    { "path": "/api/cron/appointment-reminders", "schedule": "0 0 * * *" },
+    { "path": "/api/cron/void-unconfirmed-requests", "schedule": "*/15 * * * *" }
   ]
 }

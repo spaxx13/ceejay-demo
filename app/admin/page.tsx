@@ -30,11 +30,15 @@ export default async function AdminDashboard() {
   // one queue's backend branch never sees the other queue's totals here.
   const requests = allRequests.filter((r) => !isBranchHidden(user, r.queueBranchId));
   const totalRequests = requests.length;
-  const unassigned = requests.filter((r) => !r.assignedTechnicianId);
+  const statuses = lookups.filter((l) => l.kind === "request_status");
+  // A request still awaiting the customer's confirmation-email click isn't
+  // actually assignable yet, so it shouldn't inflate this count — matches
+  // "Unassigned" excluding it on Admin > Requests too.
+  const pendingConfirmationStatusId = statuses.find((s) => s.label === "Pending Confirmation")?.id;
+  const unassigned = requests.filter((r) => !r.assignedTechnicianId && r.statusId !== pendingConfirmationStatusId);
   const activeTechs = technicians.filter((t) => t.active).length;
   const totalLeads = leads.length;
   const totalCustomers = customers.length;
-  const statuses = lookups.filter((l) => l.kind === "request_status");
 
   const today = new Date().toISOString().slice(0, 10);
   const todayRecords = repairRecords.filter((r) => r.serviceDate === today);

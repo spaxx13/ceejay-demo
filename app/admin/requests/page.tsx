@@ -23,14 +23,20 @@ export default async function RequestsPage({
   // branch never sees the other queue's requests here, even via filters.
   const visibleRequests = allRequests.filter((r) => !isBranchHidden(user, r.queueBranchId));
 
+  // A request still awaiting the customer's confirmation-email click isn't
+  // actually assignable yet, so it's excluded from "unassigned" here —
+  // matches the Dashboard's Unassigned Queue stat.
+  const pendingConfirmationStatusId = statuses.find((s) => s.label === "Pending Confirmation")?.id;
+  const isUnassigned = (r: (typeof visibleRequests)[number]) => !r.assignedTechnicianId && r.statusId !== pendingConfirmationStatusId;
+
   let requests = [...visibleRequests];
   if (sp.status) requests = requests.filter((r) => r.statusId === sp.status);
   if (sp.technician) requests = requests.filter((r) => r.assignedTechnicianId === sp.technician);
   if (sp.date) requests = requests.filter((r) => r.preferredDatetime.startsWith(sp.date!));
-  if (sp.unassigned === "1") requests = requests.filter((r) => !r.assignedTechnicianId);
+  if (sp.unassigned === "1") requests = requests.filter(isUnassigned);
   requests.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
 
-  const unassignedCount = visibleRequests.filter((r) => !r.assignedTechnicianId).length;
+  const unassignedCount = visibleRequests.filter(isUnassigned).length;
 
   function labelFor(id: string | null, list: { id: string; label?: string; name?: string }[]) {
     if (!id) return "—";

@@ -229,6 +229,7 @@ type RequestRow = {
   status_id: string; assigned_technician_id: string | null; auto_assigned: boolean; branch_id: string | null; queue_branch_id: string | null; admin_notes: string;
   status_history: { statusId: string; at: string }[]; custom_fields: Record<string, string | boolean>; created_at: Date;
   vlog_consent: boolean; vlog_blur_preference: HomeServiceRequest["vlogBlurPreference"]; screen_quality: HomeServiceRequest["screenQuality"]; back_housing_color: string; reminder_sent_at: Date | null;
+  confirmation_token: string | null; confirmation_expires_at: Date | null; confirmed_at: Date | null;
 };
 function mapRequest(r: RequestRow): HomeServiceRequest {
   return {
@@ -240,6 +241,7 @@ function mapRequest(r: RequestRow): HomeServiceRequest {
     createdAt: toIso(r.created_at), statusHistory: r.status_history ?? [], customFields: r.custom_fields ?? {},
     vlogConsent: r.vlog_consent, vlogBlurPreference: r.vlog_blur_preference || "", screenQuality: r.screen_quality || "", backHousingColor: r.back_housing_color || "",
     reminderSentAt: toIsoOrNull(r.reminder_sent_at),
+    confirmationToken: r.confirmation_token, confirmationExpiresAt: toIsoOrNull(r.confirmation_expires_at), confirmedAt: toIsoOrNull(r.confirmed_at),
   };
 }
 
@@ -417,6 +419,10 @@ export async function getRequests() {
 }
 export async function getRequestById(id: string) {
   const row = await queryOne<RequestRow>("select * from home_service_requests where id = $1", [id]);
+  return row ? mapRequest(row) : null;
+}
+export async function getRequestByConfirmationToken(token: string) {
+  const row = await queryOne<RequestRow>("select * from home_service_requests where confirmation_token = $1", [token]);
   return row ? mapRequest(row) : null;
 }
 export async function getActivity() {

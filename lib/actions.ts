@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import bcrypt from "bcryptjs";
-import { OTP_GATE_ENABLED, MAX_PRICE_EDITS } from "@/lib/config";
+import { OTP_GATE_ENABLED, MAX_PRICE_EDITS, SITE_URL, BOOKING_CONFIRMATION_WINDOW_HOURS } from "@/lib/config";
 import { CHECKLIST_TEMPLATE } from "./checklist";
 import {
   query,
@@ -18,6 +18,7 @@ import {
   getServicePrices,
   getRequests,
   getRequestById,
+  getRequestByConfirmationToken,
   getRepairRecordById,
   getServiceAgreements,
   getRepairRecordStatus,
@@ -1062,8 +1063,20 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
   const requestStatuses = allLookups.filter((l) => l.kind === "request_status").sort((a, b) => a.order - b.order);
   // Home Service Requests are no longer auto-assigned to a technician on
   // submission — every new request lands in the Unassigned queue for an
-  // admin to triage and assign manually.
-  const initialStatus = requestStatuses[0];
+  // admin to triage and assign manually. Whenever an email was captured, it
+  // first has to sit in "Pending Confirmation" until the customer clicks
+  // the link in their quotation email (or the 2-hour window lapses and
+  // the void-unconfirmed-requests cron cancels it) — only then is it truly
+  // "Pending" and ready to assign. No email means no way to send that link,
+  // so it skips straight to Pending as before.
+  const pendingStatus = requestStatuses.find((s) => s.label === "Pending") ?? requestStatuses[0];
+  const pendingConfirmationStatus = requestStatuses.find((s) => s.label === "Pending Confirmation");
+  const initialStatus = email && pendingConfirmationStatus ? pendingConfirmationStatus : pendingStatus;
+  const needsConfirmation = initialStatus.id === pendingConfirmationStatus?.id;
+  const confirmationToken = needsConfirmation ? crypto.randomUUID() : null;
+  const confirmationExpiresAt = needsConfirmation
+    ? new Date(Date.now() + BOOKING_CONFIRMATION_WINDOW_HOURS * 60 * 60 * 1000).toISOString()
+    : null;
 
   const now = new Date().toISOString();
   const statusHistory = [{ statusId: initialStatus.id, at: now }];
@@ -1132,8 +1145,8 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
           reference, customer_id, customer_name, phone, email, device_brand_id, device_model_id, device_other, service_type_id,
           issue_description, photo_data_url, street, landmark, province, city, barangay, lat, lng, preferred_datetime,
           status_id, status_history, custom_fields, vlog_consent, vlog_blur_preference, screen_quality, back_housing_color,
-          assigned_technician_id, auto_assigned, branch_id, queue_branch_id
-        ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30)
+          assigned_technician_id, auto_assigned, branch_id, queue_branch_id, confirmation_token, confirmation_expires_at
+        ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32)
         returning id`,
         [
           reference,
@@ -1166,6 +1179,8 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
           false,
           null,
           queueBranch?.id ?? null,
+          confirmationToken,
+          confirmationExpiresAt,
         ]
       );
       break;
@@ -1214,6 +1229,8 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
         address,
         repairCost,
         serviceFee,
+        confirmationUrl: confirmationToken ? `${SITE_URL}/confirm-booking/${confirmationToken}` : null,
+        confirmationWindowHours: BOOKING_CONFIRMATION_WINDOW_HOURS,
       });
       quoteNote = " — quotation emailed";
     } catch (err) {
@@ -1227,13 +1244,53 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
     `Request ${reference} submitted and sent to the Unassigned queue for triage${smsNote}${quoteNote}`,
     "System"
   );
-  await notifyAdmins("new_request", created!.id, `${name || "A customer"} submitted a new Home Service Request ${reference} — now in the Unassigned queue.`);
+  await notifyAdmins(
+    "new_request",
+    created!.id,
+    needsConfirmation
+      ? `${name || "A customer"} submitted a new Home Service Request ${reference} — awaiting their confirmation email click.`
+      : `${name || "A customer"} submitted a new Home Service Request ${reference} — now in the Unassigned queue.`
+  );
 
   if (email) await query("delete from otp_codes where email=$1", [email.trim().toLowerCase()]);
 
   revalidatePath("/admin/requests");
   revalidatePath("/admin");
   return { ok: true, reference };
+}
+
+export type ConfirmBookingResult =
+  | { ok: true; reference: string; alreadyConfirmed: boolean }
+  | { ok: false; error: "not_found" | "expired" };
+
+// Called from the public confirm-booking page when the customer clicks the
+// link in their quotation email. Moves the request from "Pending
+// Confirmation" to "Pending" (ready for an admin to assign) — idempotent,
+// since email clients/scanners sometimes pre-fetch links, and a customer
+// might click the link twice.
+export async function confirmBooking(token: string): Promise<ConfirmBookingResult> {
+  const req = await getRequestByConfirmationToken(token);
+  if (!req) return { ok: false, error: "not_found" };
+  if (req.confirmedAt) return { ok: true, reference: req.reference, alreadyConfirmed: true };
+  if (!req.confirmationExpiresAt || new Date(req.confirmationExpiresAt).getTime() < Date.now()) {
+    return { ok: false, error: "expired" };
+  }
+
+  const lookups = await getLookups();
+  const pendingStatus = lookups.find((l) => l.kind === "request_status" && l.label === "Pending");
+  const now = new Date().toISOString();
+  const statusHistory = pendingStatus ? [...req.statusHistory, { statusId: pendingStatus.id, at: now }] : req.statusHistory;
+
+  await query(
+    `update home_service_requests set confirmed_at=now()${pendingStatus ? ", status_id=$2, status_history=$3" : ""} where id=$1`,
+    pendingStatus ? [req.id, pendingStatus.id, JSON.stringify(statusHistory)] : [req.id]
+  );
+  await logActivity("home_service_request", req.id, `Request ${req.reference} confirmed by customer — moved to the Unassigned queue`, "System");
+  await notifyAdmins("new_request", req.id, `${req.customerName || "A customer"} confirmed Home Service Request ${req.reference} — now in the Unassigned queue.`);
+
+  revalidatePath("/admin/requests");
+  revalidatePath("/admin");
+  return { ok: true, reference: req.reference, alreadyConfirmed: false };
 }
 
 // ---------- Public Contact Form ----------
