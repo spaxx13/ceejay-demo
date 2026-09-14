@@ -60,6 +60,8 @@ export type RequestFormContent = {
   submitButtonLabel: string;
   successTitle: string;
   successBody: string;
+  nearAreaEnabled: boolean; // whether "near" (Metro Manila/Laguna/Batangas/Quezon/Rizal/Bulacan/Cavite/Pampanga) is offered on the area picker
+  farAreaEnabled: boolean; // whether "far" (Other Provinces) is offered on the area picker
 };
 
 // The 13 fields the form ships with. Each has bespoke rendering (device

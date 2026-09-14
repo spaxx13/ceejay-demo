@@ -268,9 +268,15 @@ function mapSiteContent(r: SiteContentRow): SiteContent {
   };
 }
 
-type RequestFormContentRow = { page_kicker: string; page_title: string; page_subtitle: string; submit_button_label: string; success_title: string; success_body: string };
+type RequestFormContentRow = {
+  page_kicker: string; page_title: string; page_subtitle: string; submit_button_label: string; success_title: string; success_body: string;
+  near_area_enabled: boolean; far_area_enabled: boolean;
+};
 function mapRequestFormContent(r: RequestFormContentRow): RequestFormContent {
-  return { pageKicker: r.page_kicker, pageTitle: r.page_title, pageSubtitle: r.page_subtitle, submitButtonLabel: r.submit_button_label, successTitle: r.success_title, successBody: r.success_body };
+  return {
+    pageKicker: r.page_kicker, pageTitle: r.page_title, pageSubtitle: r.page_subtitle, submitButtonLabel: r.submit_button_label, successTitle: r.success_title, successBody: r.success_body,
+    nearAreaEnabled: r.near_area_enabled, farAreaEnabled: r.far_area_enabled,
+  };
 }
 
 type CustomFieldRow = { id: string; key: string; system_key: CustomFormField["systemKey"]; label: string; placeholder: string; type: CustomFormField["type"]; required: boolean; options: string[]; order_num: number; active: boolean };

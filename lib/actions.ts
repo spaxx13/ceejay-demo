@@ -471,7 +471,9 @@ export async function updateRequestFormContent(formData: FormData) {
       page_subtitle = $3,
       submit_button_label = coalesce(nullif($4,''), submit_button_label),
       success_title = coalesce(nullif($5,''), success_title),
-      success_body = $6
+      success_body = $6,
+      near_area_enabled = $7,
+      far_area_enabled = $8
      where id = 1`,
     [
       str(formData, "pageKicker"),
@@ -480,6 +482,8 @@ export async function updateRequestFormContent(formData: FormData) {
       str(formData, "submitButtonLabel"),
       str(formData, "successTitle"),
       str(formData, "successBody"),
+      formData.get("nearAreaEnabled") === "on",
+      formData.get("farAreaEnabled") === "on",
     ]
   );
   revalidatePath("/request");
