@@ -2,8 +2,9 @@
 
 import { useActionState } from "react";
 import { submitContactInquiry } from "@/lib/actions";
+import type { Branch } from "@/lib/types";
 
-export default function ContactForm() {
+export default function ContactForm({ branches }: { branches: Pick<Branch, "id" | "name">[] }) {
   const [state, formAction, pending] = useActionState(submitContactInquiry, undefined);
 
   if (state?.ok) {
@@ -23,6 +24,21 @@ export default function ContactForm() {
           Full Name <span className="text-red-600">*</span>
         </label>
         <input name="name" required className="input" placeholder="Juan Dela Cruz" />
+      </div>
+      <div className="space-y-1.5">
+        <label className="text-xs font-medium text-slate-500">
+          Branch <span className="text-red-600">*</span>
+        </label>
+        <select name="branchId" required defaultValue="" className="input">
+          <option value="" disabled>
+            Select a branch
+          </option>
+          {branches.map((b) => (
+            <option key={b.id} value={b.id}>
+              {b.name}
+            </option>
+          ))}
+        </select>
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1.5">

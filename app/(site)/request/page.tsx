@@ -12,9 +12,27 @@ const AREA_LABELS: Record<HomeServiceQueue, string> = {
   far: "Other Provinces",
 };
 
+const AREA_ENABLED_KEY: Record<HomeServiceQueue, "nearAreaEnabled" | "farAreaEnabled"> = {
+  near: "nearAreaEnabled",
+  far: "farAreaEnabled",
+};
+
 export default async function RequestPage({ searchParams }: { searchParams: Promise<{ area?: string }> }) {
   const sp = await searchParams;
-  const area: HomeServiceQueue | null = sp.area === "near" || sp.area === "far" ? sp.area : null;
+  const requestedArea: HomeServiceQueue | null = sp.area === "near" || sp.area === "far" ? sp.area : null;
+
+  const [lookups, deviceModels, content, customFormFields] = await Promise.all([
+    getLookups(),
+    getDeviceModels(),
+    getRequestFormContent(),
+    getCustomFormFields(),
+  ]);
+
+  const enabledAreas = (Object.keys(AREA_LABELS) as HomeServiceQueue[]).filter((key) => content[AREA_ENABLED_KEY[key]]);
+  // Ignore a stale/hand-typed ?area= link pointing at an area the owner has
+  // since hidden — fall back to the picker instead of serving a form for a
+  // queue that's no longer taking bookings.
+  const area = requestedArea && enabledAreas.includes(requestedArea) ? requestedArea : null;
 
   if (!area) {
     return (
@@ -26,7 +44,10 @@ export default async function RequestPage({ searchParams }: { searchParams: Prom
             <p className="mt-2 text-sm text-slate-400">Choose your area so we can route your request to the right team.</p>
           </div>
           <div className="space-y-3">
-            {(Object.keys(AREA_LABELS) as HomeServiceQueue[]).map((key) => (
+            {enabledAreas.length === 0 && (
+              <p className="card text-center text-sm text-slate-400">Home service booking is temporarily unavailable. Please contact a branch directly.</p>
+            )}
+            {enabledAreas.map((key) => (
               <Link key={key} href={`/request?area=${key}`} className="card block text-center hover:border-blue-300">
                 <p className="text-sm font-semibold text-slate-800">{AREA_LABELS[key]}</p>
               </Link>
@@ -37,12 +58,6 @@ export default async function RequestPage({ searchParams }: { searchParams: Prom
     );
   }
 
-  const [lookups, deviceModels, content, customFormFields] = await Promise.all([
-    getLookups(),
-    getDeviceModels(),
-    getRequestFormContent(),
-    getCustomFormFields(),
-  ]);
   const brands = lookups
     .filter((l) => l.kind === "device_brand" && l.active)
     .sort((a, b) => a.order - b.order)

@@ -56,7 +56,7 @@ type PhProvince = { key: string; label: string; cities: PhCity[] };
 // out of the options a customer can actually pick here (they're still
 // listed on the public Services page and the in-branch POS/checklist flow,
 // just not bookable as a home service).
-const EXCLUDED_FROM_HOME_SERVICE = new Set(["Camera", "Backhousing(Whole shell including backglass)", "Logic board problem"]);
+const EXCLUDED_FROM_HOME_SERVICE = new Set(["Camera", "Backhousing(Whole shell including backglass)", "Logic board problem", "Charging Port"]);
 
 // A customer must tick "I Agree" after reading this before they can submit —
 // set-expectation notices for parts Apple serializes/verifies, so a
@@ -531,6 +531,26 @@ export default function HomeServiceForm({
                   </option>
                 ))}
             </select>
+            {selectedServiceType?.label === "Screen Repair" && (
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-slate-500">
+                  Screen Quality <span className="text-red-600">*</span>
+                </label>
+                <select name="screenQuality" required className="input">
+                  <option value="">Select quality...</option>
+                  <option value="original">Original</option>
+                  <option value="high_quality">High Quality (compatible)</option>
+                </select>
+              </div>
+            )}
+            {selectedServiceType?.label === "Back Housing (whole shell)" && (
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-slate-500">
+                  Back Housing Color <span className="text-red-600">*</span>
+                </label>
+                <input name="backHousingColor" required className="input" placeholder="e.g. Space Gray, Midnight Green" />
+              </div>
+            )}
             {agreementNotice && (
               <div className="space-y-2">
                 <FormNotice tone="blue">{agreementNotice}</FormNotice>

@@ -47,6 +47,22 @@ export default async function RequestFormContentPage() {
         </div>
 
         <div className="card space-y-4">
+          <h3 className="text-sm font-semibold text-slate-800">Areas</h3>
+          <p className="text-xs text-slate-400">
+            Hide an area from the public &quot;Where would you like your service?&quot; picker, e.g. while that queue&apos;s technicians are
+            unavailable. Existing requests aren&apos;t affected.
+          </p>
+          <label className="flex items-center gap-2 text-sm text-slate-700">
+            <input type="checkbox" name="nearAreaEnabled" defaultChecked={rc.nearAreaEnabled} className="h-4 w-4" />
+            Metro Manila, Laguna, Batangas, Quezon, Rizal, Bulacan, Cavite, and Pampanga
+          </label>
+          <label className="flex items-center gap-2 text-sm text-slate-700">
+            <input type="checkbox" name="farAreaEnabled" defaultChecked={rc.farAreaEnabled} className="h-4 w-4" />
+            Other Provinces
+          </label>
+        </div>
+
+        <div className="card space-y-4">
           <h3 className="text-sm font-semibold text-slate-800">Submit &amp; Confirmation</h3>
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-slate-500">Submit button label</label>

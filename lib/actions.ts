@@ -28,7 +28,7 @@ import {
 } from "./db";
 import { getCurrentUser, setSession, clearSession, requireRole } from "./auth";
 import { sendOtpEmail, sendRepairReceiptEmail, sendCancellationEmail } from "./email";
-import { sendSms, smsConfigured } from "./sms";
+import { sendSms, smsConfigured, getAccountStatus, type SmsAccountStatus } from "./sms";
 import type {
   Role,
   LookupKind,
@@ -60,7 +60,7 @@ export async function loginAction(_prev: { error?: string } | undefined, formDat
   if (!user || !user.active || !(await bcrypt.compare(password, user.passwordHash))) {
     return { error: "Invalid email or password." };
   }
-  await setSession(user.id);
+  await setSession(user.id, formData.get("remember") === "on");
   await query("insert into login_logs (user_id, user_name, user_email, role) values ($1,$2,$3,$4)", [user.id, user.name, user.email, user.role]);
   redirect(user.role === "technician" ? "/technician" : "/admin");
 }
@@ -86,6 +86,7 @@ export async function createUser(formData: FormData) {
   const canDeleteRequests = role === "branch_admin" ? formData.get("canDeleteRequests") === "on" : true;
   const canViewAllBranches = role === "branch_admin" ? formData.get("canViewAllBranches") === "on" : true;
   const canAccessCrmFlag = role === "branch_admin" ? formData.get("canAccessCrm") === "on" : true;
+  const phone = str(formData, "phone");
   if (!name || !email || !password || !role) return;
 
   const existing = await getUserAuthByEmail(email);
@@ -107,8 +108,8 @@ export async function createUser(formData: FormData) {
 
   const passwordHash = await bcrypt.hash(password, 10);
   await query(
-    "insert into users (name, email, password_hash, role, technician_id, assigned_branch_ids, can_manage_requests, can_delete_requests, can_view_all_branches, can_access_crm) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)",
-    [name, email, passwordHash, role, role === "technician" ? technicianId : null, assignedBranchIds, canManageRequests, canDeleteRequests, canViewAllBranches, canAccessCrmFlag]
+    "insert into users (name, email, password_hash, role, technician_id, assigned_branch_ids, can_manage_requests, can_delete_requests, can_view_all_branches, can_access_crm, phone) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)",
+    [name, email, passwordHash, role, role === "technician" ? technicianId : null, assignedBranchIds, canManageRequests, canDeleteRequests, canViewAllBranches, canAccessCrmFlag, phone]
   );
   revalidatePath("/admin/users");
   revalidatePath("/admin/technicians");
@@ -138,6 +139,7 @@ export async function updateUser(formData: FormData) {
   const canDeleteRequests = role === "branch_admin" ? formData.get("canDeleteRequests") === "on" : true;
   const canViewAllBranches = role === "branch_admin" ? formData.get("canViewAllBranches") === "on" : true;
   const canAccessCrmFlag = role === "branch_admin" ? formData.get("canAccessCrm") === "on" : true;
+  const phone = formData.has("phone") ? str(formData, "phone") : user.phone;
 
   if (role === "technician") {
     const technicianBranchIds = listStr(formData, "technicianBranchIds");
@@ -165,7 +167,7 @@ export async function updateUser(formData: FormData) {
   if (password) {
     const passwordHash = await bcrypt.hash(password, 10);
     await query(
-      "update users set name=$1, email=$2, password_hash=$3, role=$4, technician_id=$5, assigned_branch_ids=$6, can_manage_requests=$7, can_delete_requests=$8, can_view_all_branches=$9, can_access_crm=$10 where id=$11",
+      "update users set name=$1, email=$2, password_hash=$3, role=$4, technician_id=$5, assigned_branch_ids=$6, can_manage_requests=$7, can_delete_requests=$8, can_view_all_branches=$9, can_access_crm=$10, phone=$11 where id=$12",
       [
         name,
         email || user.email,
@@ -177,12 +179,13 @@ export async function updateUser(formData: FormData) {
         canDeleteRequests,
         canViewAllBranches,
         canAccessCrmFlag,
+        phone,
         userId,
       ]
     );
   } else {
     await query(
-      "update users set name=$1, email=$2, role=$3, technician_id=$4, assigned_branch_ids=$5, can_manage_requests=$6, can_delete_requests=$7, can_view_all_branches=$8, can_access_crm=$9 where id=$10",
+      "update users set name=$1, email=$2, role=$3, technician_id=$4, assigned_branch_ids=$5, can_manage_requests=$6, can_delete_requests=$7, can_view_all_branches=$8, can_access_crm=$9, phone=$10 where id=$11",
       [
         name,
         email || user.email,
@@ -193,6 +196,7 @@ export async function updateUser(formData: FormData) {
         canDeleteRequests,
         canViewAllBranches,
         canAccessCrmFlag,
+        phone,
         userId,
       ]
     );
@@ -471,7 +475,9 @@ export async function updateRequestFormContent(formData: FormData) {
       page_subtitle = $3,
       submit_button_label = coalesce(nullif($4,''), submit_button_label),
       success_title = coalesce(nullif($5,''), success_title),
-      success_body = $6
+      success_body = $6,
+      near_area_enabled = $7,
+      far_area_enabled = $8
      where id = 1`,
     [
       str(formData, "pageKicker"),
@@ -480,6 +486,8 @@ export async function updateRequestFormContent(formData: FormData) {
       str(formData, "submitButtonLabel"),
       str(formData, "successTitle"),
       str(formData, "successBody"),
+      formData.get("nearAreaEnabled") === "on",
+      formData.get("farAreaEnabled") === "on",
     ]
   );
   revalidatePath("/request");
@@ -621,39 +629,61 @@ export async function createRepairRecordDraft(
     await logActivity("customer", customerId, "Customer created from a repair record", user.name);
   }
 
-  const count = await queryOne<{ n: number }>("select count(*)::int as n from repair_records");
-  const reference = `REPAIR-${new Date().getFullYear()}-${String((count?.n ?? 0) + 1).padStart(4, "0")}`;
   const cost = Math.max(0, Number(str(formData, "cost")) || 0);
   const partsCost = Math.max(0, Number(str(formData, "partsCost")) || 0);
   const laborCost = Math.max(0, Number(str(formData, "laborCost")) || 0);
   const otherExpenses = Math.max(0, Number(str(formData, "otherExpenses")) || 0);
   const serviceDate = str(formData, "serviceDate") || new Date().toISOString().slice(0, 10);
 
-  const record = await queryOne<{ id: string }>(
-    `insert into repair_records
-       (reference, branch_id, customer_id, customer_name, contact_number, email, device_model, reported_problem, service_performed, parts_used, cost, parts_cost, labor_cost, other_expenses, technician_name, service_date, notes, logged_by)
-     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) returning id`,
-    [
-      reference,
-      branchId,
-      customerId,
-      customerName,
-      contactNumber,
-      email,
-      deviceModel,
-      str(formData, "reportedProblem"),
-      str(formData, "servicePerformed"),
-      str(formData, "partsUsed"),
-      cost,
-      partsCost,
-      laborCost,
-      otherExpenses,
-      technicianName,
-      serviceDate,
-      str(formData, "notes"),
-      user.name,
-    ]
-  );
+  // The reference number is the highest already-used number for this year,
+  // plus one — not a row count, since deleteRepairRecord() can permanently
+  // remove a row from the middle of the sequence and leave a row count that
+  // undercounts references still in use (which a count-based number would
+  // collide with on every attempt, not just a concurrent one). Retry with a
+  // freshly computed reference on a unique-constraint collision to also
+  // cover two submissions landing on the same number at the same time.
+  const year = new Date().getFullYear();
+  let reference = "";
+  let record: { id: string } | null = null;
+  for (let attempt = 1; attempt <= 5; attempt++) {
+    const max = await queryOne<{ n: number }>(
+      "select coalesce(max(split_part(reference, '-', 3)::int), 0)::int as n from repair_records where reference like $1",
+      [`REPAIR-${year}-%`]
+    );
+    reference = `REPAIR-${year}-${String((max?.n ?? 0) + 1).padStart(4, "0")}`;
+    try {
+      record = await queryOne<{ id: string }>(
+        `insert into repair_records
+           (reference, branch_id, customer_id, customer_name, contact_number, email, device_model, reported_problem, service_performed, parts_used, cost, parts_cost, labor_cost, other_expenses, technician_name, service_date, notes, logged_by)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) returning id`,
+        [
+          reference,
+          branchId,
+          customerId,
+          customerName,
+          contactNumber,
+          email,
+          deviceModel,
+          str(formData, "reportedProblem"),
+          str(formData, "servicePerformed"),
+          str(formData, "partsUsed"),
+          cost,
+          partsCost,
+          laborCost,
+          otherExpenses,
+          technicianName,
+          serviceDate,
+          str(formData, "notes"),
+          user.name,
+        ]
+      );
+      break;
+    } catch (e) {
+      const code = e && typeof e === "object" && "code" in e ? (e as { code: string }).code : "";
+      if (code === "23505" && attempt < 5) continue;
+      throw e;
+    }
+  }
   const recordId = record!.id;
 
   const preCount = await queryOne<{ n: number }>("select count(*)::int as n from service_agreements where phase='pre_repair'");
@@ -898,6 +928,8 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
   if (vlogConsent && vlogBlurPreference !== "blurred" && vlogBlurPreference !== "not_blurred") {
     return { ok: false, error: "Please choose whether your face should be blurred if we vlog this visit." };
   }
+  const screenQuality = str(formData, "screenQuality");
+  const backHousingColor = str(formData, "backHousingColor");
 
   const customFormFields = await getCustomFormFields();
   const systemFields = customFormFields.filter((f) => f.systemKey);
@@ -966,6 +998,13 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
   }
 
   const allLookups = await getLookups();
+  const selectedServiceType = allLookups.find((l) => l.id === serviceTypeId);
+  if (selectedServiceType?.label === "Screen Repair" && screenQuality !== "original" && screenQuality !== "high_quality") {
+    return { ok: false, error: "Please choose Original or High Quality for your screen repair." };
+  }
+  if (selectedServiceType?.label === "Back Housing (whole shell)" && !backHousingColor) {
+    return { ok: false, error: "Please specify the back housing color you want." };
+  }
   const requestStatuses = allLookups.filter((l) => l.kind === "request_status").sort((a, b) => a.order - b.order);
   // Home Service Requests are no longer auto-assigned to a technician on
   // submission — every new request lands in the Unassigned queue for an
@@ -1021,9 +1060,9 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
     `insert into home_service_requests (
       reference, customer_id, customer_name, phone, email, device_brand_id, device_model_id, device_other, service_type_id,
       issue_description, photo_data_url, street, landmark, province, city, barangay, lat, lng, preferred_datetime,
-      status_id, status_history, custom_fields, vlog_consent, vlog_blur_preference,
+      status_id, status_history, custom_fields, vlog_consent, vlog_blur_preference, screen_quality, back_housing_color,
       assigned_technician_id, auto_assigned, branch_id, queue_branch_id
-    ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28)
+    ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30)
     returning id`,
     [
       reference,
@@ -1050,6 +1089,8 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
       JSON.stringify(customFields),
       vlogConsent,
       vlogBlurPreference,
+      selectedServiceType?.label === "Screen Repair" ? screenQuality : "",
+      selectedServiceType?.label === "Back Housing (whole shell)" ? backHousingColor : "",
       null,
       false,
       null,
@@ -1073,6 +1114,7 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
     `Request ${reference} submitted and sent to the Unassigned queue for triage${smsNote}`,
     "System"
   );
+  await notifyAdmins("new_request", created!.id, `${name || "A customer"} submitted a new Home Service Request ${reference} — now in the Unassigned queue.`);
 
   if (email) await query("delete from otp_codes where email=$1", [email.trim().toLowerCase()]);
 
@@ -1090,6 +1132,7 @@ export async function submitContactInquiry(_prev: ContactResult | undefined, for
   const phone = str(formData, "phone");
   const email = str(formData, "email");
   const message = str(formData, "message");
+  const branchId = str(formData, "branchId") || null;
 
   if (!name || !message || (!phone && !email)) {
     return { ok: false, error: "Please share your name, a way to reach you (phone or email), and your message." };
@@ -1097,12 +1140,15 @@ export async function submitContactInquiry(_prev: ContactResult | undefined, for
   if (phone && !isValidPhone(phone)) {
     return { ok: false, error: "Please enter a valid PH mobile number, e.g. 0917 123 4567." };
   }
+  if (!branchId) {
+    return { ok: false, error: "Please select which branch you're asking about." };
+  }
 
   const lookups = await getLookups();
   const leadStatuses = lookups.filter((l) => l.kind === "lead_status").sort((a, b) => a.order - b.order);
   const lead = await queryOne<{ id: string }>(
-    "insert into leads (name, phone, email, source, status_id, notes) values ($1,$2,$3,'Website',$4,$5) returning id",
-    [name, phone, email, leadStatuses[0]?.id ?? null, message]
+    "insert into leads (name, phone, email, source, status_id, notes, branch_id) values ($1,$2,$3,'Website',$4,$5,$6) returning id",
+    [name, phone, email, leadStatuses[0]?.id ?? null, message, branchId]
   );
   await logActivity("lead", lead!.id, "Inquiry submitted via website contact form", "System");
   revalidatePath("/admin/crm");
@@ -1298,7 +1344,7 @@ export async function createLead(formData: FormData) {
   const lookups = await getLookups();
   const leadStatuses = lookups.filter((l) => l.kind === "lead_status").sort((a, b) => a.order - b.order);
   const lead = await queryOne<{ id: string }>(
-    "insert into leads (name, phone, email, source, status_id, assigned_to, follow_up_date, notes) values ($1,$2,$3,$4,$5,$6,$7,$8) returning id",
+    "insert into leads (name, phone, email, source, status_id, assigned_to, follow_up_date, notes, branch_id) values ($1,$2,$3,$4,$5,$6,$7,$8,$9) returning id",
     [
       name,
       str(formData, "phone"),
@@ -1308,6 +1354,7 @@ export async function createLead(formData: FormData) {
       user?.id ?? null,
       str(formData, "followUpDate") || null,
       str(formData, "notes"),
+      str(formData, "branchId") || null,
     ]
   );
   await logActivity("lead", lead!.id, `Lead created by ${user?.name ?? "Admin"}`, user?.name ?? "Admin");
@@ -1833,6 +1880,12 @@ export async function updateAgreementPrice(
 // another copy. Reads straight off the already-saved record/agreements
 // (both are locked once the job is completed) rather than re-deriving
 // anything, so the resend is guaranteed to match what was originally sent.
+export async function checkSmsStatus(): Promise<SmsAccountStatus> {
+  const user = await getCurrentUser();
+  if (!user || user.role !== "owner_admin") return { ok: false, error: "Owner admin access required." };
+  return getAccountStatus();
+}
+
 export type ResendReceiptResult = { ok: true; email: string } | { ok: false; error: string };
 
 export async function resendReceiptEmail(_prev: ResendReceiptResult | undefined, formData: FormData): Promise<ResendReceiptResult> {
@@ -1949,4 +2002,24 @@ export async function markAllNotificationsRead() {
   await query("update notifications set read_at = now() where read_at is null");
   revalidatePath("/admin/notifications");
   revalidatePath("/admin");
+}
+
+// ---------- Web Push subscriptions ----------
+// Called directly from PushSubscribe.tsx (not a <form>), so these take
+// plain arguments rather than FormData.
+
+export async function savePushSubscription(subscription: { endpoint: string; keys: { p256dh: string; auth: string } }) {
+  const user = await getCurrentUser();
+  if (!user) return;
+  await query(
+    `insert into push_subscriptions (user_id, endpoint, p256dh, auth) values ($1,$2,$3,$4)
+     on conflict (endpoint) do update set user_id = excluded.user_id, p256dh = excluded.p256dh, auth = excluded.auth`,
+    [user.id, subscription.endpoint, subscription.keys.p256dh, subscription.keys.auth]
+  );
+}
+
+export async function removePushSubscription(endpoint: string) {
+  const user = await getCurrentUser();
+  if (!user) return;
+  await query("delete from push_subscriptions where endpoint=$1 and user_id=$2", [endpoint, user.id]);
 }

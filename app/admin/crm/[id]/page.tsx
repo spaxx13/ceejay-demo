@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { getLeadById, getCustomerById, getLookups, getActivity, getRequests, getRepairRecords, getUsers, getServiceAgreements, getRepairRecordStatus, canAccessCrm } from "@/lib/db";
+import { getLeadById, getCustomerById, getLookups, getActivity, getRequests, getRepairRecords, getUsers, getServiceAgreements, getRepairRecordStatus, getBranches, isBranchHidden, canAccessCrm } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import StatusBadge from "@/components/StatusBadge";
 import { updateLeadStatus, addLeadNote, convertLeadToCustomer, addCustomerNote, assignLead } from "@/lib/actions";
@@ -17,12 +17,14 @@ export default async function CrmDetailPage({ params }: { params: Promise<{ id: 
 
   const lead = await getLeadById(id);
   if (lead) {
-    const [lookups, activityLog, users] = await Promise.all([getLookups(), getActivity(), getUsers()]);
+    if (isBranchHidden(user, lead.branchId)) redirect("/admin/crm");
+    const [lookups, activityLog, users, branches] = await Promise.all([getLookups(), getActivity(), getUsers(), getBranches()]);
     const leadStatuses = lookups.filter((l) => l.kind === "lead_status").sort((a, b) => a.order - b.order);
     const currentStatus = leadStatuses.find((s) => s.id === lead.statusId);
     const activity = activityLog.filter((a) => a.entityType === "lead" && a.entityId === lead.id).sort((a, b) => (a.at < b.at ? 1 : -1));
     const staff = users.filter((u) => u.active);
     const assignee = staff.find((u) => u.id === lead.assignedTo);
+    const branch = branches.find((b) => b.id === lead.branchId);
 
     return (
       <div className="space-y-6">
@@ -43,6 +45,8 @@ export default async function CrmDetailPage({ params }: { params: Promise<{ id: 
             <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
               <dt className="text-slate-400">Email</dt>
               <dd className="text-slate-800">{lead.email || "—"}</dd>
+              <dt className="text-slate-400">Branch</dt>
+              <dd className="text-slate-800">{branch?.name ?? "—"}</dd>
               <dt className="text-slate-400">Source</dt>
               <dd className="text-slate-800">{lead.source || "—"}</dd>
               <dt className="text-slate-400">Follow-up</dt>

@@ -21,7 +21,10 @@ import type {
   Notification,
   Expense,
   LoginLog,
+  PushSubscription,
 } from "./types";
+import { sendPushToUsers } from "./push";
+import { sendSms, smsConfigured } from "./sms";
 
 // Single pooled connection, reused across invocations within the same
 // serverless instance (and across all of local dev). Uses the pooled
@@ -75,6 +78,7 @@ type UserRow = {
   can_delete_requests: boolean;
   can_view_all_branches: boolean;
   can_access_crm: boolean;
+  phone: string;
   active: boolean;
 };
 function mapUser(r: UserRow): User {
@@ -89,8 +93,14 @@ function mapUser(r: UserRow): User {
     canDeleteRequests: r.can_delete_requests,
     canViewAllBranches: r.can_view_all_branches,
     canAccessCrm: r.can_access_crm,
+    phone: r.phone,
     active: r.active,
   };
+}
+
+type PushSubscriptionRow = { id: string; user_id: string; endpoint: string; p256dh: string; auth: string; created_at: Date };
+function mapPushSubscription(r: PushSubscriptionRow): PushSubscription {
+  return { id: r.id, userId: r.user_id, endpoint: r.endpoint, p256dh: r.p256dh, auth: r.auth, createdAt: toIso(r.created_at) };
 }
 
 // True when a branch shouldn't be shown to this user (branch_admin scoping
@@ -193,9 +203,9 @@ function mapDeviceModel(r: DeviceModelRow): DeviceModel {
   return { id: r.id, brandId: r.brand_id, name: r.name, order: r.order_num, active: r.active };
 }
 
-type LeadRow = { id: string; customer_id: string | null; name: string; phone: string; email: string; source: string; status_id: string; assigned_to: string | null; follow_up_date: Date | string | null; notes: string; created_at: Date };
+type LeadRow = { id: string; customer_id: string | null; name: string; phone: string; email: string; source: string; status_id: string; assigned_to: string | null; follow_up_date: Date | string | null; notes: string; branch_id: string | null; created_at: Date };
 function mapLead(r: LeadRow): Lead {
-  return { id: r.id, customerId: r.customer_id, name: r.name, phone: r.phone, email: r.email, source: r.source, statusId: r.status_id, assignedTo: r.assigned_to, followUpDate: r.follow_up_date ? toDateStr(r.follow_up_date) : null, notes: r.notes, createdAt: toIso(r.created_at) };
+  return { id: r.id, customerId: r.customer_id, name: r.name, phone: r.phone, email: r.email, source: r.source, statusId: r.status_id, assignedTo: r.assigned_to, followUpDate: r.follow_up_date ? toDateStr(r.follow_up_date) : null, notes: r.notes, branchId: r.branch_id, createdAt: toIso(r.created_at) };
 }
 
 type RequestRow = {
@@ -205,7 +215,7 @@ type RequestRow = {
   lat: number | null; lng: number | null; preferred_datetime: Date | string | null;
   status_id: string; assigned_technician_id: string | null; auto_assigned: boolean; branch_id: string | null; queue_branch_id: string | null; admin_notes: string;
   status_history: { statusId: string; at: string }[]; custom_fields: Record<string, string | boolean>; created_at: Date;
-  vlog_consent: boolean; vlog_blur_preference: HomeServiceRequest["vlogBlurPreference"]; reminder_sent_at: Date | null;
+  vlog_consent: boolean; vlog_blur_preference: HomeServiceRequest["vlogBlurPreference"]; screen_quality: HomeServiceRequest["screenQuality"]; back_housing_color: string; reminder_sent_at: Date | null;
 };
 function mapRequest(r: RequestRow): HomeServiceRequest {
   return {
@@ -215,7 +225,8 @@ function mapRequest(r: RequestRow): HomeServiceRequest {
     lat: r.lat, lng: r.lng, preferredDatetime: toDateStr(r.preferred_datetime),
     statusId: r.status_id, assignedTechnicianId: r.assigned_technician_id, autoAssigned: r.auto_assigned, branchId: r.branch_id, queueBranchId: r.queue_branch_id, adminNotes: r.admin_notes,
     createdAt: toIso(r.created_at), statusHistory: r.status_history ?? [], customFields: r.custom_fields ?? {},
-    vlogConsent: r.vlog_consent, vlogBlurPreference: r.vlog_blur_preference || "", reminderSentAt: toIsoOrNull(r.reminder_sent_at),
+    vlogConsent: r.vlog_consent, vlogBlurPreference: r.vlog_blur_preference || "", screenQuality: r.screen_quality || "", backHousingColor: r.back_housing_color || "",
+    reminderSentAt: toIsoOrNull(r.reminder_sent_at),
   };
 }
 
@@ -268,9 +279,15 @@ function mapSiteContent(r: SiteContentRow): SiteContent {
   };
 }
 
-type RequestFormContentRow = { page_kicker: string; page_title: string; page_subtitle: string; submit_button_label: string; success_title: string; success_body: string };
+type RequestFormContentRow = {
+  page_kicker: string; page_title: string; page_subtitle: string; submit_button_label: string; success_title: string; success_body: string;
+  near_area_enabled: boolean; far_area_enabled: boolean;
+};
 function mapRequestFormContent(r: RequestFormContentRow): RequestFormContent {
-  return { pageKicker: r.page_kicker, pageTitle: r.page_title, pageSubtitle: r.page_subtitle, submitButtonLabel: r.submit_button_label, successTitle: r.success_title, successBody: r.success_body };
+  return {
+    pageKicker: r.page_kicker, pageTitle: r.page_title, pageSubtitle: r.page_subtitle, submitButtonLabel: r.submit_button_label, successTitle: r.success_title, successBody: r.success_body,
+    nearAreaEnabled: r.near_area_enabled, farAreaEnabled: r.far_area_enabled,
+  };
 }
 
 type CustomFieldRow = { id: string; key: string; system_key: CustomFormField["systemKey"]; label: string; placeholder: string; type: CustomFormField["type"]; required: boolean; options: string[]; order_num: number; active: boolean };
@@ -459,6 +476,39 @@ export async function logActivity(entityType: ActivityLog["entityType"], entityI
   await query("insert into activity_log (entity_type, entity_id, message, actor) values ($1,$2,$3,$4)", [entityType, entityId, message, actor]);
 }
 
+export async function getPushSubscriptions() {
+  return (await query<PushSubscriptionRow>("select * from push_subscriptions")).map(mapPushSubscription);
+}
+
+// Writes the in-app notification (the one thing every admin always sees on
+// /admin/notifications) and best-effort fans it out to web push + SMS —
+// neither channel is guaranteed configured/subscribed, so failures there
+// are swallowed rather than failing the request/checklist/lead action that
+// triggered this.
 export async function notifyAdmins(type: Notification["type"], requestId: string, message: string) {
   await query("insert into notifications (type, request_id, message) values ($1,$2,$3)", [type, requestId, message]);
+
+  try {
+    const admins = (await getUsers()).filter((u) => u.active && (u.role === "owner_admin" || u.role === "branch_admin"));
+    const url = `/admin/requests/${requestId}`;
+
+    const subs = await getPushSubscriptions();
+    const adminIds = new Set(admins.map((a) => a.id));
+    const recipientSubs = subs.filter((s) => adminIds.has(s.userId));
+    if (recipientSubs.length > 0) {
+      const { expiredEndpoints } = await sendPushToUsers(recipientSubs, { title: "Ceejay Admin", body: message, url });
+      if (expiredEndpoints.length > 0) {
+        await query("delete from push_subscriptions where endpoint = any($1)", [expiredEndpoints]);
+      }
+    }
+
+    if (smsConfigured()) {
+      const phones = admins.map((a) => a.phone.trim()).filter(Boolean);
+      await Promise.allSettled(phones.map((phone) => sendSms(phone, message)));
+    }
+  } catch {
+    // Push/SMS are best-effort alerts layered on top of the in-app
+    // notification above, which already succeeded — never let a delivery
+    // failure here surface as a failure of the action that called this.
+  }
 }

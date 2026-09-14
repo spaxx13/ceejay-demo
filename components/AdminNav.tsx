@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { logoutAction } from "@/lib/actions";
 import Logo from "@/components/Logo";
+import PushSubscribe from "@/components/PushSubscribe";
 
 const NAV_GROUPS: { label: string | null; links: { href: string; label: string; ownerOnly?: boolean; requestsGated?: boolean; crmGated?: boolean }[] }[] = [
   { label: null, links: [{ href: "/admin", label: "Dashboard" }] },
@@ -38,12 +39,14 @@ export default function AdminNav({
   canManageRequests = true,
   canAccessCrm = true,
   unreadCount = 0,
+  vapidPublicKey = null,
 }: {
   userName: string;
   role: string;
   canManageRequests?: boolean;
   canAccessCrm?: boolean;
   unreadCount?: number;
+  vapidPublicKey?: string | null;
 }) {
   const pathname = usePathname();
   const settingsActive = SETTINGS_ROUTES.some((r) => pathname.startsWith(r));
@@ -99,11 +102,12 @@ export default function AdminNav({
         )}
       </nav>
 
-      <div className="border-t border-slate-200 px-4 py-4">
+      <div className="space-y-2 border-t border-slate-200 px-4 py-4">
         <p className="truncate text-xs text-slate-400">
           {userName} · <span className="uppercase">{role.replace("_", " ")}</span>
         </p>
-        <form action={logoutAction} className="mt-2">
+        <PushSubscribe vapidPublicKey={vapidPublicKey} />
+        <form action={logoutAction}>
           <button className="btn-secondary w-full !py-1.5 text-xs" type="submit">
             Log out
           </button>

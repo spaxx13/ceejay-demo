@@ -11,7 +11,20 @@ export type User = {
   canDeleteRequests: boolean; // whether this account can permanently delete Home Service Requests (branch_admin scoping) — owner_admin always can regardless
   canViewAllBranches: boolean; // whether this account can see combined "All Branches" sales figures (branch_admin scoping) — false means own branch(es) only
   canAccessCrm: boolean; // whether this account can access the CRM (leads/customers) section (branch_admin scoping) — owner_admin always can regardless
+  phone: string; // optional — set by the account holder to opt into SMS alerts (new requests, technician status updates); blank means not opted in
   active: boolean;
+};
+
+// One browser/device a staff account has enabled web push notifications
+// on — a user can have several (phone + desktop). endpoint uniquely
+// identifies the subscription in the browser's push service.
+export type PushSubscription = {
+  id: string;
+  userId: string;
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+  createdAt: string;
 };
 
 // Owner-managed business expenses (rent, utilities, tools, etc.) — separate
@@ -60,6 +73,8 @@ export type RequestFormContent = {
   submitButtonLabel: string;
   successTitle: string;
   successBody: string;
+  nearAreaEnabled: boolean; // whether "near" (Metro Manila/Laguna/Batangas/Quezon/Rizal/Bulacan/Cavite/Pampanga) is offered on the area picker
+  farAreaEnabled: boolean; // whether "far" (Other Provinces) is offered on the area picker
 };
 
 // The 13 fields the form ships with. Each has bespoke rendering (device
@@ -199,6 +214,7 @@ export type Lead = {
   assignedTo: string | null; // User id
   followUpDate: string | null;
   notes: string;
+  branchId: string | null; // which branch the inquiry is about (set on website contact-form leads; branch_admin scoping) — null means visible to every branch admin
   createdAt: string;
 };
 
@@ -234,6 +250,8 @@ export type HomeServiceRequest = {
   customFields: Record<string, string | boolean>; // keyed by CustomFormField.key
   vlogConsent: boolean;
   vlogBlurPreference: "blurred" | "not_blurred" | ""; // only meaningful when vlogConsent is true
+  screenQuality: "original" | "high_quality" | ""; // only meaningful/required when the chosen service type is "Screen Repair"
+  backHousingColor: string; // only meaningful/required when the chosen service type is "Back Housing (whole shell)"
   reminderSentAt: string | null; // set once the daily appointment-reminder cron has texted this customer
 };
 
@@ -382,7 +400,7 @@ export type RepairProgress = {
 // deployment would send. Owner and branch admins both see these.
 export type Notification = {
   id: string;
-  type: "request_in_progress" | "checklist_completed";
+  type: "new_request" | "request_in_progress" | "checklist_completed";
   requestId: string;
   message: string;
   createdAt: string;
