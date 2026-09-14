@@ -69,6 +69,11 @@ const SERVICE_TYPE_AGREEMENT_NOTICES: Record<string, string> = {
     'Since Apple serialized some parts like LCD and camera, please expect that a message that says "Important Message" message will show up within settings. This is normal for both OLED and original replacement since the part serial number is attached on the original one. This is normal and this will not affect the performance of the device',
 };
 
+// Bulacan towns farther from the metro that carry a higher flat service fee
+// than the rest of the province — shown as soon as Bulacan is picked so the
+// customer sees the higher rate before they even get to the city dropdown.
+const BULACAN_HIGHER_FEE_TOWNS = ["Angat", "Norzagaray", "Doña Remedios Trinidad", "Santa Maria", "San Rafael", "San Ildefonso", "San Miguel"];
+
 export default function HomeServiceForm({
   brands,
   models,
@@ -377,6 +382,12 @@ export default function HomeServiceForm({
                 ))}
               </select>
             </div>
+            {province === "Bulacan" && (
+              <FormNotice tone="blue" icon="💰">
+                Flat rate home service fee for Bulacan is ₱700, except for {BULACAN_HIGHER_FEE_TOWNS.join(", ")}, where the service fee is
+                ₱1,000.
+              </FormNotice>
+            )}
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-slate-500">City / Municipality {asterisk}</label>
               <select
