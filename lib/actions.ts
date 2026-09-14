@@ -1065,9 +1065,6 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
   // admin to triage and assign manually.
   const initialStatus = requestStatuses[0];
 
-  const requestsCount = await queryOne<{ n: string }>("select count(*)::int as n from home_service_requests");
-  const reference = `HSR-${new Date().getFullYear()}-${String(Number(requestsCount!.n) + 1).padStart(4, "0")}`;
-
   const now = new Date().toISOString();
   const statusHistory = [{ statusId: initialStatus.id, at: now }];
 
@@ -1110,47 +1107,74 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
     }
   }
 
-  const created = await queryOne<{ id: string }>(
-    `insert into home_service_requests (
-      reference, customer_id, customer_name, phone, email, device_brand_id, device_model_id, device_other, service_type_id,
-      issue_description, photo_data_url, street, landmark, province, city, barangay, lat, lng, preferred_datetime,
-      status_id, status_history, custom_fields, vlog_consent, vlog_blur_preference, screen_quality, back_housing_color,
-      assigned_technician_id, auto_assigned, branch_id, queue_branch_id
-    ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30)
-    returning id`,
-    [
-      reference,
-      customerId,
-      name,
-      phone,
-      email,
-      validDeviceBrandId,
-      validDeviceModelId,
-      finalDeviceOther,
-      validServiceTypeId,
-      issueDescription,
-      photoDataUrl,
-      street,
-      landmark,
-      province,
-      city,
-      barangay,
-      str(formData, "lat") ? Number(str(formData, "lat")) : null,
-      str(formData, "lng") ? Number(str(formData, "lng")) : null,
-      preferredDatetime || null,
-      initialStatus.id,
-      JSON.stringify(statusHistory),
-      JSON.stringify(customFields),
-      vlogConsent,
-      vlogBlurPreference,
-      selectedServiceType?.label === "Screen Repair" ? screenQuality : "",
-      selectedServiceType?.label === "Back Housing (whole shell)" ? backHousingColor : "",
-      null,
-      false,
-      null,
-      queueBranch?.id ?? null,
-    ]
-  );
+  // The reference number is the highest already-used number for this year,
+  // plus one — not a row count, since deleting a request (canDeleteHomeServiceRequests)
+  // can permanently remove a row from the middle of the sequence and leave a
+  // row count that undercounts references still in use (which a
+  // count-based number would collide with on every attempt, not just a
+  // concurrent one — this is what actually broke the public form on
+  // 2026-09-14). Retry with a freshly computed reference on a
+  // unique-constraint collision to also cover two submissions landing on
+  // the same number at the same time. Mirrors createRepairRecordDraft's fix
+  // for the same bug on repair_records.
+  const year = new Date().getFullYear();
+  let reference = "";
+  let created: { id: string } | null = null;
+  for (let attempt = 1; attempt <= 5; attempt++) {
+    const max = await queryOne<{ n: number }>(
+      "select coalesce(max(split_part(reference, '-', 3)::int), 0)::int as n from home_service_requests where reference like $1",
+      [`HSR-${year}-%`]
+    );
+    reference = `HSR-${year}-${String((max?.n ?? 0) + 1).padStart(4, "0")}`;
+    try {
+      created = await queryOne<{ id: string }>(
+        `insert into home_service_requests (
+          reference, customer_id, customer_name, phone, email, device_brand_id, device_model_id, device_other, service_type_id,
+          issue_description, photo_data_url, street, landmark, province, city, barangay, lat, lng, preferred_datetime,
+          status_id, status_history, custom_fields, vlog_consent, vlog_blur_preference, screen_quality, back_housing_color,
+          assigned_technician_id, auto_assigned, branch_id, queue_branch_id
+        ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30)
+        returning id`,
+        [
+          reference,
+          customerId,
+          name,
+          phone,
+          email,
+          validDeviceBrandId,
+          validDeviceModelId,
+          finalDeviceOther,
+          validServiceTypeId,
+          issueDescription,
+          photoDataUrl,
+          street,
+          landmark,
+          province,
+          city,
+          barangay,
+          str(formData, "lat") ? Number(str(formData, "lat")) : null,
+          str(formData, "lng") ? Number(str(formData, "lng")) : null,
+          preferredDatetime || null,
+          initialStatus.id,
+          JSON.stringify(statusHistory),
+          JSON.stringify(customFields),
+          vlogConsent,
+          vlogBlurPreference,
+          selectedServiceType?.label === "Screen Repair" ? screenQuality : "",
+          selectedServiceType?.label === "Back Housing (whole shell)" ? backHousingColor : "",
+          null,
+          false,
+          null,
+          queueBranch?.id ?? null,
+        ]
+      );
+      break;
+    } catch (e) {
+      const code = e && typeof e === "object" && "code" in e ? (e as { code: string }).code : "";
+      if (code === "23505" && attempt < 5) continue;
+      throw e;
+    }
+  }
 
   let smsNote = "";
   if (phone && smsConfigured()) {
