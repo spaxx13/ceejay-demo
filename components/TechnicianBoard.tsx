@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { technicianUpdateStatus } from "@/lib/actions";
 import StatusBadge from "./StatusBadge";
-import { formatDate } from "@/lib/format";
+import { formatDate, formatDateTime } from "@/lib/format";
 
 type Status = { id: string; label: string };
 type Req = {
@@ -12,7 +12,9 @@ type Req = {
   reference: string;
   customerName: string;
   phone: string;
+  email: string;
   street: string;
+  barangay: string;
   city: string;
   province: string;
   landmark: string;
@@ -21,6 +23,9 @@ type Req = {
   deviceLabel: string;
   serviceTypeLabel: string;
   preferredDatetime: string;
+  vlogConsent: boolean;
+  vlogBlurPreference: "blurred" | "not_blurred" | "";
+  createdAt: string;
   statusId: string;
   adminNotes: string;
   inProgress: boolean;
@@ -28,6 +33,18 @@ type Req = {
   hasPostAgreement: boolean;
   customFieldEntries: { label: string; value: string | boolean }[];
 };
+
+// One stacked label-over-value row for the Request Details block — bigger
+// and more spaced out than the rest of the admin UI on purpose, since
+// technicians read this in the field, often on a phone in bright sunlight.
+function DetailRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <p className="text-sm text-slate-400">{label}</p>
+      <p className="text-lg text-slate-900">{children}</p>
+    </div>
+  );
+}
 
 export default function TechnicianBoard({ requests, statuses }: { requests: Req[]; statuses: Status[] }) {
   const [openId, setOpenId] = useState<string | null>(null);
@@ -86,34 +103,47 @@ export default function TechnicianBoard({ requests, statuses }: { requests: Req[
         const status = statuses.find((s) => s.id === r.statusId);
         const open = openId === r.id;
         return (
-          <div key={r.id} className="card space-y-3">
+          <div key={r.id} className="card space-y-5">
             <div className="flex items-center justify-between">
               <span className="font-mono text-xs text-blue-300">{r.reference}</span>
               {status && <StatusBadge label={status.label} />}
             </div>
-            <div>
-              <p className="font-semibold text-slate-800">{r.customerName}</p>
-              <p className="text-xs text-slate-400">{r.phone}</p>
+
+            <div className="space-y-4">
+              <h3 className="text-xl font-bold text-slate-900">Request Details</h3>
+              <DetailRow label="Customer">{r.customerName}</DetailRow>
+              <DetailRow label="Phone">{r.phone}</DetailRow>
+              {r.email && <DetailRow label="Email">{r.email}</DetailRow>}
+              <DetailRow label="Device">{r.deviceLabel}</DetailRow>
+              <DetailRow label="Service Type">{r.serviceTypeLabel}</DetailRow>
+              <DetailRow label="Issue">{r.issueDescription}</DetailRow>
+              <DetailRow label="Address">
+                {r.street}
+                {r.barangay ? `, Brgy. ${r.barangay}` : ""}, {r.city}
+                {r.province ? `, ${r.province}` : ""}
+                {r.landmark ? ` (near ${r.landmark})` : ""}
+              </DetailRow>
+              <DetailRow label="Preferred">{formatDate(r.preferredDatetime)}</DetailRow>
+              <DetailRow label="Vlog Consent">
+                {r.vlogConsent
+                  ? `Yes — ${r.vlogBlurPreference === "blurred" ? "face blurred" : r.vlogBlurPreference === "not_blurred" ? "face not blurred" : "preference not set"}`
+                  : "No"}
+              </DetailRow>
+              {r.customFieldEntries.map((e) => (
+                <DetailRow key={e.label} label={e.label}>
+                  {typeof e.value === "boolean" ? (e.value ? "Yes" : "No") : e.value || "—"}
+                </DetailRow>
+              ))}
+              <DetailRow label="Submitted">{formatDateTime(r.createdAt)}</DetailRow>
+              {r.photoDataUrl && (
+                <div>
+                  <p className="text-sm text-slate-400">Photo</p>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={r.photoDataUrl} alt="Device issue" className="mt-1 max-h-72 w-full rounded-lg border border-slate-200 object-contain" />
+                </div>
+              )}
             </div>
-            <p className="text-sm text-slate-600">
-              {r.street}, {r.city}
-              {r.province ? `, ${r.province}` : ""}
-              {r.landmark ? ` (near ${r.landmark})` : ""}
-            </p>
-            <p className="text-sm text-slate-600">
-              <span className="text-slate-400">{r.serviceTypeLabel}:</span> {r.issueDescription}
-            </p>
-            {r.photoDataUrl && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={r.photoDataUrl} alt="Device issue" className="max-h-56 w-full rounded-lg border border-slate-200 object-contain" />
-            )}
-            <p className="text-xs text-slate-400">Device: {r.deviceLabel}</p>
-            <p className="text-xs text-slate-400">Preferred: {formatDate(r.preferredDatetime)}</p>
-            {r.customFieldEntries.map((e) => (
-              <p key={e.label} className="text-xs text-slate-400">
-                {e.label}: {typeof e.value === "boolean" ? (e.value ? "Yes" : "No") : e.value || "—"}
-              </p>
-            ))}
+
             {r.adminNotes && <p className="whitespace-pre-line rounded-md bg-slate-50 p-2 text-xs text-slate-500">{r.adminNotes}</p>}
 
             {(r.inProgress || r.hasPostAgreement) && (
