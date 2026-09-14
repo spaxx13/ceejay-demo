@@ -69,10 +69,24 @@ const SERVICE_TYPE_AGREEMENT_NOTICES: Record<string, string> = {
     'Since Apple serialized some parts like LCD and camera, please expect that a message that says "Important Message" message will show up within settings. This is normal for both OLED and original replacement since the part serial number is attached on the original one. This is normal and this will not affect the performance of the device',
 };
 
-// Bulacan towns farther from the metro that carry a higher flat service fee
-// than the rest of the province — shown as soon as Bulacan is picked so the
-// customer sees the higher rate before they even get to the city dropdown.
-const BULACAN_HIGHER_FEE_TOWNS = ["Angat", "Norzagaray", "Doña Remedios Trinidad", "Santa Maria", "San Rafael", "San Ildefonso", "San Miguel"];
+// Per-province flat home service fee, shown in the notice above Submit
+// (see serviceFeeNote below). Some provinces carry a higher fee for towns
+// farther from the metro — `higherTowns`/`higherFee` cover that; provinces
+// with neither (or not listed at all) just show the flat `base` rate, or no
+// fee note at all if the province isn't in this map.
+const PROVINCE_FEES: Record<string, { base: number; higherTowns?: string[]; higherFee?: number }> = {
+  "Metro Manila": { base: 500 },
+  Bulacan: {
+    base: 700,
+    higherTowns: ["Angat", "Norzagaray", "Doña Remedios Trinidad", "Santa Maria", "San Rafael", "San Ildefonso", "San Miguel"],
+    higherFee: 1000,
+  },
+  Cavite: {
+    base: 700,
+    higherTowns: ["Indang", "Amadeo", "Maragondon", "Tagaytay City", "Alfonso", "Silang", "Ternate"],
+    higherFee: 1000,
+  },
+};
 
 export default function HomeServiceForm({
   brands,
@@ -122,18 +136,20 @@ export default function HomeServiceForm({
 
   // Shown in the notice right above Submit — reflects whichever area is
   // actually selected instead of a fixed Metro Manila figure, since the
-  // flat rate differs by province (and, within Bulacan, by town).
+  // flat rate differs by province (and, for some provinces, by town).
   function serviceFeeNote(): string | null {
-    if (province === "Metro Manila") return "A flat rate service fee of ₱500.00 is applicable within Metro Manila area.";
-    if (province === "Bulacan") {
-      if (city && BULACAN_HIGHER_FEE_TOWNS.includes(city)) {
-        return `A flat rate service fee of ₱1,000.00 is applicable for ${city}, Bulacan.`;
+    const fee = PROVINCE_FEES[province];
+    if (!fee) return null;
+    const peso = (n: number) => `₱${n.toLocaleString()}.00`;
+    if (fee.higherTowns && fee.higherFee) {
+      if (city && fee.higherTowns.includes(city)) {
+        return `A flat rate service fee of ${peso(fee.higherFee)} is applicable for ${city}, ${province}.`;
       }
-      return `A flat rate service fee of ₱700.00 is applicable within Bulacan, except for ${BULACAN_HIGHER_FEE_TOWNS.join(
+      return `A flat rate service fee of ${peso(fee.base)} is applicable within ${province}, except for ${fee.higherTowns.join(
         ", "
-      )}, where the service fee is ₱1,000.00.`;
+      )}, where the service fee is ${peso(fee.higherFee)}.`;
     }
-    return null;
+    return `A flat rate service fee of ${peso(fee.base)} is applicable within ${province} area.`;
   }
 
   // Email OTP verification — anti-spam gate, run at submit time: the
