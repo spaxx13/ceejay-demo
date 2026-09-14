@@ -1,7 +1,7 @@
 import "server-only";
 import { Resend } from "resend";
 import type { ChecklistItem } from "./types";
-import { generateRepairReceiptPdf } from "./receiptPdf";
+import { generateRepairReceiptPdf, generateQuotationPdf } from "./receiptPdf";
 
 const FROM = "Ceejay Cellphone Repair Shop <noreply@ceejayrepair.com>";
 
@@ -76,6 +76,54 @@ export async function sendOtpEmail(to: string, code: string) {
         <p style="color: #667; font-size: 13px;">This code expires in 10 minutes. If you didn't request this, you can ignore this email.</p>
       </div>
     `,
+  });
+  if (error) throw new Error(error.message);
+}
+
+export async function sendQuotationEmail(
+  to: string,
+  opts: {
+    customerName: string;
+    reference: string;
+    requestDate: string;
+    deviceLabel: string;
+    serviceType: string;
+    issueDescription: string;
+    preferredDate: string;
+    address: string;
+    repairCost: number | null;
+    serviceFee: number | null;
+  }
+) {
+  const client = getClient();
+  const peso = (n: number) => `₱${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const pdfBytes = await generateQuotationPdf(opts);
+  const totalLine =
+    opts.repairCost !== null && opts.serviceFee !== null
+      ? `an estimated total of <strong>${peso(opts.repairCost + opts.serviceFee)}</strong> (repair cost + service fee)`
+      : "an estimate — our technician will confirm the exact repair cost upon inspection";
+
+  const html = `
+    <div style="font-family: -apple-system, sans-serif; max-width: 480px; margin: 0 auto; color: #1e293b;">
+      <p style="font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8;">Ceejay Cellphone Repair Shop</p>
+      <h2 style="margin: 4px 0 16px;">Your repair quotation is ready</h2>
+      <p style="font-size: 14px; line-height: 1.5;">
+        Hi ${opts.customerName}, thanks for booking a home service repair with us. Your quotation for
+        <strong>${opts.reference}</strong> (${opts.deviceLabel || "your device"}) is attached as a PDF — ${totalLine}.
+      </p>
+      <p style="font-size: 13px; color: #64748b;">
+        This is an estimate based on our standard price list. Final pricing will be confirmed by our technician before any repair work
+        begins.
+      </p>
+    </div>
+  `;
+
+  const { error } = await client.emails.send({
+    from: FROM,
+    to,
+    subject: `Your repair quotation — ${opts.reference}`,
+    html,
+    attachments: [{ filename: `quotation-${opts.reference}.pdf`, content: Buffer.from(pdfBytes) }],
   });
   if (error) throw new Error(error.message);
 }

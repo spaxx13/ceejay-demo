@@ -203,6 +203,22 @@ export type DeviceModel = {
   active: boolean;
 };
 
+// Owner-editable repair price used to compute the automatic quotation
+// emailed after a Home Service Request is submitted (lib/servicePricing.ts).
+// `category` groups the fixed set of repairs this applies to — Battery
+// Replacement, Backhousing (both duplicate labels), Back Camera (both
+// duplicate labels), and Screen Repair. `quality` is only meaningful for
+// category "screen" ("high_quality" | "original"); empty string otherwise.
+export type PriceCategory = "battery" | "backhousing" | "back_camera" | "screen";
+export type ServicePrice = {
+  id: string;
+  category: PriceCategory;
+  deviceModelId: string;
+  quality: string;
+  price: number;
+  updatedAt: string;
+};
+
 export type Lead = {
   id: string;
   customerId: string | null; // null until converted / linked

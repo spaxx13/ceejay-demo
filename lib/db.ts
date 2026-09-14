@@ -7,6 +7,7 @@ import type {
   Customer,
   LookupItem,
   DeviceModel,
+  ServicePrice,
   Lead,
   HomeServiceRequest,
   ActivityLog,
@@ -203,6 +204,18 @@ function mapDeviceModel(r: DeviceModelRow): DeviceModel {
   return { id: r.id, brandId: r.brand_id, name: r.name, order: r.order_num, active: r.active };
 }
 
+type ServicePriceRow = {
+  id: string;
+  category: ServicePrice["category"];
+  device_model_id: string;
+  quality: string;
+  price: string | number;
+  updated_at: Date;
+};
+function mapServicePrice(r: ServicePriceRow): ServicePrice {
+  return { id: r.id, category: r.category, deviceModelId: r.device_model_id, quality: r.quality, price: Number(r.price), updatedAt: toIso(r.updated_at) };
+}
+
 type LeadRow = { id: string; customer_id: string | null; name: string; phone: string; email: string; source: string; status_id: string; assigned_to: string | null; follow_up_date: Date | string | null; notes: string; branch_id: string | null; created_at: Date };
 function mapLead(r: LeadRow): Lead {
   return { id: r.id, customerId: r.customer_id, name: r.name, phone: r.phone, email: r.email, source: r.source, statusId: r.status_id, assignedTo: r.assigned_to, followUpDate: r.follow_up_date ? toDateStr(r.follow_up_date) : null, notes: r.notes, branchId: r.branch_id, createdAt: toIso(r.created_at) };
@@ -388,6 +401,9 @@ export async function getLookups() {
 }
 export async function getDeviceModels() {
   return (await query<DeviceModelRow>("select * from device_models order by brand_id, order_num, name")).map(mapDeviceModel);
+}
+export async function getServicePrices() {
+  return (await query<ServicePriceRow>("select * from service_prices")).map(mapServicePrice);
 }
 export async function getLeads() {
   return (await query<LeadRow>("select * from leads order by created_at desc")).map(mapLead);

@@ -24,6 +24,7 @@ const GROUPS = [
       { href: "/admin/device-catalog", label: "Device Catalog" },
       { href: "/admin/service-types", label: "Service Types" },
       { href: "/admin/statuses", label: "Statuses" },
+      { href: "/admin/service-prices", label: "Repair Pricing" },
     ],
   },
   {

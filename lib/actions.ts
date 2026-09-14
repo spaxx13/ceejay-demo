@@ -14,6 +14,8 @@ import {
   getBranches,
   getLookups,
   getCustomers,
+  getDeviceModels,
+  getServicePrices,
   getRequests,
   getRequestById,
   getRepairRecordById,
@@ -27,8 +29,11 @@ import {
   canAccessCrm,
 } from "./db";
 import { getCurrentUser, setSession, clearSession, requireRole } from "./auth";
-import { sendOtpEmail, sendRepairReceiptEmail, sendCancellationEmail } from "./email";
+import { sendOtpEmail, sendRepairReceiptEmail, sendCancellationEmail, sendQuotationEmail } from "./email";
 import { sendSms, smsConfigured, getAccountStatus, type SmsAccountStatus } from "./sms";
+import { SUNDAY_ONLY_PROVINCES, serviceFeeAmount } from "./homeServiceFees";
+import { getRepairQuote } from "./servicePricing";
+import { formatDate } from "./format";
 import type {
   Role,
   LookupKind,
@@ -50,8 +55,6 @@ function isValidPhone(phone: string) {
   return /^(\+63|0)9\d{9}$/.test(cleaned);
 }
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-// Mirrors SUNDAY_ONLY_PROVINCES in components/HomeServiceForm.tsx.
-const SUNDAY_ONLY_PROVINCES = new Set(["Pampanga", "Laguna", "Batangas"]);
 
 // ---------- Auth ----------
 
@@ -388,6 +391,7 @@ export async function createDeviceModel(formData: FormData) {
   const count = await queryOne<{ n: number }>("select count(*)::int as n from device_models where brand_id=$1", [brandId]);
   await query("insert into device_models (brand_id, name, order_num) values ($1,$2,$3)", [brandId, name, count?.n ?? 0]);
   revalidatePath("/admin/device-catalog");
+  revalidatePath("/admin/service-prices");
 }
 
 export async function deleteDeviceModel(formData: FormData) {
@@ -403,6 +407,48 @@ export async function deleteDeviceModel(formData: FormData) {
     }
   }
   revalidatePath("/admin/device-catalog");
+}
+
+// ---------- Repair Pricing (drives the automatic Home Service quotation) ----------
+
+// One field per (device model x price cell) on the Repair Pricing page —
+// named "price_<field>_<deviceModelId>". A blank value clears that price
+// (deletes the row); anything else upserts it. Submitted as one bulk save
+// rather than a save-per-cell, since the page can have ~150+ price cells.
+const PRICE_CELLS = [
+  { category: "battery", quality: "", field: "battery" },
+  { category: "backhousing", quality: "", field: "backhousing" },
+  { category: "back_camera", quality: "", field: "back_camera" },
+  { category: "screen", quality: "high_quality", field: "screen_hq" },
+  { category: "screen", quality: "original", field: "screen_orig" },
+] as const;
+
+export async function saveServicePrices(formData: FormData) {
+  if (!(await requireRole("owner_admin"))) return;
+
+  const [models, existing] = await Promise.all([getDeviceModels(), getServicePrices()]);
+  const existingKey = (category: string, deviceModelId: string, quality: string) => `${category}|${deviceModelId}|${quality}`;
+  const existingSet = new Set(existing.map((p) => existingKey(p.category, p.deviceModelId, p.quality)));
+
+  for (const m of models) {
+    for (const cell of PRICE_CELLS) {
+      const raw = str(formData, `price_${cell.field}_${m.id}`);
+      const key = existingKey(cell.category, m.id, cell.quality);
+      if (!raw) {
+        if (existingSet.has(key)) {
+          await query("delete from service_prices where category=$1 and device_model_id=$2 and quality=$3", [cell.category, m.id, cell.quality]);
+        }
+        continue;
+      }
+      const price = Math.max(0, Number(raw) || 0);
+      await query(
+        `insert into service_prices (category, device_model_id, quality, price, updated_at) values ($1,$2,$3,$4,now())
+         on conflict (category, device_model_id, quality) do update set price=$4, updated_at=now()`,
+        [cell.category, m.id, cell.quality, price]
+      );
+    }
+  }
+  revalidatePath("/admin/service-prices");
 }
 
 // ---------- Generic lookups (service types, customer sources, statuses) ----------
@@ -1116,10 +1162,45 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
       smsNote = ` — confirmation SMS failed to send to ${phone} (${err instanceof Error ? err.message : "unknown error"})`;
     }
   }
+
+  // Automatic quotation email — best-effort, same as the SMS confirmation
+  // above: a missing RESEND_API_KEY, an unmatched device/service (no price
+  // on file), or any other failure here must never block the request
+  // itself from saving, so this always falls through to logActivity below.
+  let quoteNote = "";
+  if (email) {
+    try {
+      const [deviceModels, servicePrices] = await Promise.all([getDeviceModels(), getServicePrices()]);
+      const brand = allLookups.find((l) => l.id === validDeviceBrandId);
+      const deviceModel = deviceModels.find((m) => m.id === validDeviceModelId);
+      const deviceLabel = brand ? `${brand.label} ${deviceModel?.name ?? ""}`.trim() : finalDeviceOther || "Not specified";
+      const repairCost = selectedServiceType
+        ? getRepairQuote(servicePrices, selectedServiceType.label, validDeviceModelId ?? "", screenQuality)
+        : null;
+      const serviceFee = serviceFeeAmount(province, city);
+      const address = [street, barangay, city, province].filter(Boolean).join(", ") || "Not specified";
+      await sendQuotationEmail(email, {
+        customerName: name || "Customer",
+        reference,
+        requestDate: formatDate(now),
+        deviceLabel,
+        serviceType: selectedServiceType?.label ?? "Not specified",
+        issueDescription: issueDescription || "—",
+        preferredDate: preferredDatetime ? formatDate(preferredDatetime) : "To be confirmed",
+        address,
+        repairCost,
+        serviceFee,
+      });
+      quoteNote = " — quotation emailed";
+    } catch (err) {
+      quoteNote = ` — quotation email failed to send (${err instanceof Error ? err.message : "unknown error"})`;
+    }
+  }
+
   await logActivity(
     "home_service_request",
     created!.id,
-    `Request ${reference} submitted and sent to the Unassigned queue for triage${smsNote}`,
+    `Request ${reference} submitted and sent to the Unassigned queue for triage${smsNote}${quoteNote}`,
     "System"
   );
   await notifyAdmins("new_request", created!.id, `${name || "A customer"} submitted a new Home Service Request ${reference} — now in the Unassigned queue.`);

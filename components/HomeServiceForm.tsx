@@ -3,6 +3,7 @@
 import { Fragment, useActionState, useEffect, useMemo, useRef, useState } from "react";
 import { submitHomeServiceRequest, sendHomeServiceOtp, verifyHomeServiceOtp } from "@/lib/actions";
 import { OTP_GATE_ENABLED } from "@/lib/config";
+import { PROVINCE_FEES, SUNDAY_ONLY_PROVINCES, nextSunday } from "@/lib/homeServiceFees";
 import PhotoUpload from "./PhotoUpload";
 import DynamicFormField from "./DynamicFormField";
 import type { RequestFormContent, CustomFormField, HomeServiceQueue } from "@/lib/types";
@@ -68,39 +69,6 @@ const SERVICE_TYPE_AGREEMENT_NOTICES: Record<string, string> = {
   "Screen Repair":
     'Since Apple serialized some parts like LCD and camera, please expect that a message that says "Important Message" message will show up within settings. This is normal for both OLED and original replacement since the part serial number is attached on the original one. This is normal and this will not affect the performance of the device',
 };
-
-// Per-province flat home service fee, shown in the notice above Submit
-// (see serviceFeeNote below). Some provinces carry a higher fee for towns
-// farther from the metro — `higherTowns`/`higherFee` cover that; provinces
-// with neither (or not listed at all) just show the flat `base` rate, or no
-// fee note at all if the province isn't in this map.
-const PROVINCE_FEES: Record<string, { base: number; higherTowns?: string[]; higherFee?: number }> = {
-  "Metro Manila": { base: 500 },
-  Bulacan: {
-    base: 700,
-    higherTowns: ["Angat", "Norzagaray", "Doña Remedios Trinidad", "Santa Maria", "San Rafael", "San Ildefonso", "San Miguel"],
-    higherFee: 1000,
-  },
-  Cavite: {
-    base: 700,
-    higherTowns: ["Indang", "Amadeo", "Maragondon", "Tagaytay City", "Alfonso", "Silang", "Ternate"],
-    higherFee: 1000,
-  },
-  Pampanga: { base: 1000 },
-  Laguna: { base: 1000 },
-  Batangas: { base: 1000 },
-};
-
-// These provinces only get a home service visit once a week — the
-// Preferred Date field is restricted to Sundays only when one of them is
-// selected (see the "datetime" case in renderSystemField below).
-const SUNDAY_ONLY_PROVINCES = new Set(["Pampanga", "Laguna", "Batangas"]);
-
-function nextSunday(): string {
-  const d = new Date();
-  d.setDate(d.getDate() + ((7 - d.getDay()) % 7));
-  return d.toISOString().slice(0, 10);
-}
 
 export default function HomeServiceForm({
   brands,
