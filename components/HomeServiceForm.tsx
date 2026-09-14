@@ -532,6 +532,14 @@ export default function HomeServiceForm({
                 </select>
               </div>
             )}
+            {selectedServiceType?.label === "Back Housing (whole shell)" && (
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-slate-500">
+                  Back Housing Color <span className="text-red-600">*</span>
+                </label>
+                <input name="backHousingColor" required className="input" placeholder="e.g. Space Gray, Midnight Green" />
+              </div>
+            )}
             {agreementNotice && (
               <div className="space-y-2">
                 <FormNotice tone="blue">{agreementNotice}</FormNotice>

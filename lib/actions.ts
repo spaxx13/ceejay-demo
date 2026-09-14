@@ -929,6 +929,7 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
     return { ok: false, error: "Please choose whether your face should be blurred if we vlog this visit." };
   }
   const screenQuality = str(formData, "screenQuality");
+  const backHousingColor = str(formData, "backHousingColor");
 
   const customFormFields = await getCustomFormFields();
   const systemFields = customFormFields.filter((f) => f.systemKey);
@@ -1001,6 +1002,9 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
   if (selectedServiceType?.label === "Screen Repair" && screenQuality !== "original" && screenQuality !== "high_quality") {
     return { ok: false, error: "Please choose Original or High Quality for your screen repair." };
   }
+  if (selectedServiceType?.label === "Back Housing (whole shell)" && !backHousingColor) {
+    return { ok: false, error: "Please specify the back housing color you want." };
+  }
   const requestStatuses = allLookups.filter((l) => l.kind === "request_status").sort((a, b) => a.order - b.order);
   // Home Service Requests are no longer auto-assigned to a technician on
   // submission — every new request lands in the Unassigned queue for an
@@ -1056,9 +1060,9 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
     `insert into home_service_requests (
       reference, customer_id, customer_name, phone, email, device_brand_id, device_model_id, device_other, service_type_id,
       issue_description, photo_data_url, street, landmark, province, city, barangay, lat, lng, preferred_datetime,
-      status_id, status_history, custom_fields, vlog_consent, vlog_blur_preference, screen_quality,
+      status_id, status_history, custom_fields, vlog_consent, vlog_blur_preference, screen_quality, back_housing_color,
       assigned_technician_id, auto_assigned, branch_id, queue_branch_id
-    ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29)
+    ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30)
     returning id`,
     [
       reference,
@@ -1086,6 +1090,7 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
       vlogConsent,
       vlogBlurPreference,
       selectedServiceType?.label === "Screen Repair" ? screenQuality : "",
+      selectedServiceType?.label === "Back Housing (whole shell)" ? backHousingColor : "",
       null,
       false,
       null,

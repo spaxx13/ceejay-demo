@@ -251,6 +251,7 @@ export type HomeServiceRequest = {
   vlogConsent: boolean;
   vlogBlurPreference: "blurred" | "not_blurred" | ""; // only meaningful when vlogConsent is true
   screenQuality: "original" | "high_quality" | ""; // only meaningful/required when the chosen service type is "Screen Repair"
+  backHousingColor: string; // only meaningful/required when the chosen service type is "Back Housing (whole shell)"
   reminderSentAt: string | null; // set once the daily appointment-reminder cron has texted this customer
 };
 

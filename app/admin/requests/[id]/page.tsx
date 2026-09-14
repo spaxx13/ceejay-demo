@@ -164,6 +164,12 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
                 <dd className="text-slate-800">{req.screenQuality === "original" ? "Original" : "High Quality (compatible)"}</dd>
               </>
             )}
+            {req.backHousingColor && (
+              <>
+                <dt className="text-slate-400">Back Housing Color</dt>
+                <dd className="text-slate-800">{req.backHousingColor}</dd>
+              </>
+            )}
             <dt className="text-slate-400">Issue</dt>
             <dd className="text-slate-800">{req.issueDescription}</dd>
             <dt className="text-slate-400">Address</dt>
