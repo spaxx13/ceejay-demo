@@ -56,7 +56,7 @@ type PhProvince = { key: string; label: string; cities: PhCity[] };
 // out of the options a customer can actually pick here (they're still
 // listed on the public Services page and the in-branch POS/checklist flow,
 // just not bookable as a home service).
-const EXCLUDED_FROM_HOME_SERVICE = new Set(["Camera", "Backhousing(Whole shell including backglass)", "Logic board problem"]);
+const EXCLUDED_FROM_HOME_SERVICE = new Set(["Camera", "Backhousing(Whole shell including backglass)", "Logic board problem", "Charging Port"]);
 
 // A customer must tick "I Agree" after reading this before they can submit —
 // set-expectation notices for parts Apple serializes/verifies, so a

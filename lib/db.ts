@@ -193,9 +193,9 @@ function mapDeviceModel(r: DeviceModelRow): DeviceModel {
   return { id: r.id, brandId: r.brand_id, name: r.name, order: r.order_num, active: r.active };
 }
 
-type LeadRow = { id: string; customer_id: string | null; name: string; phone: string; email: string; source: string; status_id: string; assigned_to: string | null; follow_up_date: Date | string | null; notes: string; created_at: Date };
+type LeadRow = { id: string; customer_id: string | null; name: string; phone: string; email: string; source: string; status_id: string; assigned_to: string | null; follow_up_date: Date | string | null; notes: string; branch_id: string | null; created_at: Date };
 function mapLead(r: LeadRow): Lead {
-  return { id: r.id, customerId: r.customer_id, name: r.name, phone: r.phone, email: r.email, source: r.source, statusId: r.status_id, assignedTo: r.assigned_to, followUpDate: r.follow_up_date ? toDateStr(r.follow_up_date) : null, notes: r.notes, createdAt: toIso(r.created_at) };
+  return { id: r.id, customerId: r.customer_id, name: r.name, phone: r.phone, email: r.email, source: r.source, statusId: r.status_id, assignedTo: r.assigned_to, followUpDate: r.follow_up_date ? toDateStr(r.follow_up_date) : null, notes: r.notes, branchId: r.branch_id, createdAt: toIso(r.created_at) };
 }
 
 type RequestRow = {

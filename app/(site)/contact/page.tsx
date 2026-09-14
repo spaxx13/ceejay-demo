@@ -19,7 +19,7 @@ export default async function ContactPage() {
         </div>
 
         <div className="mt-10 grid grid-cols-1 gap-8 lg:grid-cols-2">
-          <ContactForm />
+          <ContactForm branches={branches} />
 
           <div className="space-y-4">
             {branches.map((b) => (

@@ -199,6 +199,7 @@ export type Lead = {
   assignedTo: string | null; // User id
   followUpDate: string | null;
   notes: string;
+  branchId: string | null; // which branch the inquiry is about (set on website contact-form leads; branch_admin scoping) — null means visible to every branch admin
   createdAt: string;
 };
 

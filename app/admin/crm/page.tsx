@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { getLookups, getLeads, getCustomers, getUsers, canAccessCrm } from "@/lib/db";
+import { getLookups, getLeads, getCustomers, getUsers, getBranches, isBranchHidden, canAccessCrm } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import StatusBadge from "@/components/StatusBadge";
 import { createLead, createCustomer } from "@/lib/actions";
@@ -14,9 +14,22 @@ export default async function CrmPage({ searchParams }: { searchParams: Promise<
   const tab = rawTab === "customers" ? "customers" : "leads";
   const query = (q ?? "").toLowerCase();
 
-  const [lookups, allLeads, allCustomers, users] = await Promise.all([getLookups(), getLeads(), getCustomers(), getUsers()]);
+  const [lookups, allLeadsRaw, allCustomers, users, allBranches] = await Promise.all([
+    getLookups(),
+    getLeads(),
+    getCustomers(),
+    getUsers(),
+    getBranches(),
+  ]);
   const leadStatuses = lookups.filter((l) => l.kind === "lead_status").sort((a, b) => a.order - b.order);
   const sources = lookups.filter((l) => l.kind === "customer_source" && l.active).sort((a, b) => a.order - b.order);
+  const branches = allBranches.filter((b) => b.active);
+
+  // Branch scoping — a lead is tied to the branch the inquiry is about
+  // (set on website contact-form leads), so a branch admin only sees leads
+  // for their assigned branch(es); leads with no branch (e.g. manually
+  // added) stay visible to everyone.
+  const allLeads = allLeadsRaw.filter((l) => !isBranchHidden(user, l.branchId));
 
   let leads = [...allLeads].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
   let customers = [...allCustomers].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
@@ -83,6 +96,14 @@ export default async function CrmPage({ searchParams }: { searchParams: Promise<
                   </option>
                 ))}
               </select>
+              <select name="branchId" className="input">
+                <option value="">Branch...</option>
+                {branches.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name}
+                  </option>
+                ))}
+              </select>
               <input name="followUpDate" type="date" className="input" />
               <input name="notes" placeholder="Notes" className="input sm:col-span-2 lg:col-span-2" />
               <button type="submit" className="btn-primary">
@@ -96,6 +117,7 @@ export default async function CrmPage({ searchParams }: { searchParams: Promise<
                 <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-400">
                   <th className="pb-2 pr-3">Name</th>
                   <th className="pb-2 pr-3">Phone</th>
+                  <th className="pb-2 pr-3">Branch</th>
                   <th className="pb-2 pr-3">Source</th>
                   <th className="pb-2 pr-3">Status</th>
                   <th className="pb-2 pr-3">Assigned</th>
@@ -106,7 +128,7 @@ export default async function CrmPage({ searchParams }: { searchParams: Promise<
               <tbody>
                 {leads.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="py-6 text-center text-slate-400">
+                    <td colSpan={8} className="py-6 text-center text-slate-400">
                       No leads found.
                     </td>
                   </tr>
@@ -114,10 +136,12 @@ export default async function CrmPage({ searchParams }: { searchParams: Promise<
                 {leads.map((l) => {
                   const leadStatus = leadStatuses.find((s) => s.id === l.statusId);
                   const assignee = users.find((u) => u.id === l.assignedTo);
+                  const branch = branches.find((b) => b.id === l.branchId);
                   return (
                     <tr key={l.id} className="border-b border-slate-200 last:border-0">
                       <td className="py-2.5 pr-3 text-slate-800">{l.name}</td>
                       <td className="py-2.5 pr-3 text-slate-500">{l.phone || "—"}</td>
+                      <td className="py-2.5 pr-3 text-slate-500">{branch?.name ?? "—"}</td>
                       <td className="py-2.5 pr-3 text-slate-500">{l.source || "—"}</td>
                       <td className="py-2.5 pr-3">{leadStatus && <StatusBadge label={leadStatus.label} />}</td>
                       <td className="py-2.5 pr-3 text-slate-500">{assignee?.name ?? "—"}</td>

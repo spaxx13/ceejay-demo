@@ -1112,6 +1112,7 @@ export async function submitContactInquiry(_prev: ContactResult | undefined, for
   const phone = str(formData, "phone");
   const email = str(formData, "email");
   const message = str(formData, "message");
+  const branchId = str(formData, "branchId") || null;
 
   if (!name || !message || (!phone && !email)) {
     return { ok: false, error: "Please share your name, a way to reach you (phone or email), and your message." };
@@ -1119,12 +1120,15 @@ export async function submitContactInquiry(_prev: ContactResult | undefined, for
   if (phone && !isValidPhone(phone)) {
     return { ok: false, error: "Please enter a valid PH mobile number, e.g. 0917 123 4567." };
   }
+  if (!branchId) {
+    return { ok: false, error: "Please select which branch you're asking about." };
+  }
 
   const lookups = await getLookups();
   const leadStatuses = lookups.filter((l) => l.kind === "lead_status").sort((a, b) => a.order - b.order);
   const lead = await queryOne<{ id: string }>(
-    "insert into leads (name, phone, email, source, status_id, notes) values ($1,$2,$3,'Website',$4,$5) returning id",
-    [name, phone, email, leadStatuses[0]?.id ?? null, message]
+    "insert into leads (name, phone, email, source, status_id, notes, branch_id) values ($1,$2,$3,'Website',$4,$5,$6) returning id",
+    [name, phone, email, leadStatuses[0]?.id ?? null, message, branchId]
   );
   await logActivity("lead", lead!.id, "Inquiry submitted via website contact form", "System");
   revalidatePath("/admin/crm");
@@ -1320,7 +1324,7 @@ export async function createLead(formData: FormData) {
   const lookups = await getLookups();
   const leadStatuses = lookups.filter((l) => l.kind === "lead_status").sort((a, b) => a.order - b.order);
   const lead = await queryOne<{ id: string }>(
-    "insert into leads (name, phone, email, source, status_id, assigned_to, follow_up_date, notes) values ($1,$2,$3,$4,$5,$6,$7,$8) returning id",
+    "insert into leads (name, phone, email, source, status_id, assigned_to, follow_up_date, notes, branch_id) values ($1,$2,$3,$4,$5,$6,$7,$8,$9) returning id",
     [
       name,
       str(formData, "phone"),
@@ -1330,6 +1334,7 @@ export async function createLead(formData: FormData) {
       user?.id ?? null,
       str(formData, "followUpDate") || null,
       str(formData, "notes"),
+      str(formData, "branchId") || null,
     ]
   );
   await logActivity("lead", lead!.id, `Lead created by ${user?.name ?? "Admin"}`, user?.name ?? "Admin");
