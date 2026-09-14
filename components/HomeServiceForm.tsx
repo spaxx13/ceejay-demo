@@ -86,7 +86,21 @@ const PROVINCE_FEES: Record<string, { base: number; higherTowns?: string[]; high
     higherTowns: ["Indang", "Amadeo", "Maragondon", "Tagaytay City", "Alfonso", "Silang", "Ternate"],
     higherFee: 1000,
   },
+  Pampanga: { base: 1000 },
+  Laguna: { base: 1000 },
+  Batangas: { base: 1000 },
 };
+
+// These provinces only get a home service visit once a week — the
+// Preferred Date field is restricted to Sundays only when one of them is
+// selected (see the "datetime" case in renderSystemField below).
+const SUNDAY_ONLY_PROVINCES = new Set(["Pampanga", "Laguna", "Batangas"]);
+
+function nextSunday(): string {
+  const d = new Date();
+  d.setDate(d.getDate() + ((7 - d.getDay()) % 7));
+  return d.toISOString().slice(0, 10);
+}
 
 export default function HomeServiceForm({
   brands,
@@ -459,6 +473,19 @@ export default function HomeServiceForm({
         );
       }
       case "datetime":
+        if (area === "near" && SUNDAY_ONLY_PROVINCES.has(province)) {
+          return (
+            <div key={field.id} className="space-y-1.5">
+              <label className="text-xs font-medium text-slate-500">
+                {field.label} {asterisk}
+              </label>
+              <input type="date" name="preferredDatetime" required={req} min={nextSunday()} step={7} className="input" />
+              <FormNotice tone="blue" icon="📅">
+                Home service for {province} is available every Sunday only — please pick a Sunday date.
+              </FormNotice>
+            </div>
+          );
+        }
         return renderGenericField(field, "preferredDatetime");
       case "photo":
         // A photo can't become text/select/checkbox without losing the

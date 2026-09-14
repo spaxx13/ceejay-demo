@@ -50,6 +50,8 @@ function isValidPhone(phone: string) {
   return /^(\+63|0)9\d{9}$/.test(cleaned);
 }
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// Mirrors SUNDAY_ONLY_PROVINCES in components/HomeServiceForm.tsx.
+const SUNDAY_ONLY_PROVINCES = new Set(["Pampanga", "Laguna", "Batangas"]);
 
 // ---------- Auth ----------
 
@@ -964,6 +966,12 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
   }
   if (isRequired("landmark") && !landmark) return { ok: false, error: `${label("landmark")} is required.` };
   if (isRequired("datetime") && !preferredDatetime) return { ok: false, error: `${label("datetime")} is required.` };
+  // Pampanga/Laguna/Batangas only get a home service visit once a week —
+  // mirrors the min/step="7" restriction on the client's date picker, but
+  // enforced here too since that's only a UI hint, not a real constraint.
+  if (SUNDAY_ONLY_PROVINCES.has(province) && preferredDatetime && new Date(preferredDatetime).getUTCDay() !== 0) {
+    return { ok: false, error: `${label("datetime")} must be a Sunday for ${province}.` };
+  }
 
   const customFields: Record<string, string | boolean> = {};
   for (const f of customFormFields.filter((f) => f.active && !f.systemKey)) {
