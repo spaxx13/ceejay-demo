@@ -5,6 +5,12 @@ import SiteFooter from "@/components/site/SiteFooter";
 export default function SiteLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-screen flex-col">
+      {/* Warms up the connection to Tawk's servers as soon as the page starts
+          loading, instead of only once the widget script itself runs — cuts
+          the DNS/TLS handshake time off the widget's actual appearance. */}
+      <link rel="preconnect" href="https://embed.tawk.to" />
+      <link rel="preconnect" href="https://va.tawk.to" />
+      <link rel="dns-prefetch" href="https://embed.tawk.to" />
       <SiteHeader />
       <div className="flex-1">{children}</div>
       <SiteFooter />
