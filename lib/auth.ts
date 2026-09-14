@@ -19,9 +19,17 @@ export async function requireRole(...roles: Role[]) {
   return user;
 }
 
-export async function setSession(userId: string) {
+// remember=true persists the login across browser restarts (30 days);
+// remember=false sets a session-only cookie that's gone once the browser
+// closes — the "Remember me" checkbox on the login form controls this.
+export async function setSession(userId: string, remember: boolean) {
   const jar = await cookies();
-  jar.set(COOKIE, userId, { httpOnly: true, sameSite: "lax", path: "/", maxAge: 60 * 60 * 24 * 7 });
+  jar.set(COOKIE, userId, {
+    httpOnly: true,
+    sameSite: "lax",
+    path: "/",
+    ...(remember ? { maxAge: 60 * 60 * 24 * 30 } : {}),
+  });
 }
 
 export async function clearSession() {
