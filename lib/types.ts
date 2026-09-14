@@ -250,6 +250,7 @@ export type HomeServiceRequest = {
   customFields: Record<string, string | boolean>; // keyed by CustomFormField.key
   vlogConsent: boolean;
   vlogBlurPreference: "blurred" | "not_blurred" | ""; // only meaningful when vlogConsent is true
+  screenQuality: "original" | "high_quality" | ""; // only meaningful/required when the chosen service type is "Screen Repair"
   reminderSentAt: string | null; // set once the daily appointment-reminder cron has texted this customer
 };
 

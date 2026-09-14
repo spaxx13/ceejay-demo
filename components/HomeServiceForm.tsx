@@ -520,6 +520,18 @@ export default function HomeServiceForm({
                   </option>
                 ))}
             </select>
+            {selectedServiceType?.label === "Screen Repair" && (
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-slate-500">
+                  Screen Quality <span className="text-red-600">*</span>
+                </label>
+                <select name="screenQuality" required className="input">
+                  <option value="">Select quality...</option>
+                  <option value="original">Original</option>
+                  <option value="high_quality">High Quality (compatible)</option>
+                </select>
+              </div>
+            )}
             {agreementNotice && (
               <div className="space-y-2">
                 <FormNotice tone="blue">{agreementNotice}</FormNotice>
