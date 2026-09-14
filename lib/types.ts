@@ -385,7 +385,7 @@ export type RepairProgress = {
 // deployment would send. Owner and branch admins both see these.
 export type Notification = {
   id: string;
-  type: "request_in_progress" | "checklist_completed";
+  type: "new_request" | "request_in_progress" | "checklist_completed";
   requestId: string;
   message: string;
   createdAt: string;

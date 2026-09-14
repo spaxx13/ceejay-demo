@@ -1099,6 +1099,7 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
     `Request ${reference} submitted and sent to the Unassigned queue for triage${smsNote}`,
     "System"
   );
+  await notifyAdmins("new_request", created!.id, `${name || "A customer"} submitted a new Home Service Request ${reference} — now in the Unassigned queue.`);
 
   if (email) await query("delete from otp_codes where email=$1", [email.trim().toLowerCase()]);
 

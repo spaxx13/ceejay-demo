@@ -3,7 +3,7 @@ import { getNotifications, getRequests } from "@/lib/db";
 import { markNotificationRead, markAllNotificationsRead } from "@/lib/actions";
 import { formatDateTime } from "@/lib/format";
 
-const ICON: Record<string, string> = { request_in_progress: "🔧", checklist_completed: "✅" };
+const ICON: Record<string, string> = { new_request: "📥", request_in_progress: "🔧", checklist_completed: "✅" };
 
 export default async function AdminNotificationsPage() {
   const [allNotifications, requests] = await Promise.all([getNotifications(), getRequests()]);
