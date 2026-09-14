@@ -120,6 +120,22 @@ export default function HomeServiceForm({
   const selectedPhProvince = phData?.find((p) => p.label === province) ?? null;
   const selectedPhCity = selectedPhProvince?.cities.find((c) => c.name === city) ?? null;
 
+  // Shown in the notice right above Submit — reflects whichever area is
+  // actually selected instead of a fixed Metro Manila figure, since the
+  // flat rate differs by province (and, within Bulacan, by town).
+  function serviceFeeNote(): string | null {
+    if (province === "Metro Manila") return "A flat rate service fee of ₱500.00 is applicable within Metro Manila area.";
+    if (province === "Bulacan") {
+      if (city && BULACAN_HIGHER_FEE_TOWNS.includes(city)) {
+        return `A flat rate service fee of ₱1,000.00 is applicable for ${city}, Bulacan.`;
+      }
+      return `A flat rate service fee of ₱700.00 is applicable within Bulacan, except for ${BULACAN_HIGHER_FEE_TOWNS.join(
+        ", "
+      )}, where the service fee is ₱1,000.00.`;
+    }
+    return null;
+  }
+
   // Email OTP verification — anti-spam gate, run at submit time: the
   // customer fills out the whole form, hits Submit, and only entering the
   // code that arrives by email actually completes the request. Nothing is
@@ -382,12 +398,6 @@ export default function HomeServiceForm({
                 ))}
               </select>
             </div>
-            {province === "Bulacan" && (
-              <FormNotice tone="blue" icon="💰">
-                Flat rate home service fee for Bulacan is ₱700, except for {BULACAN_HIGHER_FEE_TOWNS.join(", ")}, where the service fee is
-                ₱1,000.
-              </FormNotice>
-            )}
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-slate-500">City / Municipality {asterisk}</label>
               <select
@@ -610,7 +620,7 @@ export default function HomeServiceForm({
           Before submitting, please ensure that all details are correct and accurate to avoid delays. If we need further verification
           please expect a call from us.
         </p>
-        <p className="mt-2 font-semibold">A flat rate service fee of ₱500.00 is applicable within Metro Manila area.</p>
+        {serviceFeeNote() && <p className="mt-2 font-semibold">{serviceFeeNote()}</p>}
       </FormNotice>
 
       {!emailGateActive && (
