@@ -1,3 +1,4 @@
+import Script from "next/script";
 import SiteHeader from "@/components/site/SiteHeader";
 import SiteFooter from "@/components/site/SiteFooter";
 
@@ -7,6 +8,20 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
       <SiteHeader />
       <div className="flex-1">{children}</div>
       <SiteFooter />
+      {/* Tawk.to live chat widget — shows the chat bubble on every public page. */}
+      <Script id="tawk-to" strategy="afterInteractive">
+        {`
+          var Tawk_API=Tawk_API||{}, Tawk_LoadStart=new Date();
+          (function(){
+          var s1=document.createElement("script"),s0=document.getElementsByTagName("script")[0];
+          s1.async=true;
+          s1.src='https://embed.tawk.to/6aa82c1747c9e9344a37dc82/1k2geof78';
+          s1.charset='UTF-8';
+          s1.setAttribute('crossorigin','*');
+          s0.parentNode.insertBefore(s1,s0);
+          })();
+        `}
+      </Script>
     </div>
   );
 }
