@@ -17,6 +17,7 @@ type UserRow = {
   canDeleteRequests: boolean;
   canViewAllBranches: boolean;
   canAccessCrm: boolean;
+  phone: string;
   active: boolean;
 };
 
@@ -140,6 +141,11 @@ export default function UserManager({
                 <option value="technician">Technician</option>
               </select>
             </div>
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-slate-500">Mobile Number</label>
+            <input name="phone" defaultValue={editing?.phone ?? ""} className="input max-w-xs" placeholder="0917 123 4567" />
+            <p className="text-[11px] text-slate-400">Optional — set this to opt the account into SMS alerts for new requests and technician status updates.</p>
           </div>
           {role === "technician" && (
             <div className="space-y-3">

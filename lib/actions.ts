@@ -86,6 +86,7 @@ export async function createUser(formData: FormData) {
   const canDeleteRequests = role === "branch_admin" ? formData.get("canDeleteRequests") === "on" : true;
   const canViewAllBranches = role === "branch_admin" ? formData.get("canViewAllBranches") === "on" : true;
   const canAccessCrmFlag = role === "branch_admin" ? formData.get("canAccessCrm") === "on" : true;
+  const phone = str(formData, "phone");
   if (!name || !email || !password || !role) return;
 
   const existing = await getUserAuthByEmail(email);
@@ -107,8 +108,8 @@ export async function createUser(formData: FormData) {
 
   const passwordHash = await bcrypt.hash(password, 10);
   await query(
-    "insert into users (name, email, password_hash, role, technician_id, assigned_branch_ids, can_manage_requests, can_delete_requests, can_view_all_branches, can_access_crm) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)",
-    [name, email, passwordHash, role, role === "technician" ? technicianId : null, assignedBranchIds, canManageRequests, canDeleteRequests, canViewAllBranches, canAccessCrmFlag]
+    "insert into users (name, email, password_hash, role, technician_id, assigned_branch_ids, can_manage_requests, can_delete_requests, can_view_all_branches, can_access_crm, phone) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)",
+    [name, email, passwordHash, role, role === "technician" ? technicianId : null, assignedBranchIds, canManageRequests, canDeleteRequests, canViewAllBranches, canAccessCrmFlag, phone]
   );
   revalidatePath("/admin/users");
   revalidatePath("/admin/technicians");
@@ -138,6 +139,7 @@ export async function updateUser(formData: FormData) {
   const canDeleteRequests = role === "branch_admin" ? formData.get("canDeleteRequests") === "on" : true;
   const canViewAllBranches = role === "branch_admin" ? formData.get("canViewAllBranches") === "on" : true;
   const canAccessCrmFlag = role === "branch_admin" ? formData.get("canAccessCrm") === "on" : true;
+  const phone = formData.has("phone") ? str(formData, "phone") : user.phone;
 
   if (role === "technician") {
     const technicianBranchIds = listStr(formData, "technicianBranchIds");
@@ -165,7 +167,7 @@ export async function updateUser(formData: FormData) {
   if (password) {
     const passwordHash = await bcrypt.hash(password, 10);
     await query(
-      "update users set name=$1, email=$2, password_hash=$3, role=$4, technician_id=$5, assigned_branch_ids=$6, can_manage_requests=$7, can_delete_requests=$8, can_view_all_branches=$9, can_access_crm=$10 where id=$11",
+      "update users set name=$1, email=$2, password_hash=$3, role=$4, technician_id=$5, assigned_branch_ids=$6, can_manage_requests=$7, can_delete_requests=$8, can_view_all_branches=$9, can_access_crm=$10, phone=$11 where id=$12",
       [
         name,
         email || user.email,
@@ -177,12 +179,13 @@ export async function updateUser(formData: FormData) {
         canDeleteRequests,
         canViewAllBranches,
         canAccessCrmFlag,
+        phone,
         userId,
       ]
     );
   } else {
     await query(
-      "update users set name=$1, email=$2, role=$3, technician_id=$4, assigned_branch_ids=$5, can_manage_requests=$6, can_delete_requests=$7, can_view_all_branches=$8, can_access_crm=$9 where id=$10",
+      "update users set name=$1, email=$2, role=$3, technician_id=$4, assigned_branch_ids=$5, can_manage_requests=$6, can_delete_requests=$7, can_view_all_branches=$8, can_access_crm=$9, phone=$10 where id=$11",
       [
         name,
         email || user.email,
@@ -193,6 +196,7 @@ export async function updateUser(formData: FormData) {
         canDeleteRequests,
         canViewAllBranches,
         canAccessCrmFlag,
+        phone,
         userId,
       ]
     );
@@ -1987,4 +1991,24 @@ export async function markAllNotificationsRead() {
   await query("update notifications set read_at = now() where read_at is null");
   revalidatePath("/admin/notifications");
   revalidatePath("/admin");
+}
+
+// ---------- Web Push subscriptions ----------
+// Called directly from PushSubscribe.tsx (not a <form>), so these take
+// plain arguments rather than FormData.
+
+export async function savePushSubscription(subscription: { endpoint: string; keys: { p256dh: string; auth: string } }) {
+  const user = await getCurrentUser();
+  if (!user) return;
+  await query(
+    `insert into push_subscriptions (user_id, endpoint, p256dh, auth) values ($1,$2,$3,$4)
+     on conflict (endpoint) do update set user_id = excluded.user_id, p256dh = excluded.p256dh, auth = excluded.auth`,
+    [user.id, subscription.endpoint, subscription.keys.p256dh, subscription.keys.auth]
+  );
+}
+
+export async function removePushSubscription(endpoint: string) {
+  const user = await getCurrentUser();
+  if (!user) return;
+  await query("delete from push_subscriptions where endpoint=$1 and user_id=$2", [endpoint, user.id]);
 }

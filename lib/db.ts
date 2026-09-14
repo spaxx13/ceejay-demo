@@ -21,7 +21,10 @@ import type {
   Notification,
   Expense,
   LoginLog,
+  PushSubscription,
 } from "./types";
+import { sendPushToUsers } from "./push";
+import { sendSms, smsConfigured } from "./sms";
 
 // Single pooled connection, reused across invocations within the same
 // serverless instance (and across all of local dev). Uses the pooled
@@ -75,6 +78,7 @@ type UserRow = {
   can_delete_requests: boolean;
   can_view_all_branches: boolean;
   can_access_crm: boolean;
+  phone: string;
   active: boolean;
 };
 function mapUser(r: UserRow): User {
@@ -89,8 +93,14 @@ function mapUser(r: UserRow): User {
     canDeleteRequests: r.can_delete_requests,
     canViewAllBranches: r.can_view_all_branches,
     canAccessCrm: r.can_access_crm,
+    phone: r.phone,
     active: r.active,
   };
+}
+
+type PushSubscriptionRow = { id: string; user_id: string; endpoint: string; p256dh: string; auth: string; created_at: Date };
+function mapPushSubscription(r: PushSubscriptionRow): PushSubscription {
+  return { id: r.id, userId: r.user_id, endpoint: r.endpoint, p256dh: r.p256dh, auth: r.auth, createdAt: toIso(r.created_at) };
 }
 
 // True when a branch shouldn't be shown to this user (branch_admin scoping
@@ -465,6 +475,39 @@ export async function logActivity(entityType: ActivityLog["entityType"], entityI
   await query("insert into activity_log (entity_type, entity_id, message, actor) values ($1,$2,$3,$4)", [entityType, entityId, message, actor]);
 }
 
+export async function getPushSubscriptions() {
+  return (await query<PushSubscriptionRow>("select * from push_subscriptions")).map(mapPushSubscription);
+}
+
+// Writes the in-app notification (the one thing every admin always sees on
+// /admin/notifications) and best-effort fans it out to web push + SMS —
+// neither channel is guaranteed configured/subscribed, so failures there
+// are swallowed rather than failing the request/checklist/lead action that
+// triggered this.
 export async function notifyAdmins(type: Notification["type"], requestId: string, message: string) {
   await query("insert into notifications (type, request_id, message) values ($1,$2,$3)", [type, requestId, message]);
+
+  try {
+    const admins = (await getUsers()).filter((u) => u.active && (u.role === "owner_admin" || u.role === "branch_admin"));
+    const url = `/admin/requests/${requestId}`;
+
+    const subs = await getPushSubscriptions();
+    const adminIds = new Set(admins.map((a) => a.id));
+    const recipientSubs = subs.filter((s) => adminIds.has(s.userId));
+    if (recipientSubs.length > 0) {
+      const { expiredEndpoints } = await sendPushToUsers(recipientSubs, { title: "Ceejay Admin", body: message, url });
+      if (expiredEndpoints.length > 0) {
+        await query("delete from push_subscriptions where endpoint = any($1)", [expiredEndpoints]);
+      }
+    }
+
+    if (smsConfigured()) {
+      const phones = admins.map((a) => a.phone.trim()).filter(Boolean);
+      await Promise.allSettled(phones.map((phone) => sendSms(phone, message)));
+    }
+  } catch {
+    // Push/SMS are best-effort alerts layered on top of the in-app
+    // notification above, which already succeeded — never let a delivery
+    // failure here surface as a failure of the action that called this.
+  }
 }

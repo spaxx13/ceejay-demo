@@ -11,7 +11,20 @@ export type User = {
   canDeleteRequests: boolean; // whether this account can permanently delete Home Service Requests (branch_admin scoping) — owner_admin always can regardless
   canViewAllBranches: boolean; // whether this account can see combined "All Branches" sales figures (branch_admin scoping) — false means own branch(es) only
   canAccessCrm: boolean; // whether this account can access the CRM (leads/customers) section (branch_admin scoping) — owner_admin always can regardless
+  phone: string; // optional — set by the account holder to opt into SMS alerts (new requests, technician status updates); blank means not opted in
   active: boolean;
+};
+
+// One browser/device a staff account has enabled web push notifications
+// on — a user can have several (phone + desktop). endpoint uniquely
+// identifies the subscription in the browser's push service.
+export type PushSubscription = {
+  id: string;
+  userId: string;
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+  createdAt: string;
 };
 
 // Owner-managed business expenses (rent, utilities, tools, etc.) — separate
