@@ -10,13 +10,29 @@ function urlBase64ToUint8Array(base64: string) {
   return Uint8Array.from([...raw].map((c) => c.charCodeAt(0)));
 }
 
-type Status = "unsupported" | "checking" | "off" | "on" | "denied";
+type Status = "unsupported" | "checking" | "off" | "on" | "denied" | "ios-need-install";
+
+// iOS only allows web push for a site that's been "Added to Home Screen"
+// and opened from there (standalone display mode) — a plain Safari tab
+// never exposes PushManager at all, on any iOS version. Detect that case
+// specifically so an iPhone admin sees install instructions instead of the
+// button just silently not appearing.
+function isIos() {
+  return /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+}
+function isStandalone() {
+  return (navigator as unknown as { standalone?: boolean }).standalone === true || window.matchMedia("(display-mode: standalone)").matches;
+}
 
 export default function PushSubscribe({ vapidPublicKey }: { vapidPublicKey: string | null }) {
   const [status, setStatus] = useState<Status>("checking");
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
+    if (isIos() && !isStandalone()) {
+      setStatus("ios-need-install");
+      return;
+    }
     if (!vapidPublicKey || !("serviceWorker" in navigator) || !("PushManager" in window)) {
       setStatus("unsupported");
       return;
@@ -74,6 +90,16 @@ export default function PushSubscribe({ vapidPublicKey }: { vapidPublicKey: stri
 
   if (status === "denied") {
     return <p className="px-3 text-[11px] text-slate-400">Notifications blocked — enable them in your browser&apos;s site settings.</p>;
+  }
+
+  if (status === "ios-need-install") {
+    return (
+      <p className="px-3 text-[11px] text-slate-400">
+        To get notifications on iPhone: tap <span className="font-medium text-slate-500">Share</span> →{" "}
+        <span className="font-medium text-slate-500">Add to Home Screen</span>, then open Ceejay Admin from your Home Screen and enable
+        notifications from there.
+      </p>
+    );
   }
 
   return (
