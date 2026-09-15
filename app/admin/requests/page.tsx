@@ -45,6 +45,14 @@ export default async function RequestsPage({
   requests.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
 
   const unassignedCount = visibleRequests.filter(isUnassigned).length;
+  // How many requests share each booking_group_id — a count > 1 means
+  // several devices from the same "+ Add Another Device" submission (same
+  // visit, same address), shown as a small badge next to the reference.
+  const groupCounts = new Map<string, number>();
+  for (const r of visibleRequests) {
+    if (!r.bookingGroupId) continue;
+    groupCounts.set(r.bookingGroupId, (groupCounts.get(r.bookingGroupId) ?? 0) + 1);
+  }
   const todayStr = todayDateStr();
   const isShowingToday = sp.date === todayStr;
 
@@ -154,7 +162,17 @@ export default async function RequestsPage({
             )}
             {requests.map((r) => (
               <tr key={r.id} className="border-b border-slate-200 last:border-0">
-                <td className="py-3 pr-3 font-mono text-xs text-blue-300">{r.reference}</td>
+                <td className="py-3 pr-3 font-mono text-xs text-blue-300">
+                  {r.reference}
+                  {r.bookingGroupId && (groupCounts.get(r.bookingGroupId) ?? 0) > 1 && (
+                    <span
+                      className="ml-1.5 rounded-full border border-blue-200 bg-blue-50 px-1.5 py-0.5 font-sans text-[10px] font-semibold text-blue-700"
+                      title={`Part of a ${groupCounts.get(r.bookingGroupId)}-device booking — same visit, same address`}
+                    >
+                      🔗 {groupCounts.get(r.bookingGroupId)}
+                    </span>
+                  )}
+                </td>
                 <td className="py-3 pr-3 text-slate-800">{r.customerName}</td>
                 <td className="py-3 pr-3 text-slate-500">{r.assignedTechnicianId ? labelFor(r.assignedTechnicianId, technicians) : <span className="text-amber-700">Unassigned</span>}</td>
                 <td className="py-3 pr-3 text-slate-500">{formatDate(r.preferredDatetime)}</td>

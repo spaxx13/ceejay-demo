@@ -229,7 +229,7 @@ type RequestRow = {
   status_id: string; assigned_technician_id: string | null; auto_assigned: boolean; branch_id: string | null; queue_branch_id: string | null; admin_notes: string;
   status_history: { statusId: string; at: string }[]; custom_fields: Record<string, string | boolean>; created_at: Date;
   vlog_consent: boolean; vlog_blur_preference: HomeServiceRequest["vlogBlurPreference"]; screen_quality: HomeServiceRequest["screenQuality"]; back_housing_color: string; reminder_sent_at: Date | null;
-  confirmation_token: string | null; confirmation_expires_at: Date | null; confirmed_at: Date | null;
+  confirmation_token: string | null; confirmation_expires_at: Date | null; confirmed_at: Date | null; booking_group_id: string | null;
 };
 function mapRequest(r: RequestRow): HomeServiceRequest {
   return {
@@ -242,6 +242,7 @@ function mapRequest(r: RequestRow): HomeServiceRequest {
     vlogConsent: r.vlog_consent, vlogBlurPreference: r.vlog_blur_preference || "", screenQuality: r.screen_quality || "", backHousingColor: r.back_housing_color || "",
     reminderSentAt: toIsoOrNull(r.reminder_sent_at),
     confirmationToken: r.confirmation_token, confirmationExpiresAt: toIsoOrNull(r.confirmation_expires_at), confirmedAt: toIsoOrNull(r.confirmed_at),
+    bookingGroupId: r.booking_group_id,
   };
 }
 
@@ -426,6 +427,13 @@ export async function getRequestById(id: string) {
 // this returns every row in that group, not just the first match.
 export async function getRequestsByConfirmationToken(token: string) {
   return (await query<RequestRow>("select * from home_service_requests where confirmation_token = $1", [token])).map(mapRequest);
+}
+// Every device from the same "+ Add Another Device" submission shares a
+// booking_group_id — used to cascade a technician assignment across the
+// whole group (one visit, one technician) and to show the admin which
+// other requests belong to the same booking.
+export async function getRequestsByBookingGroup(groupId: string) {
+  return (await query<RequestRow>("select * from home_service_requests where booking_group_id = $1", [groupId])).map(mapRequest);
 }
 export async function getActivity() {
   return (await query<ActivityRow>("select * from activity_log order by at desc")).map(mapActivity);

@@ -10,6 +10,7 @@ import {
   getCustomFormFields,
   getServiceAgreements,
   getRepairProgressByRequestId,
+  getRequestsByBookingGroup,
   canManageHomeServiceRequests,
   canDeleteHomeServiceRequests,
   isBranchHidden,
@@ -95,16 +96,22 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
   // guessing/bookmarking its URL directly.
   if (isBranchHidden(user, req.queueBranchId)) redirect("/admin/requests");
 
-  const [lookups, deviceModels, technicians, branches, activityLog, customFormFields, agreements, repairProgress] = await Promise.all([
-    getLookups(),
-    getDeviceModels(),
-    getTechnicians(),
-    getBranches(),
-    getActivity(),
-    getCustomFormFields(),
-    getServiceAgreements(),
-    getRepairProgressByRequestId(req.id),
-  ]);
+  const [lookups, deviceModels, technicians, branches, activityLog, customFormFields, agreements, repairProgress, bookingGroup] =
+    await Promise.all([
+      getLookups(),
+      getDeviceModels(),
+      getTechnicians(),
+      getBranches(),
+      getActivity(),
+      getCustomFormFields(),
+      getServiceAgreements(),
+      getRepairProgressByRequestId(req.id),
+      req.bookingGroupId ? getRequestsByBookingGroup(req.bookingGroupId) : Promise.resolve([]),
+    ]);
+  // Other devices from the same "+ Add Another Device" submission — same
+  // visit, same address, one technician assignment cascades across all of
+  // them (see reassignRequest()).
+  const bookingSiblings = bookingGroup.filter((r) => r.id !== req.id);
   const statuses = lookups.filter((l) => l.kind === "request_status").sort((a, b) => a.order - b.order);
   const serviceType = lookups.find((l) => l.id === req.serviceTypeId);
   const brand = lookups.find((l) => l.id === req.deviceBrandId);
@@ -143,6 +150,30 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
         </div>
         {currentStatus && <StatusBadge label={currentStatus.label} />}
       </div>
+
+      {bookingSiblings.length > 0 && (
+        <div className="rounded-lg border-2 border-blue-300 bg-blue-50 p-3 text-sm text-blue-900">
+          <p className="font-semibold">
+            Part of a {bookingSiblings.length + 1}-device booking — same visit, same address. Assigning a technician here also
+            assigns the others below.
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {bookingSiblings.map((s) => {
+              const siblingStatus = statuses.find((st) => st.id === s.statusId);
+              return (
+                <Link
+                  key={s.id}
+                  href={`/admin/requests/${s.id}`}
+                  className="rounded-full border border-blue-300 bg-white px-3 py-1 font-mono text-xs text-blue-700 hover:bg-blue-100"
+                >
+                  {s.reference}
+                  {siblingStatus && <span className="ml-1.5 text-blue-500">({siblingStatus.label})</span>}
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="card space-y-3 lg:col-span-2">

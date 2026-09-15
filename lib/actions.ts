@@ -19,6 +19,7 @@ import {
   getRequests,
   getRequestById,
   getRequestsByConfirmationToken,
+  getRequestsByBookingGroup,
   getRepairRecordById,
   getServiceAgreements,
   getRepairRecordStatus,
@@ -43,6 +44,7 @@ import type {
   ChecklistResult,
   ChecklistPhase,
   Expense,
+  HomeServiceRequest,
 } from "./types";
 
 function str(fd: FormData, key: string) {
@@ -1178,6 +1180,11 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
   const confirmationExpiresAt = needsConfirmation
     ? new Date(Date.now() + BOOKING_CONFIRMATION_WINDOW_HOURS * 60 * 60 * 1000).toISOString()
     : null;
+  // Every device's row shares this too, always (not just multi-device
+  // bookings) — it's how reassignRequest() knows which other rows to
+  // cascade a technician assignment to, since one technician does the
+  // whole visit to one address regardless of how many devices are on it.
+  const bookingGroupId = crypto.randomUUID();
 
   const createdRequests: { id: string; reference: string; device: DeviceInput }[] = [];
   for (let i = 0; i < devices.length; i++) {
@@ -1198,8 +1205,8 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
             reference, customer_id, customer_name, phone, email, device_brand_id, device_model_id, device_other, service_type_id,
             issue_description, photo_data_url, street, landmark, province, city, barangay, lat, lng, preferred_datetime,
             status_id, status_history, custom_fields, vlog_consent, vlog_blur_preference, screen_quality, back_housing_color,
-            assigned_technician_id, auto_assigned, branch_id, queue_branch_id, confirmation_token, confirmation_expires_at
-          ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32)
+            assigned_technician_id, auto_assigned, branch_id, queue_branch_id, confirmation_token, confirmation_expires_at, booking_group_id
+          ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33)
           returning id`,
           [
             reference,
@@ -1234,6 +1241,7 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
             queueBranch?.id ?? null,
             confirmationToken,
             confirmationExpiresAt,
+            bookingGroupId,
           ]
         );
         break;
@@ -1405,6 +1413,12 @@ export async function submitContactInquiry(_prev: ContactResult | undefined, for
 
 // ---------- Admin: Home Service Requests ----------
 
+// Statuses a sibling request must NOT be in to get swept into a cascaded
+// (re)assignment — once a technician has actually started or finished a
+// device's job, or it's cancelled, silently reassigning it out from under
+// that state would be wrong even though the rest of the booking is moving.
+const CASCADE_EXCLUDED_STATUSES = new Set(["In Progress", "Completed", "Cancelled"]);
+
 export async function reassignRequest(formData: FormData) {
   const user = await getCurrentUser();
   if (!canManageHomeServiceRequests(user)) return;
@@ -1413,28 +1427,38 @@ export async function reassignRequest(formData: FormData) {
   const req = await getRequestById(requestId);
   if (!req) return;
 
-  if (technicianId) {
-    const technicians = await getTechnicians();
-    const tech = technicians.find((t) => t.id === technicianId);
-    const lookups = await getLookups();
-    const assignedStatus = lookups.find((l) => l.kind === "request_status" && l.label === "Assigned");
-    const nextBranchId = tech?.branchIds[0] ?? req.branchId;
-    if (assignedStatus && req.statusId !== assignedStatus.id) {
-      const statusHistory = [...req.statusHistory, { statusId: assignedStatus.id, at: new Date().toISOString() }];
-      await query("update home_service_requests set assigned_technician_id=$1, auto_assigned=false, branch_id=$2, status_id=$3, status_history=$4 where id=$5", [
-        technicianId,
-        nextBranchId,
-        assignedStatus.id,
-        JSON.stringify(statusHistory),
-        requestId,
-      ]);
+  const technicians = await getTechnicians();
+  const tech = technicianId ? technicians.find((t) => t.id === technicianId) : null;
+  const lookups = await getLookups();
+  const assignedStatus = lookups.find((l) => l.kind === "request_status" && l.label === "Assigned");
+  const statusLabel = (statusId: string) => lookups.find((l) => l.id === statusId)?.label ?? "";
+
+  async function applyAssignment(target: HomeServiceRequest) {
+    if (technicianId) {
+      const nextBranchId = tech?.branchIds[0] ?? target.branchId;
+      if (assignedStatus && target.statusId !== assignedStatus.id) {
+        const statusHistory = [...target.statusHistory, { statusId: assignedStatus.id, at: new Date().toISOString() }];
+        await query("update home_service_requests set assigned_technician_id=$1, auto_assigned=false, branch_id=$2, status_id=$3, status_history=$4 where id=$5", [
+          technicianId,
+          nextBranchId,
+          assignedStatus.id,
+          JSON.stringify(statusHistory),
+          target.id,
+        ]);
+      } else {
+        await query("update home_service_requests set assigned_technician_id=$1, auto_assigned=false, branch_id=$2 where id=$3", [
+          technicianId,
+          nextBranchId,
+          target.id,
+        ]);
+      }
     } else {
-      await query("update home_service_requests set assigned_technician_id=$1, auto_assigned=false, branch_id=$2 where id=$3", [
-        technicianId,
-        nextBranchId,
-        requestId,
-      ]);
+      await query("update home_service_requests set assigned_technician_id=null, auto_assigned=false where id=$1", [target.id]);
     }
+  }
+
+  await applyAssignment(req);
+  if (technicianId) {
     let smsNote = "";
     if (req.phone && tech && smsConfigured()) {
       try {
@@ -1454,9 +1478,31 @@ export async function reassignRequest(formData: FormData) {
       user?.name ?? "Admin"
     );
   } else {
-    await query("update home_service_requests set assigned_technician_id=null, auto_assigned=false where id=$1", [requestId]);
     await logActivity("home_service_request", req.id, `Unassigned by ${user?.name ?? "Admin"}`, user?.name ?? "Admin");
   }
+
+  // A technician does the whole visit to one address, so (re)assigning one
+  // device in a multi-device booking cascades the same technician to every
+  // other device in that booking still open enough to move (see
+  // CASCADE_EXCLUDED_STATUSES) — same for clearing an assignment.
+  if (req.bookingGroupId) {
+    const siblings = (await getRequestsByBookingGroup(req.bookingGroupId)).filter(
+      (s) => s.id !== req.id && !CASCADE_EXCLUDED_STATUSES.has(statusLabel(s.statusId))
+    );
+    for (const sibling of siblings) {
+      await applyAssignment(sibling);
+      await logActivity(
+        "home_service_request",
+        sibling.id,
+        technicianId
+          ? `Auto-${sibling.assignedTechnicianId ? "reassigned" : "assigned"} to ${tech?.name ?? technicianId} — same visit as ${req.reference}, updated by ${user?.name ?? "Admin"}`
+          : `Unassigned — same visit as ${req.reference}, updated by ${user?.name ?? "Admin"}`,
+        user?.name ?? "Admin"
+      );
+      revalidatePath(`/admin/requests/${sibling.id}`);
+    }
+  }
+
   revalidatePath("/admin/requests");
   revalidatePath(`/admin/requests/${requestId}`);
 }

@@ -272,6 +272,7 @@ export type HomeServiceRequest = {
   confirmationToken: string | null; // null when no email was captured to send the confirm link to
   confirmationExpiresAt: string | null; // 2 hours after submission — the void-unconfirmed-requests cron cancels the request once this passes with confirmedAt still null
   confirmedAt: string | null; // set when the customer clicks the confirm link in their quotation email
+  bookingGroupId: string | null; // shared by every device from the same "+ Add Another Device" submission — one technician assignment cascades to the whole group, since it's one visit to one address
 };
 
 export type SaleLineItem = {
