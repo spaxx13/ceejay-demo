@@ -115,7 +115,7 @@ export default async function RequestsPage({
       </div>
 
       <form className="card flex flex-wrap gap-3">
-        <select name="status" defaultValue={sp.status ?? ""} className="input w-44">
+        <select name="status" defaultValue={sp.status ?? ""} className="input w-full sm:w-44">
           <option value="">All statuses</option>
           {statuses.map((s) => (
             <option key={s.id} value={s.id}>
@@ -123,7 +123,7 @@ export default async function RequestsPage({
             </option>
           ))}
         </select>
-        <select name="technician" defaultValue={sp.technician ?? ""} className="input w-44">
+        <select name="technician" defaultValue={sp.technician ?? ""} className="input w-full sm:w-44">
           <option value="">All technicians</option>
           {homeServiceTechnicians.map((t) => (
             <option key={t.id} value={t.id}>
@@ -131,16 +131,67 @@ export default async function RequestsPage({
             </option>
           ))}
         </select>
-        <input type="date" name="date" defaultValue={sp.date ?? ""} className="input w-44" />
-        <button type="submit" className="btn-secondary">
+        <input type="date" name="date" defaultValue={sp.date ?? ""} className="input w-full sm:w-44" />
+        <button type="submit" className="btn-secondary flex-1 sm:flex-none">
           Filter
         </button>
-        <Link href="/admin/requests" className="btn-secondary">
+        <Link href="/admin/requests" className="btn-secondary flex-1 text-center sm:flex-none">
           Clear
         </Link>
       </form>
 
-      <div className="card overflow-x-auto">
+      {/* Mobile: one card per request — a 6-column table (with a Delete
+          button in the last column) doesn't fit a phone screen without
+          horizontal scroll, so this reflows the same fields as a stacked
+          summary instead. */}
+      <div className="space-y-3 sm:hidden">
+        {requests.length === 0 && <p className="card text-center text-sm text-slate-400">No requests match these filters.</p>}
+        {requests.map((r) => (
+          <div key={r.id} className="card space-y-2">
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <p className="font-mono text-xs text-blue-300">
+                  {r.reference}
+                  {r.bookingGroupId && (groupCounts.get(r.bookingGroupId) ?? 0) > 1 && (
+                    <span
+                      className="ml-1.5 rounded-full border border-blue-200 bg-blue-50 px-1.5 py-0.5 font-sans text-[10px] font-semibold text-blue-700"
+                      title={`Part of a ${groupCounts.get(r.bookingGroupId)}-device booking — same visit, same address`}
+                    >
+                      🔗 {groupCounts.get(r.bookingGroupId)}
+                    </span>
+                  )}
+                </p>
+                <p className="mt-0.5 text-sm font-medium text-slate-800">{r.customerName}</p>
+              </div>
+              <StatusBadge label={labelFor(r.statusId, statuses)} />
+            </div>
+            <div className="grid grid-cols-2 gap-y-1 text-xs">
+              <span className="text-slate-400">Technician</span>
+              <span className={r.assignedTechnicianId ? "text-right text-slate-600" : "text-right text-amber-700"}>
+                {r.assignedTechnicianId ? labelFor(r.assignedTechnicianId, technicians) : "Unassigned"}
+              </span>
+              <span className="text-slate-400">Preferred</span>
+              <span className="text-right text-slate-600">{formatDate(r.preferredDatetime)}</span>
+            </div>
+            <div className="flex gap-1.5 pt-1">
+              <Link href={`/admin/requests/${r.id}`} className="btn-secondary flex-1 text-center !py-1.5 text-xs">
+                View
+              </Link>
+              {canDeleteHomeServiceRequests(user) && (
+                <DeleteButton
+                  id={r.id}
+                  action={deleteHomeServiceRequest}
+                  confirmMessage={`Permanently delete home service request ${r.reference}? This can't be undone.`}
+                  className="btn-secondary !py-1.5 text-xs !text-red-600"
+                />
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Desktop/tablet: full table, same fields. */}
+      <div className="hidden card overflow-x-auto sm:block">
         <table className="w-full text-left text-sm">
           <thead>
             <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-400">
