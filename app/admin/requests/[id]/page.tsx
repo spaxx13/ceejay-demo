@@ -340,8 +340,18 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
       {postAgreement && (
         <div className="card space-y-2">
           <h3 className="text-sm font-semibold text-slate-800">Receipt</h3>
-          <p className="text-xs text-slate-500">If the customer asks for another copy, resend the same PDF receipt to their email.</p>
-          <ResendReceiptButton target={{ type: "request", id: req.id }} email={req.email} />
+          <p className="text-xs text-slate-500">The same PDF receipt that was emailed to the customer.</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <a
+              href={`/api/admin/receipt?requestId=${req.id}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn-secondary !px-3 !py-1.5 text-xs"
+            >
+              View Receipt
+            </a>
+            <ResendReceiptButton target={{ type: "request", id: req.id }} email={req.email} />
+          </div>
         </div>
       )}
 
