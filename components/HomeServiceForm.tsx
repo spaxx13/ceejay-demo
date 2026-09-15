@@ -2,7 +2,7 @@
 
 import { Fragment, useActionState, useEffect, useRef, useState } from "react";
 import { submitHomeServiceRequest, sendHomeServiceOtp, verifyHomeServiceOtp } from "@/lib/actions";
-import { OTP_GATE_ENABLED } from "@/lib/config";
+import { OTP_GATE_ENABLED, BOOKING_CONFIRMATION_WINDOW_HOURS } from "@/lib/config";
 import { PROVINCE_FEES, SUNDAY_ONLY_PROVINCES, nextSunday } from "@/lib/homeServiceFees";
 import PhotoUpload from "./PhotoUpload";
 import DynamicFormField from "./DynamicFormField";
@@ -291,9 +291,14 @@ export default function HomeServiceForm({
         </p>
         <p className="text-sm text-slate-400">{content.successBody}</p>
         {sentEmail && (
-          <p className="text-sm text-slate-400">
-            Please check your email (<span className="font-medium text-slate-600">{sentEmail}</span>) for your repair quotation.
-          </p>
+          <FormNotice tone="blue" icon="📧">
+            <p className="font-semibold">Check your email to confirm your booking</p>
+            <p className="mt-1">
+              We sent your repair quotation to <span className="font-semibold">{sentEmail}</span>. Please open it and click{" "}
+              <span className="font-semibold">Confirm My Booking</span> within {BOOKING_CONFIRMATION_WINDOW_HOURS} hours, or your
+              request will be automatically cancelled.
+            </p>
+          </FormNotice>
         )}
         <a href={`/request?area=${area}`} className="btn-secondary inline-block">
           Submit another request
