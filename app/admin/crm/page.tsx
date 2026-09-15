@@ -61,11 +61,11 @@ export default async function CrmPage({ searchParams }: { searchParams: Promise<
             Customers ({allCustomers.length})
           </Link>
         </div>
-        <form className="mb-2 flex gap-2">
+        <form className="mb-2 flex w-full flex-wrap gap-2 sm:w-auto">
           <input type="hidden" name="tab" value={tab} />
-          <input name="q" defaultValue={q ?? ""} placeholder={`Search ${tab} by name or phone...`} className="input w-64" />
+          <input name="q" defaultValue={q ?? ""} placeholder={`Search ${tab} by name or phone...`} className="input w-full sm:w-64" />
           {tab === "leads" && (
-            <select name="status" defaultValue={statusFilter ?? ""} className="input w-40">
+            <select name="status" defaultValue={statusFilter ?? ""} className="input w-full sm:w-40">
               <option value="">All statuses</option>
               {leadStatuses.map((s) => (
                 <option key={s.id} value={s.id}>
@@ -74,7 +74,7 @@ export default async function CrmPage({ searchParams }: { searchParams: Promise<
               ))}
             </select>
           )}
-          <button type="submit" className="btn-secondary">
+          <button type="submit" className="btn-secondary flex-1 sm:flex-none">
             Search
           </button>
         </form>
@@ -111,7 +111,43 @@ export default async function CrmPage({ searchParams }: { searchParams: Promise<
               </button>
             </form>
           </details>
-          <div className="card overflow-x-auto">
+          {/* Mobile: one card per lead — an 8-column table doesn't fit a
+              phone screen, so this reflows the same fields as a stacked
+              summary instead. */}
+          <div className="space-y-3 sm:hidden">
+            {leads.length === 0 && <p className="card text-center text-sm text-slate-400">No leads found.</p>}
+            {leads.map((l) => {
+              const leadStatus = leadStatuses.find((s) => s.id === l.statusId);
+              const assignee = users.find((u) => u.id === l.assignedTo);
+              const branch = branches.find((b) => b.id === l.branchId);
+              return (
+                <div key={l.id} className="card space-y-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="text-sm font-medium text-slate-800">{l.name}</p>
+                    {leadStatus && <StatusBadge label={leadStatus.label} />}
+                  </div>
+                  <div className="grid grid-cols-2 gap-y-1 text-xs">
+                    <span className="text-slate-400">Phone</span>
+                    <span className="text-right text-slate-600">{l.phone || "—"}</span>
+                    <span className="text-slate-400">Branch</span>
+                    <span className="text-right text-slate-600">{branch?.name ?? "—"}</span>
+                    <span className="text-slate-400">Source</span>
+                    <span className="text-right text-slate-600">{l.source || "—"}</span>
+                    <span className="text-slate-400">Assigned</span>
+                    <span className="text-right text-slate-600">{assignee?.name ?? "—"}</span>
+                    <span className="text-slate-400">Follow-up</span>
+                    <span className="text-right text-slate-600">{l.followUpDate ?? "—"}</span>
+                  </div>
+                  <Link href={`/admin/crm/${l.id}`} className="btn-secondary block text-center !py-1.5 text-xs">
+                    View
+                  </Link>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Desktop/tablet: full table, same fields. */}
+          <div className="hidden card overflow-x-auto sm:block">
             <table className="w-full text-left text-sm">
               <thead>
                 <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-400">
@@ -182,7 +218,29 @@ export default async function CrmPage({ searchParams }: { searchParams: Promise<
               </button>
             </form>
           </details>
-          <div className="card overflow-x-auto">
+          {/* Mobile: one card per customer. */}
+          <div className="space-y-3 sm:hidden">
+            {customers.length === 0 && <p className="card text-center text-sm text-slate-400">No customers found.</p>}
+            {customers.map((c) => (
+              <div key={c.id} className="card space-y-2">
+                <p className="text-sm font-medium text-slate-800">{c.name}</p>
+                <div className="grid grid-cols-2 gap-y-1 text-xs">
+                  <span className="text-slate-400">Phone</span>
+                  <span className="text-right text-slate-600">{c.phone || "—"}</span>
+                  <span className="text-slate-400">Source</span>
+                  <span className="text-right text-slate-600">{c.source}</span>
+                  <span className="text-slate-400">Since</span>
+                  <span className="text-right text-slate-600">{formatDate(c.createdAt)}</span>
+                </div>
+                <Link href={`/admin/crm/${c.id}`} className="btn-secondary block text-center !py-1.5 text-xs">
+                  View
+                </Link>
+              </div>
+            ))}
+          </div>
+
+          {/* Desktop/tablet: full table, same fields. */}
+          <div className="hidden card overflow-x-auto sm:block">
             <table className="w-full text-left text-sm">
               <thead>
                 <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-400">
