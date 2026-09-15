@@ -5,7 +5,7 @@ import { getCurrentUser } from "@/lib/auth";
 import StatusBadge from "@/components/StatusBadge";
 import DeleteButton from "@/components/DeleteButton";
 import { deleteHomeServiceRequest } from "@/lib/actions";
-import { formatDate } from "@/lib/format";
+import { formatDate, todayDateStr } from "@/lib/format";
 
 export default async function RequestsPage({
   searchParams,
@@ -37,6 +37,15 @@ export default async function RequestsPage({
   requests.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
 
   const unassignedCount = visibleRequests.filter(isUnassigned).length;
+  const todayStr = todayDateStr();
+  const isShowingToday = sp.date === todayStr;
+
+  // Total assigned requests per technician, regardless of the current
+  // filters — lets the admin spot technicians who haven't been handed
+  // any request yet (count of 0) alongside everyone else's load.
+  const technicianCounts = technicians
+    .map((t) => ({ id: t.id, name: t.name, count: visibleRequests.filter((r) => r.assignedTechnicianId === t.id).length }))
+    .sort((a, b) => a.count - b.count || a.name.localeCompare(b.name));
 
   function labelFor(id: string | null, list: { id: string; label?: string; name?: string }[]) {
     if (!id) return "—";
@@ -61,9 +70,31 @@ export default async function RequestsPage({
           <h1 className="text-xl font-bold text-slate-900">Home Service Requests</h1>
           <p className="mt-1 text-sm text-slate-400">List, filter, and manage requests. Unassigned requests need manual assignment.</p>
         </div>
-        <Link href={qs({ unassigned: sp.unassigned === "1" ? undefined : "1" })} className={sp.unassigned === "1" ? "btn-primary" : "btn-secondary"}>
-          {sp.unassigned === "1" ? "Showing Unassigned" : `Unassigned Queue (${unassignedCount})`}
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          <Link href={qs({ date: isShowingToday ? undefined : todayStr })} className={isShowingToday ? "btn-primary" : "btn-secondary"}>
+            {isShowingToday ? "Showing Today" : "Today"}
+          </Link>
+          <Link href={qs({ unassigned: sp.unassigned === "1" ? undefined : "1" })} className={sp.unassigned === "1" ? "btn-primary" : "btn-secondary"}>
+            {sp.unassigned === "1" ? "Showing Unassigned" : `Unassigned Queue (${unassignedCount})`}
+          </Link>
+        </div>
+      </div>
+
+      <div className="card">
+        <h2 className="text-sm font-semibold text-slate-700">Technician Workload</h2>
+        <p className="mt-1 text-xs text-slate-400">Total requests assigned per technician — a count of 0 means they haven&apos;t been assigned anything yet.</p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {technicianCounts.map((t) => (
+            <span
+              key={t.id}
+              className={`rounded-full border px-3 py-1 text-xs ${
+                t.count === 0 ? "border-amber-300 bg-amber-50 text-amber-700" : "border-slate-200 bg-slate-50 text-slate-600"
+              }`}
+            >
+              {t.name}: {t.count}
+            </span>
+          ))}
+        </div>
       </div>
 
       <form className="card flex flex-wrap gap-3">
