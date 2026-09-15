@@ -113,6 +113,10 @@ export default async function CrmDetailPage({ params }: { params: Promise<{ id: 
                 <input type="hidden" name="id" value={lead.id} />
                 <textarea name="note" rows={3} className="input" placeholder="Inquiry note or call summary..." />
                 <input name="followUpDate" type="date" className="input" />
+                <label className="flex items-center gap-2 text-xs text-slate-500">
+                  <input type="checkbox" name="emailToCustomer" disabled={!lead.email} />
+                  {lead.email ? `Also email this to ${lead.email}` : "No email on file — can't send to customer"}
+                </label>
                 <button type="submit" className="btn-secondary w-full">
                   Add Note
                 </button>
