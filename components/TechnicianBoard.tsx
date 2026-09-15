@@ -29,6 +29,9 @@ type Req = {
   createdAt: string;
   statusId: string;
   adminNotes: string;
+  confirmedAt: string | null;
+  repairCost: number | null;
+  serviceFee: number | null;
   inProgress: boolean;
   hasPreAgreement: boolean;
   hasPostAgreement: boolean;
@@ -46,6 +49,8 @@ function DetailRow({ label, children }: { label: string; children: React.ReactNo
     </div>
   );
 }
+
+const peso = (n: number) => `₱${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 export default function TechnicianBoard({ requests, statuses }: { requests: Req[]; statuses: Status[] }) {
   const [openId, setOpenId] = useState<string | null>(null);
@@ -118,6 +123,12 @@ export default function TechnicianBoard({ requests, statuses }: { requests: Req[
               <DetailRow label="Device">{r.deviceLabel}</DetailRow>
               <DetailRow label="Service Type">{r.serviceTypeLabel}</DetailRow>
               <DetailRow label="Issue">{r.issueDescription}</DetailRow>
+              {r.confirmedAt && (r.repairCost !== null || r.serviceFee !== null) && (
+                <DetailRow label="Price">
+                  {r.repairCost !== null ? peso(r.repairCost) : "Repair cost to be confirmed"}
+                  {r.serviceFee !== null && <span className="text-sm text-slate-400"> + {peso(r.serviceFee)} service fee</span>}
+                </DetailRow>
+              )}
               <DetailRow label="Address">
                 <Linkify
                   text={`${r.street}${r.barangay ? `, Brgy. ${r.barangay}` : ""}, ${r.city}${r.province ? `, ${r.province}` : ""}${r.landmark ? ` (near ${r.landmark})` : ""}`}

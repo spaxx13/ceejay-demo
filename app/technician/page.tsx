@@ -1,26 +1,35 @@
-import { getLookups, getRequests, getDeviceModels, getServiceAgreements, getCustomFormFields } from "@/lib/db";
+import { getLookups, getRequests, getDeviceModels, getServiceAgreements, getCustomFormFields, getServicePrices } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import TechnicianBoard from "@/components/TechnicianBoard";
+import { serviceFeeAmount } from "@/lib/homeServiceFees";
+import { getRepairQuote } from "@/lib/servicePricing";
 
 export default async function TechnicianPage() {
-  const [user, lookups, allRequests, deviceModels, agreements, customFormFields] = await Promise.all([
+  const [user, lookups, allRequests, deviceModels, agreements, customFormFields, servicePrices] = await Promise.all([
     getCurrentUser(),
     getLookups(),
     getRequests(),
     getDeviceModels(),
     getServiceAgreements(),
     getCustomFormFields(),
+    getServicePrices(),
   ]);
   const statuses = lookups.filter((l) => l.kind === "request_status").sort((a, b) => a.order - b.order);
+  const cancelledStatusId = statuses.find((s) => s.label === "Cancelled")?.id;
 
   const myRequests = allRequests
-    .filter((r) => r.assignedTechnicianId === user?.technicianId)
+    .filter((r) => r.assignedTechnicianId === user?.technicianId && r.statusId !== cancelledStatusId)
     .sort((a, b) => (a.preferredDatetime < b.preferredDatetime ? -1 : 1))
     .map((r) => {
       const brand = lookups.find((l) => l.id === r.deviceBrandId);
       const model = deviceModels.find((m) => m.id === r.deviceModelId);
       const serviceType = lookups.find((l) => l.id === r.serviceTypeId);
       const status = statuses.find((s) => s.id === r.statusId);
+      // Same numbers the quotation email showed the customer, recomputed
+      // from the request's own fields (never persisted) — only meaningful
+      // once the customer has confirmed, since that's the price they agreed to.
+      const repairCost = r.confirmedAt && serviceType?.label ? getRepairQuote(servicePrices, serviceType.label, r.deviceModelId ?? "", r.screenQuality) : null;
+      const serviceFee = r.confirmedAt ? serviceFeeAmount(r.province, r.city) : null;
       return {
         id: r.id,
         reference: r.reference,
@@ -42,6 +51,9 @@ export default async function TechnicianPage() {
         createdAt: r.createdAt,
         statusId: r.statusId,
         adminNotes: r.adminNotes,
+        confirmedAt: r.confirmedAt,
+        repairCost,
+        serviceFee,
         inProgress: status?.label === "In Progress",
         hasPreAgreement: agreements.some((a) => a.requestId === r.id && a.phase === "pre_repair"),
         hasPostAgreement: agreements.some((a) => a.requestId === r.id && a.phase === "post_repair"),
