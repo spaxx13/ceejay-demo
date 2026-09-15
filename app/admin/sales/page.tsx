@@ -280,49 +280,107 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
                   <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400">
                     Per Technician — Net Profit → Share vs. Remaining
                   </p>
-                  <table className="w-full text-left text-sm">
-                    <thead>
-                      <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-400">
-                        <th className="pb-2 pr-3 font-medium">Technician</th>
-                        <th className="pb-2 pr-3 font-medium">Jobs</th>
-                        <th className="pb-2 pr-3 font-medium">Revenue</th>
-                        <th className="pb-2 pr-3 font-medium">Job Cost</th>
-                        <th className="pb-2 pr-3 font-medium">Net Profit</th>
-                        <th className="pb-2 pr-3 font-medium">Split</th>
-                        <th className="pb-2 pr-3 font-medium">Share (Tech)</th>
-                        <th className="pb-2 font-medium">Remaining (Business)</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {r.technicians.map((t) => (
-                        <tr key={t.name} className={`border-b border-slate-100 last:border-0 ${t.name === "Unassigned" ? "opacity-60" : ""}`}>
-                          <td className="py-2 pr-3 text-slate-700">
+
+                  {/* Mobile: one stacked card per technician — an 8-column table
+                      doesn't fit a phone screen, so this reflows the same
+                      figures as label/value pairs instead of forcing horizontal
+                      scroll on the whole page. */}
+                  <div className="space-y-2 sm:hidden">
+                    {r.technicians.map((t) => (
+                      <div key={t.name} className={`rounded-lg border border-slate-200 p-3 ${t.name === "Unassigned" ? "opacity-60" : ""}`}>
+                        <div className="mb-2 flex items-center justify-between gap-2">
+                          <p className="text-sm font-medium text-slate-800">
                             {t.name}
                             {t.sharePercent >= 100 && (
                               <span className="ml-1.5 badge border border-amber-200 bg-amber-50 text-amber-700">100% — owner</span>
                             )}
-                          </td>
-                          <td className="py-2 pr-3 text-slate-500">{t.count}</td>
-                          <td className="py-2 pr-3 text-slate-800">{peso(t.revenue)}</td>
-                          <td className="py-2 pr-3 text-red-700">−{peso(t.jobCost)}</td>
-                          <td className="py-2 pr-3 font-medium text-slate-800">{peso(t.netProfit)}</td>
-                          <td className="py-2 pr-3 text-slate-500">{t.sharePercent}% tech / {100 - t.sharePercent}% biz</td>
-                          <td className="py-2 pr-3 text-amber-700">{t.sharePercent >= 100 ? "—" : peso(t.share)}</td>
-                          <td className="py-2 text-blue-300">{peso(t.remaining)}</td>
+                          </p>
+                          <p className="shrink-0 text-xs text-slate-400">{t.count} job{t.count === 1 ? "" : "s"}</p>
+                        </div>
+                        <div className="grid grid-cols-2 gap-y-1 text-xs">
+                          <span className="text-slate-400">Revenue</span>
+                          <span className="text-right text-slate-800">{peso(t.revenue)}</span>
+                          <span className="text-slate-400">Job Cost</span>
+                          <span className="text-right text-red-700">−{peso(t.jobCost)}</span>
+                          <span className="font-medium text-slate-500">Net Profit</span>
+                          <span className="text-right font-medium text-slate-800">{peso(t.netProfit)}</span>
+                          <span className="text-slate-400">Split</span>
+                          <span className="text-right text-slate-500">
+                            {t.sharePercent}% tech / {100 - t.sharePercent}% biz
+                          </span>
+                          <span className="text-amber-700">Share (Tech)</span>
+                          <span className="text-right text-amber-700">{t.sharePercent >= 100 ? "—" : peso(t.share)}</span>
+                          <span className="text-blue-300">Remaining (Biz)</span>
+                          <span className="text-right text-blue-300">{peso(t.remaining)}</span>
+                        </div>
+                      </div>
+                    ))}
+                    <div className="rounded-lg border border-slate-300 bg-slate-50 p-3">
+                      <div className="mb-2 flex items-center justify-between gap-2">
+                        <p className="text-sm font-semibold text-slate-900">Total</p>
+                        <p className="text-xs text-slate-500">{r.count} job{r.count === 1 ? "" : "s"}</p>
+                      </div>
+                      <div className="grid grid-cols-2 gap-y-1 text-xs">
+                        <span className="text-slate-500">Revenue</span>
+                        <span className="text-right text-slate-800">{peso(r.revenue)}</span>
+                        <span className="text-slate-500">Job Cost</span>
+                        <span className="text-right text-red-700">−{peso(r.jobCost)}</span>
+                        <span className="font-semibold text-slate-700">Net Profit</span>
+                        <span className="text-right font-semibold text-slate-900">{peso(r.netProfit)}</span>
+                        <span className="font-medium text-amber-700">Share (Tech)</span>
+                        <span className="text-right font-medium text-amber-700">{peso(r.technicianShare)}</span>
+                        <span className="font-medium text-blue-300">Remaining (Biz)</span>
+                        <span className="text-right font-medium text-blue-300">{peso(r.remaining)}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Desktop/tablet: full table, same figures. */}
+                  <div className="hidden overflow-x-auto sm:block">
+                    <table className="w-full text-left text-sm">
+                      <thead>
+                        <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-400">
+                          <th className="pb-2 pr-3 font-medium">Technician</th>
+                          <th className="pb-2 pr-3 font-medium">Jobs</th>
+                          <th className="pb-2 pr-3 font-medium">Revenue</th>
+                          <th className="pb-2 pr-3 font-medium">Job Cost</th>
+                          <th className="pb-2 pr-3 font-medium">Net Profit</th>
+                          <th className="pb-2 pr-3 font-medium">Split</th>
+                          <th className="pb-2 pr-3 font-medium">Share (Tech)</th>
+                          <th className="pb-2 font-medium">Remaining (Business)</th>
                         </tr>
-                      ))}
-                      <tr className="font-semibold text-slate-900">
-                        <td className="pt-2 pr-3">Total</td>
-                        <td className="pt-2 pr-3">{r.count}</td>
-                        <td className="pt-2 pr-3">{peso(r.revenue)}</td>
-                        <td className="pt-2 pr-3 text-red-700">−{peso(r.jobCost)}</td>
-                        <td className="pt-2 pr-3">{peso(r.netProfit)}</td>
-                        <td className="pt-2 pr-3"></td>
-                        <td className="pt-2 pr-3 text-amber-700">{peso(r.technicianShare)}</td>
-                        <td className="pt-2 text-blue-300">{peso(r.remaining)}</td>
-                      </tr>
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {r.technicians.map((t) => (
+                          <tr key={t.name} className={`border-b border-slate-100 last:border-0 ${t.name === "Unassigned" ? "opacity-60" : ""}`}>
+                            <td className="py-2 pr-3 text-slate-700">
+                              {t.name}
+                              {t.sharePercent >= 100 && (
+                                <span className="ml-1.5 badge border border-amber-200 bg-amber-50 text-amber-700">100% — owner</span>
+                              )}
+                            </td>
+                            <td className="py-2 pr-3 text-slate-500">{t.count}</td>
+                            <td className="py-2 pr-3 text-slate-800">{peso(t.revenue)}</td>
+                            <td className="py-2 pr-3 text-red-700">−{peso(t.jobCost)}</td>
+                            <td className="py-2 pr-3 font-medium text-slate-800">{peso(t.netProfit)}</td>
+                            <td className="py-2 pr-3 text-slate-500">{t.sharePercent}% tech / {100 - t.sharePercent}% biz</td>
+                            <td className="py-2 pr-3 text-amber-700">{t.sharePercent >= 100 ? "—" : peso(t.share)}</td>
+                            <td className="py-2 text-blue-300">{peso(t.remaining)}</td>
+                          </tr>
+                        ))}
+                        <tr className="font-semibold text-slate-900">
+                          <td className="pt-2 pr-3">Total</td>
+                          <td className="pt-2 pr-3">{r.count}</td>
+                          <td className="pt-2 pr-3">{peso(r.revenue)}</td>
+                          <td className="pt-2 pr-3 text-red-700">−{peso(r.jobCost)}</td>
+                          <td className="pt-2 pr-3">{peso(r.netProfit)}</td>
+                          <td className="pt-2 pr-3"></td>
+                          <td className="pt-2 pr-3 text-amber-700">{peso(r.technicianShare)}</td>
+                          <td className="pt-2 text-blue-300">{peso(r.remaining)}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               )}
 
