@@ -421,9 +421,11 @@ export async function getRequestById(id: string) {
   const row = await queryOne<RequestRow>("select * from home_service_requests where id = $1", [id]);
   return row ? mapRequest(row) : null;
 }
-export async function getRequestByConfirmationToken(token: string) {
-  const row = await queryOne<RequestRow>("select * from home_service_requests where confirmation_token = $1", [token]);
-  return row ? mapRequest(row) : null;
+// A multi-device booking shares one confirmation_token across every
+// device's row (one quotation email, one confirm link for all of them) —
+// this returns every row in that group, not just the first match.
+export async function getRequestsByConfirmationToken(token: string) {
+  return (await query<RequestRow>("select * from home_service_requests where confirmation_token = $1", [token])).map(mapRequest);
 }
 export async function getActivity() {
   return (await query<ActivityRow>("select * from activity_log order by at desc")).map(mapActivity);

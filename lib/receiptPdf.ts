@@ -415,45 +415,52 @@ export async function generateRepairReceiptPdf(opts: {
 }
 
 export async function generateQuotationPdf(opts: {
-  reference: string;
+  referenceList: string;
   customerName: string;
   requestDate: string;
-  deviceLabel: string;
-  serviceType: string;
-  issueDescription: string;
+  devices: { reference: string; deviceLabel: string; serviceType: string; issueDescription: string; repairCost: number | null }[];
   preferredDate: string;
   address: string;
-  repairCost: number | null;
   serviceFee: number | null;
 }): Promise<Uint8Array> {
   const w = await Writer.create();
   const peso = (n: number) => `PHP ${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-  w.header(opts.reference, "Repair Quotation");
+  w.header(opts.referenceList, opts.devices.length > 1 ? "Repair Quotation (Multiple Devices)" : "Repair Quotation");
 
   w.heading("Request Details");
   w.row("Customer Name", opts.customerName, { boldValue: true });
   w.row("Date Requested", opts.requestDate);
-  w.row("Device", opts.deviceLabel);
-  w.row("Service Type", opts.serviceType);
-  w.row("Issue Description", opts.issueDescription);
   w.row("Preferred Date", opts.preferredDate);
   w.row("Service Address", opts.address);
 
+  w.heading(opts.devices.length > 1 ? "Devices" : "Device");
+  opts.devices.forEach((d, i) => {
+    if (opts.devices.length > 1) w.row(`Device ${i + 1}`, d.reference, { boldValue: true });
+    w.row("  Model", d.deviceLabel);
+    w.row("  Service Type", d.serviceType);
+    w.row("  Issue Description", d.issueDescription);
+    w.row("  Estimated Repair Cost", d.repairCost !== null ? peso(d.repairCost) : "Confirmed upon inspection");
+  });
+
+  const allCostsKnown = opts.devices.every((d) => d.repairCost !== null);
+  const totalRepairCost = opts.devices.reduce((sum, d) => sum + (d.repairCost ?? 0), 0);
+
   w.heading("Estimated Cost");
-  if (opts.repairCost !== null && opts.serviceFee !== null) {
-    w.costBreakdown(opts.repairCost, opts.serviceFee, opts.repairCost + opts.serviceFee);
+  if (allCostsKnown && opts.serviceFee !== null) {
+    w.costBreakdown(totalRepairCost, opts.serviceFee, totalRepairCost + opts.serviceFee);
   } else {
-    if (opts.serviceFee !== null) w.row("Service Fee", peso(opts.serviceFee), { boldValue: true });
-    w.paragraph("Repair cost for this device/service will be confirmed by our technician upon inspection.");
+    if (opts.serviceFee !== null) w.row("Service Fee (one visit)", peso(opts.serviceFee), { boldValue: true });
+    w.paragraph("Repair cost for any device/service marked above will be confirmed by our technician upon inspection.");
   }
+  w.paragraph("The service fee is a single flat rate for this visit to your address — it does not repeat per device.", 9);
 
   w.paragraph(
     "This is an estimate based on our standard price list and may change depending on the technician's actual assessment upon inspection. Final pricing will be confirmed before any repair work begins.",
     9
   );
 
-  w.stampAllPages(opts.reference);
+  w.stampAllPages(opts.referenceList);
 
   return w.save();
 }

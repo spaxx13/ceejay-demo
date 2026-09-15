@@ -18,7 +18,7 @@ import {
   getServicePrices,
   getRequests,
   getRequestById,
-  getRequestByConfirmationToken,
+  getRequestsByConfirmationToken,
   getRepairRecordById,
   getServiceAgreements,
   getRepairRecordStatus,
@@ -1171,13 +1171,17 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
   // collision to also cover two submissions (or two devices in the same
   // submission) landing on the same number at the same time. Mirrors
   // createRepairRecordDraft's fix for the same bug on repair_records.
-  const createdRequests: { id: string; reference: string; confirmationToken: string | null; device: DeviceInput }[] = [];
+  // One confirmation token/expiry for the whole booking — every device's
+  // row shares it, so the single combined quotation email's one "Confirm
+  // My Booking" link confirms all of them together (see confirmBooking()).
+  const confirmationToken = needsConfirmation ? crypto.randomUUID() : null;
+  const confirmationExpiresAt = needsConfirmation
+    ? new Date(Date.now() + BOOKING_CONFIRMATION_WINDOW_HOURS * 60 * 60 * 1000).toISOString()
+    : null;
+
+  const createdRequests: { id: string; reference: string; device: DeviceInput }[] = [];
   for (let i = 0; i < devices.length; i++) {
     const d = devices[i];
-    const confirmationToken = needsConfirmation ? crypto.randomUUID() : null;
-    const confirmationExpiresAt = needsConfirmation
-      ? new Date(Date.now() + BOOKING_CONFIRMATION_WINDOW_HOURS * 60 * 60 * 1000).toISOString()
-      : null;
     const statusHistory = [{ statusId: initialStatus.id, at: now }];
 
     let created: { id: string } | null = null;
@@ -1239,7 +1243,7 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
         throw err;
       }
     }
-    createdRequests.push({ id: created!.id, reference, confirmationToken, device: d });
+    createdRequests.push({ id: created!.id, reference, device: d });
   }
 
   const referenceList = createdRequests.map((r) => r.reference).join(", ");
@@ -1261,42 +1265,50 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
   // above: a missing RESEND_API_KEY, an unmatched device/service (no price
   // on file), or any other failure here must never block the request
   // itself from saving, so this always falls through to logActivity below.
-  // One email per device — each carries its own device details, estimated
-  // cost, and (when confirmation is needed) its own confirmation link.
+  // One combined email for the whole booking, not one per device — the
+  // service fee is for the technician's single visit to one address, so it
+  // must only ever appear (and be charged) once, no matter how many
+  // devices are in the booking; each device still gets its own line with
+  // its own estimated repair cost.
   const address = [street, barangay, city, province].filter(Boolean).join(", ") || "Not specified";
   const serviceFee = serviceFeeAmount(province, city);
-  const [deviceModels, servicePrices] = email ? await Promise.all([getDeviceModels(), getServicePrices()]) : [[], []];
-
-  for (const cr of createdRequests) {
-    let quoteNote = "";
-    if (email) {
-      try {
+  let quoteNote = "";
+  if (email) {
+    try {
+      const [deviceModels, servicePrices] = await Promise.all([getDeviceModels(), getServicePrices()]);
+      const quotationDevices = createdRequests.map((cr) => {
         const brand = allLookups.find((l) => l.id === cr.device.validDeviceBrandId);
         const deviceModel = deviceModels.find((m) => m.id === cr.device.validDeviceModelId);
         const deviceLabel = brand ? `${brand.label} ${deviceModel?.name ?? ""}`.trim() : cr.device.finalDeviceOther || "Not specified";
         const repairCost = cr.device.serviceTypeLabel
           ? getRepairQuote(servicePrices, cr.device.serviceTypeLabel, cr.device.validDeviceModelId ?? "", cr.device.screenQuality)
           : null;
-        await sendQuotationEmail(email, {
-          customerName: name || "Customer",
+        return {
           reference: cr.reference,
-          requestDate: formatDate(now),
           deviceLabel,
           serviceType: cr.device.serviceTypeLabel || "Not specified",
           issueDescription: cr.device.issueDescription || "—",
-          preferredDate: preferredDatetime ? formatDate(preferredDatetime) : "To be confirmed",
-          address,
           repairCost,
-          serviceFee,
-          confirmationUrl: cr.confirmationToken ? `${SITE_URL}/confirm-booking/${cr.confirmationToken}` : null,
-          confirmationWindowHours: BOOKING_CONFIRMATION_WINDOW_HOURS,
-        });
-        quoteNote = " — quotation emailed";
-      } catch (err) {
-        quoteNote = ` — quotation email failed to send (${err instanceof Error ? err.message : "unknown error"})`;
-      }
+        };
+      });
+      await sendQuotationEmail(email, {
+        customerName: name || "Customer",
+        referenceList,
+        requestDate: formatDate(now),
+        devices: quotationDevices,
+        preferredDate: preferredDatetime ? formatDate(preferredDatetime) : "To be confirmed",
+        address,
+        serviceFee,
+        confirmationUrl: confirmationToken ? `${SITE_URL}/confirm-booking/${confirmationToken}` : null,
+        confirmationWindowHours: BOOKING_CONFIRMATION_WINDOW_HOURS,
+      });
+      quoteNote = " — quotation emailed";
+    } catch (err) {
+      quoteNote = ` — quotation email failed to send (${err instanceof Error ? err.message : "unknown error"})`;
     }
+  }
 
+  for (const cr of createdRequests) {
     await logActivity(
       "home_service_request",
       cr.id,
@@ -1320,37 +1332,43 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
 }
 
 export type ConfirmBookingResult =
-  | { ok: true; reference: string; alreadyConfirmed: boolean }
+  | { ok: true; references: string[]; alreadyConfirmed: boolean }
   | { ok: false; error: "not_found" | "expired" };
 
 // Called from the public confirm-booking page when the customer clicks the
-// link in their quotation email. Moves the request from "Pending
-// Confirmation" to "Pending" (ready for an admin to assign) — idempotent,
-// since email clients/scanners sometimes pre-fetch links, and a customer
-// might click the link twice.
+// link in their quotation email. A multi-device booking shares one
+// confirmation_token across every device's row (one email, one link), so
+// this confirms every row in that group together — moving each from
+// "Pending Confirmation" to "Pending" (ready for an admin to assign).
+// Idempotent, since email clients/scanners sometimes pre-fetch links, and
+// a customer might click the link twice.
 export async function confirmBooking(token: string): Promise<ConfirmBookingResult> {
-  const req = await getRequestByConfirmationToken(token);
-  if (!req) return { ok: false, error: "not_found" };
-  if (req.confirmedAt) return { ok: true, reference: req.reference, alreadyConfirmed: true };
-  if (!req.confirmationExpiresAt || new Date(req.confirmationExpiresAt).getTime() < Date.now()) {
+  const reqs = await getRequestsByConfirmationToken(token);
+  if (reqs.length === 0) return { ok: false, error: "not_found" };
+  if (reqs.every((r) => r.confirmedAt)) return { ok: true, references: reqs.map((r) => r.reference), alreadyConfirmed: true };
+  const first = reqs[0];
+  if (!first.confirmationExpiresAt || new Date(first.confirmationExpiresAt).getTime() < Date.now()) {
     return { ok: false, error: "expired" };
   }
 
   const lookups = await getLookups();
   const pendingStatus = lookups.find((l) => l.kind === "request_status" && l.label === "Pending");
   const now = new Date().toISOString();
-  const statusHistory = pendingStatus ? [...req.statusHistory, { statusId: pendingStatus.id, at: now }] : req.statusHistory;
 
-  await query(
-    `update home_service_requests set confirmed_at=now()${pendingStatus ? ", status_id=$2, status_history=$3" : ""} where id=$1`,
-    pendingStatus ? [req.id, pendingStatus.id, JSON.stringify(statusHistory)] : [req.id]
-  );
-  await logActivity("home_service_request", req.id, `Request ${req.reference} confirmed by customer — moved to the Unassigned queue`, "System");
-  await notifyAdmins("new_request", req.id, `${req.customerName || "A customer"} confirmed Home Service Request ${req.reference} — now in the Unassigned queue.`);
+  for (const req of reqs) {
+    if (req.confirmedAt) continue;
+    const statusHistory = pendingStatus ? [...req.statusHistory, { statusId: pendingStatus.id, at: now }] : req.statusHistory;
+    await query(
+      `update home_service_requests set confirmed_at=now()${pendingStatus ? ", status_id=$2, status_history=$3" : ""} where id=$1`,
+      pendingStatus ? [req.id, pendingStatus.id, JSON.stringify(statusHistory)] : [req.id]
+    );
+    await logActivity("home_service_request", req.id, `Request ${req.reference} confirmed by customer — moved to the Unassigned queue`, "System");
+    await notifyAdmins("new_request", req.id, `${req.customerName || "A customer"} confirmed Home Service Request ${req.reference} — now in the Unassigned queue.`);
+  }
 
   revalidatePath("/admin/requests");
   revalidatePath("/admin");
-  return { ok: true, reference: req.reference, alreadyConfirmed: false };
+  return { ok: true, references: reqs.map((r) => r.reference), alreadyConfirmed: false };
 }
 
 // ---------- Public Contact Form ----------

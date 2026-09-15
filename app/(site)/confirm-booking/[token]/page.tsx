@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { getRequestByConfirmationToken } from "@/lib/db";
+import { getRequestsByConfirmationToken } from "@/lib/db";
 import { confirmBooking } from "@/lib/actions";
 import { formatDate } from "@/lib/format";
 
@@ -19,28 +19,31 @@ export default async function ConfirmBookingPage({
   const { token } = await params;
   const { result } = await searchParams;
 
-  const req = await getRequestByConfirmationToken(token);
+  // A multi-device booking shares one token across every device's row, so
+  // this is every request confirming together from the one email link.
+  const reqs = await getRequestsByConfirmationToken(token);
+  const referenceList = reqs.map((r) => r.reference).join(", ");
 
   if (result === "expired") {
     return (
       <Result icon="⏰" title="This link has expired" body="This confirmation window has passed and the booking was automatically cancelled. Please submit a new Home Service Request if you'd still like a technician to visit." />
     );
   }
-  if (result === "confirmed" || req?.confirmedAt) {
+  if (result === "confirmed" || (reqs.length > 0 && reqs.every((r) => r.confirmedAt))) {
     return (
       <Result
         icon="✅"
         title="Booking confirmed!"
-        body={req ? `Your request ${req.reference} is confirmed and now in queue for a technician to be assigned.` : "Your request is confirmed."}
+        body={reqs.length > 0 ? `Your request${reqs.length > 1 ? "s" : ""} ${referenceList} ${reqs.length > 1 ? "are" : "is"} confirmed and now in queue for a technician to be assigned.` : "Your request is confirmed."}
       />
     );
   }
 
-  if (!req) {
+  if (reqs.length === 0) {
     return <Result icon="⚠️" title="Invalid link" body="We couldn't find a booking for this confirmation link. It may have already been used from a different link, or the link was mistyped." />;
   }
 
-  if (isExpired(req.confirmationExpiresAt)) {
+  if (isExpired(reqs[0].confirmationExpiresAt)) {
     return (
       <Result icon="⏰" title="This link has expired" body="This confirmation window has passed and the booking was automatically cancelled. Please submit a new Home Service Request if you'd still like a technician to visit." />
     );
@@ -60,15 +63,17 @@ export default async function ConfirmBookingPage({
           <h1 className="text-lg font-semibold text-slate-800">Confirm Your Booking</h1>
           <div className="space-y-1 text-left text-sm text-slate-600">
             <p>
-              <span className="text-slate-400">Reference:</span> <span className="font-mono font-semibold">{req.reference}</span>
+              <span className="text-slate-400">Reference{reqs.length > 1 ? "s" : ""}:</span>{" "}
+              <span className="font-mono font-semibold">{referenceList}</span>
             </p>
             <p>
-              <span className="text-slate-400">Preferred Date:</span> {req.preferredDatetime ? formatDate(req.preferredDatetime) : "To be confirmed"}
+              <span className="text-slate-400">Preferred Date:</span>{" "}
+              {reqs[0].preferredDatetime ? formatDate(reqs[0].preferredDatetime) : "To be confirmed"}
             </p>
           </div>
           <p className="text-sm text-slate-400">
-            Confirm below so we can assign a technician to your request. Unconfirmed bookings are automatically cancelled after the
-            confirmation window.
+            Confirm below so we can assign a technician to your request{reqs.length > 1 ? "s" : ""}. Unconfirmed bookings are
+            automatically cancelled after the confirmation window.
           </p>
           <form action={confirm}>
             <button type="submit" className="btn-primary w-full">

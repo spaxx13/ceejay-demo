@@ -80,18 +80,27 @@ export async function sendOtpEmail(to: string, code: string) {
   if (error) throw new Error(error.message);
 }
 
+export type QuotationDevice = {
+  reference: string;
+  deviceLabel: string;
+  serviceType: string;
+  issueDescription: string;
+  repairCost: number | null;
+};
+
+// One email covers the whole booking, not one per device — the service
+// fee is for the technician's single visit to one address, so it's shown
+// (and totalled) exactly once here regardless of how many devices are in
+// `devices`; each device still gets its own line with its own repair cost.
 export async function sendQuotationEmail(
   to: string,
   opts: {
     customerName: string;
-    reference: string;
+    referenceList: string;
     requestDate: string;
-    deviceLabel: string;
-    serviceType: string;
-    issueDescription: string;
+    devices: QuotationDevice[];
     preferredDate: string;
     address: string;
-    repairCost: number | null;
     serviceFee: number | null;
     confirmationUrl: string | null;
     confirmationWindowHours: number;
@@ -100,10 +109,23 @@ export async function sendQuotationEmail(
   const client = getClient();
   const peso = (n: number) => `₱${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   const pdfBytes = await generateQuotationPdf(opts);
+  const allCostsKnown = opts.devices.every((d) => d.repairCost !== null);
+  const totalRepairCost = opts.devices.reduce((sum, d) => sum + (d.repairCost ?? 0), 0);
   const totalLine =
-    opts.repairCost !== null && opts.serviceFee !== null
-      ? `an estimated total of <strong>${peso(opts.repairCost + opts.serviceFee)}</strong> (repair cost + service fee)`
+    allCostsKnown && opts.serviceFee !== null
+      ? `an estimated total of <strong>${peso(totalRepairCost + opts.serviceFee)}</strong> (repair cost${opts.devices.length > 1 ? "s" : ""} + one service fee for the visit)`
       : "an estimate — our technician will confirm the exact repair cost upon inspection";
+
+  const deviceLines = opts.devices
+    .map(
+      (d) => `
+        <li style="margin-bottom: 6px;">
+          <strong>${d.deviceLabel || "Device"}</strong> — ${d.serviceType} (${d.reference})
+          <br/><span style="color: #64748b;">${d.repairCost !== null ? peso(d.repairCost) : "Cost confirmed upon inspection"}</span>
+        </li>
+      `
+    )
+    .join("");
 
   const confirmationBlock = opts.confirmationUrl
     ? `
@@ -129,8 +151,9 @@ export async function sendQuotationEmail(
       <h2 style="margin: 4px 0 16px;">Your repair quotation is ready</h2>
       <p style="font-size: 14px; line-height: 1.5;">
         Hi ${opts.customerName}, thanks for booking a home service repair with us. Your quotation for
-        <strong>${opts.reference}</strong> (${opts.deviceLabel || "your device"}) is attached as a PDF — ${totalLine}.
+        <strong>${opts.referenceList}</strong> is attached as a PDF — ${totalLine}.
       </p>
+      <ul style="font-size: 13px; padding-left: 18px; margin: 12px 0;">${deviceLines}</ul>
       ${confirmationBlock}
       <p style="font-size: 13px; color: #64748b;">
         This is an estimate based on our standard price list. Final pricing will be confirmed by our technician before any repair work
@@ -142,9 +165,9 @@ export async function sendQuotationEmail(
   const { error } = await client.emails.send({
     from: FROM,
     to,
-    subject: `Your repair quotation — ${opts.reference}`,
+    subject: `Your repair quotation — ${opts.referenceList}`,
     html,
-    attachments: [{ filename: `quotation-${opts.reference}.pdf`, content: Buffer.from(pdfBytes) }],
+    attachments: [{ filename: `quotation-${opts.devices[0]?.reference ?? "request"}.pdf`, content: Buffer.from(pdfBytes) }],
   });
   if (error) throw new Error(error.message);
 }
