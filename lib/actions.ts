@@ -31,7 +31,7 @@ import {
   canAccessCrm,
 } from "./db";
 import { getCurrentUser, setSession, clearSession, requireRole } from "./auth";
-import { sendOtpEmail, sendRepairReceiptEmail, sendCancellationEmail, sendQuotationEmail, sendLeadReplyEmail } from "./email";
+import { sendOtpEmail, sendRepairReceiptEmail, sendCancellationEmail, sendQuotationEmail, sendLeadReplyEmail, sendBroadcastEmail } from "./email";
 import { sendSms, smsConfigured, getAccountStatus, type SmsAccountStatus } from "./sms";
 import { SUNDAY_ONLY_PROVINCES, serviceFeeAmount } from "./homeServiceFees";
 import { getRepairQuote } from "./servicePricing";
@@ -1739,6 +1739,49 @@ export async function assignLead(formData: FormData) {
   await logActivity("lead", leadId, assignee ? `Assigned to ${assignee.name} by ${user?.name ?? "Admin"}` : `Unassigned by ${user?.name ?? "Admin"}`, user?.name ?? "Admin");
   revalidatePath("/admin/crm");
   revalidatePath(`/admin/crm/${leadId}`);
+}
+
+export type BroadcastResult = { ok: true; sent: number; failed: number; total: number } | { ok: false; error: string };
+
+// Announcements/promos go to every distinct email on file across leads and
+// customers — deduped since a converted lead's email also appears on their
+// customer record. Owner-admin only: this reaches people across every
+// branch at once, unlike the rest of CRM which branch admins can touch
+// within their own branch's leads.
+export async function sendCrmBroadcast(_prev: BroadcastResult | undefined, formData: FormData): Promise<BroadcastResult> {
+  const user = await getCurrentUser();
+  if (!user || user.role !== "owner_admin") return { ok: false, error: "Owner admin access required." };
+
+  const subject = str(formData, "subject");
+  const message = str(formData, "message");
+  if (!subject || !message) return { ok: false, error: "Please provide both a subject and a message." };
+
+  const [leads, customers] = await Promise.all([
+    query<{ email: string }>("select email from leads where email <> ''"),
+    query<{ email: string }>("select email from customers where email <> ''"),
+  ]);
+
+  const seen = new Set<string>();
+  const recipients: string[] = [];
+  for (const r of [...leads, ...customers]) {
+    const key = r.email.toLowerCase().trim();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    recipients.push(r.email);
+  }
+
+  let sent = 0;
+  let failed = 0;
+  for (const email of recipients) {
+    try {
+      await sendBroadcastEmail(email, { subject, message });
+      sent++;
+    } catch {
+      failed++;
+    }
+  }
+
+  return { ok: true, sent, failed, total: recipients.length };
 }
 
 export async function addLeadNote(formData: FormData) {
