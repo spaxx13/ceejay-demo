@@ -211,7 +211,8 @@ export default async function PosPage({ searchParams }: { searchParams: Promise<
                 <DeleteButton
                   id={r.id}
                   action={deleteRepairRecord}
-                  confirmMessage={`Permanently delete repair record ${r.reference}? This can't be undone.`}
+                  confirmMessage={`Move repair record ${r.reference} to Trash? You can restore it later from Trash.`}
+                  label="Move to Trash"
                   className="btn-secondary !py-1.5 text-xs !text-red-600"
                 />
               )}
@@ -276,7 +277,8 @@ export default async function PosPage({ searchParams }: { searchParams: Promise<
                       <DeleteButton
                         id={r.id}
                         action={deleteRepairRecord}
-                        confirmMessage={`Permanently delete repair record ${r.reference}? This can't be undone.`}
+                        confirmMessage={`Move repair record ${r.reference} to Trash? You can restore it later from Trash.`}
+                        label="Move to Trash"
                       />
                     )}
                   </div>

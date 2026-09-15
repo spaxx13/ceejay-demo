@@ -17,7 +17,7 @@ const NAV_GROUPS: { label: string | null; links: { href: string; label: string; 
     ],
   },
   { label: "Customers", links: [{ href: "/admin/crm", label: "CRM", crmGated: true }] },
-  { label: "Tools", links: [{ href: "/admin/tools/panic-log", label: "Panic Log Checker" }] },
+  { label: "Tools", links: [{ href: "/admin/tools/panic-log", label: "Panic Log Checker" }, { href: "/admin/trash", label: "Trash" }] },
   { label: null, links: [{ href: "/admin/notifications", label: "Notifications" }] },
 ];
 

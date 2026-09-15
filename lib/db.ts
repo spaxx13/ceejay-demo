@@ -230,6 +230,7 @@ type RequestRow = {
   status_history: { statusId: string; at: string }[]; custom_fields: Record<string, string | boolean>; created_at: Date;
   vlog_consent: boolean; vlog_blur_preference: HomeServiceRequest["vlogBlurPreference"]; screen_quality: HomeServiceRequest["screenQuality"]; back_housing_color: string; reminder_sent_at: Date | null;
   confirmation_token: string | null; confirmation_expires_at: Date | null; confirmed_at: Date | null; booking_group_id: string | null;
+  deleted_at: Date | null;
 };
 function mapRequest(r: RequestRow): HomeServiceRequest {
   return {
@@ -242,7 +243,7 @@ function mapRequest(r: RequestRow): HomeServiceRequest {
     vlogConsent: r.vlog_consent, vlogBlurPreference: r.vlog_blur_preference || "", screenQuality: r.screen_quality || "", backHousingColor: r.back_housing_color || "",
     reminderSentAt: toIsoOrNull(r.reminder_sent_at),
     confirmationToken: r.confirmation_token, confirmationExpiresAt: toIsoOrNull(r.confirmation_expires_at), confirmedAt: toIsoOrNull(r.confirmed_at),
-    bookingGroupId: r.booking_group_id,
+    bookingGroupId: r.booking_group_id, deletedAt: toIsoOrNull(r.deleted_at),
   };
 }
 
@@ -271,6 +272,7 @@ type RepairRecordRow = {
   reported_problem: string; service_performed: string; parts_used: string; cost: string; parts_cost: string; labor_cost: string; other_expenses: string; technician_name: string;
   service_date: Date | string; notes: string; logged_by: string; created_at: Date;
   cancelled: boolean; cancellation_reason: string; cancelled_at: Date | null;
+  deleted_at: Date | null;
 };
 function mapRepairRecord(r: RepairRecordRow): RepairRecord {
   return {
@@ -280,6 +282,7 @@ function mapRepairRecord(r: RepairRecordRow): RepairRecord {
     technicianName: r.technician_name, serviceDate: toDateStr(r.service_date), notes: r.notes,
     loggedBy: r.logged_by, createdAt: toIso(r.created_at),
     cancelled: r.cancelled, cancellationReason: r.cancellation_reason, cancelledAt: toIsoOrNull(r.cancelled_at),
+    deletedAt: toIsoOrNull(r.deleted_at),
   };
 }
 
@@ -416,7 +419,13 @@ export async function getLeadById(id: string) {
   return row ? mapLead(row) : null;
 }
 export async function getRequests() {
-  return (await query<RequestRow>("select * from home_service_requests order by created_at desc")).map(mapRequest);
+  return (await query<RequestRow>("select * from home_service_requests where deleted_at is null order by created_at desc")).map(mapRequest);
+}
+// Trashed requests — hidden from getRequests() and every list/report built
+// on it, but still fetchable here so the Trash page can list them and offer
+// Restore / Delete Permanently.
+export async function getDeletedRequests() {
+  return (await query<RequestRow>("select * from home_service_requests where deleted_at is not null order by deleted_at desc")).map(mapRequest);
 }
 export async function getRequestById(id: string) {
   const row = await queryOne<RequestRow>("select * from home_service_requests where id = $1", [id]);
@@ -456,7 +465,13 @@ export async function getSales() {
   return saleRows.map((r) => mapSale(r, linesBySale.get(r.id) ?? []));
 }
 export async function getRepairRecords() {
-  return (await query<RepairRecordRow>("select * from repair_records order by created_at desc")).map(mapRepairRecord);
+  return (await query<RepairRecordRow>("select * from repair_records where deleted_at is null order by created_at desc")).map(mapRepairRecord);
+}
+// Trashed repair records — hidden from getRepairRecords() and every
+// list/report built on it, but still fetchable here so the Trash page can
+// list them and offer Restore / Delete Permanently.
+export async function getDeletedRepairRecords() {
+  return (await query<RepairRecordRow>("select * from repair_records where deleted_at is not null order by deleted_at desc")).map(mapRepairRecord);
 }
 export async function getRepairRecordById(id: string) {
   const row = await queryOne<RepairRecordRow>("select * from repair_records where id = $1", [id]);

@@ -340,14 +340,14 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
             <div className="card space-y-2">
               <h3 className="text-sm font-semibold text-red-600">Delete Request</h3>
               <p className="text-xs text-slate-500">
-                Permanently erases this request and its checklists — unlike Cancelled status, this can&apos;t be undone and removes it from
-                history entirely.
+                Moves this request to Trash — it disappears from the normal list but can still be restored later from Trash, or deleted
+                permanently from there.
               </p>
               <DeleteButton
                 id={req.id}
                 action={deleteHomeServiceRequest}
-                confirmMessage={`Permanently delete home service request ${req.reference}? This can't be undone.`}
-                label="Delete Request"
+                confirmMessage={`Move home service request ${req.reference} to Trash? You can restore it later from Trash.`}
+                label="Move to Trash"
                 className="btn-secondary w-full !text-red-600"
               />
             </div>

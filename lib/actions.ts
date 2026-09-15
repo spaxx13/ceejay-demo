@@ -796,22 +796,50 @@ export async function cancelRepairRecord(formData: FormData) {
   revalidatePath("/admin");
 }
 
-// Permanently removes a repair record — unlike cancelling (which keeps the
-// record for history, just excluded from revenue), this actually deletes
-// it and its checklists (service_agreements.repair_record_id cascades).
-// Owner-only: a branch admin can cancel a mistaken entry, but only the
-// owner can erase it outright.
+// Moves a repair record to Trash — unlike cancelling (which keeps the
+// record for history, just excluded from revenue), this hides it from the
+// normal POS list entirely, but it can still be restored from Trash. Only
+// permanentlyDeleteRepairRecord actually erases it. Owner-only: a branch
+// admin can cancel a mistaken entry, but only the owner can trash it
+// outright.
 export async function deleteRepairRecord(formData: FormData) {
   const actor = await requireRole("owner_admin");
   if (!actor) return;
 
   const recordId = str(formData, "id");
-  await query("delete from repair_records where id=$1", [recordId]);
+  await query("update repair_records set deleted_at=now() where id=$1", [recordId]);
   revalidatePath("/admin/pos");
   revalidatePath("/admin/sales");
   revalidatePath("/admin/sales/daily");
   revalidatePath("/admin/sales/technicians");
+  revalidatePath("/admin/trash");
   revalidatePath("/admin");
+}
+
+export async function restoreRepairRecord(formData: FormData) {
+  const actor = await requireRole("owner_admin");
+  if (!actor) return;
+
+  const recordId = str(formData, "id");
+  await query("update repair_records set deleted_at=null where id=$1", [recordId]);
+  revalidatePath("/admin/pos");
+  revalidatePath("/admin/sales");
+  revalidatePath("/admin/sales/daily");
+  revalidatePath("/admin/sales/technicians");
+  revalidatePath("/admin/trash");
+  revalidatePath("/admin");
+}
+
+// Actually erases a trashed repair record — its checklists
+// (service_agreements.repair_record_id cascades). Only reachable from
+// Trash, so a record always passes through the reversible trash step first.
+export async function permanentlyDeleteRepairRecord(formData: FormData) {
+  const actor = await requireRole("owner_admin");
+  if (!actor) return;
+
+  const recordId = str(formData, "id");
+  await query("delete from repair_records where id=$1 and deleted_at is not null", [recordId]);
+  revalidatePath("/admin/trash");
 }
 
 // Lets a ticket's customer/repair details be filled in or corrected — while
@@ -1117,6 +1145,7 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
            and device_other = $4
            and status_id is distinct from $5
            and ($6::date is null or preferred_datetime::date = $6::date)
+           and deleted_at is null
          limit 1`,
         [phone, validDeviceBrandId, validDeviceModelId, finalDeviceOther, cancelledStatus?.id ?? null, preferredDatetime || null]
       );
@@ -1564,24 +1593,54 @@ export async function changeRequestStatus(formData: FormData) {
   revalidatePath("/technician");
 }
 
-// Permanently removes a home service request — its checklists
-// (service_agreements), notifications, and progress notes all cascade with
-// it; any POS sale tied to it just loses that reference (kept, not
-// deleted). Cancelling a request keeps it for history; this actually erases
-// it, so it's gated by canDeleteHomeServiceRequests — owner admins always,
-// branch admins only when explicitly granted (Staff Accounts).
+// Moves a home service request to Trash — hides it from the normal list,
+// technician board, and sales reports, but it can still be restored from
+// Trash. Only permanentlyDeleteHomeServiceRequest actually erases it.
+// Cancelling a request keeps it visible for history; trashing hides it
+// entirely, so it's gated by canDeleteHomeServiceRequests — owner admins
+// always, branch admins only when explicitly granted (Staff Accounts).
 export async function deleteHomeServiceRequest(formData: FormData) {
   const actor = await getCurrentUser();
   if (!canDeleteHomeServiceRequests(actor)) return;
 
   const requestId = str(formData, "id");
-  await query("delete from home_service_requests where id=$1", [requestId]);
+  await query("update home_service_requests set deleted_at=now() where id=$1", [requestId]);
   revalidatePath("/admin/requests");
   revalidatePath("/admin/pos");
   revalidatePath("/admin/sales/home-service");
   revalidatePath("/admin/sales/materials");
   revalidatePath("/technician");
+  revalidatePath("/admin/trash");
   revalidatePath("/admin");
+}
+
+export async function restoreHomeServiceRequest(formData: FormData) {
+  const actor = await getCurrentUser();
+  if (!canDeleteHomeServiceRequests(actor)) return;
+
+  const requestId = str(formData, "id");
+  await query("update home_service_requests set deleted_at=null where id=$1", [requestId]);
+  revalidatePath("/admin/requests");
+  revalidatePath("/admin/pos");
+  revalidatePath("/admin/sales/home-service");
+  revalidatePath("/admin/sales/materials");
+  revalidatePath("/technician");
+  revalidatePath("/admin/trash");
+  revalidatePath("/admin");
+}
+
+// Actually erases a trashed home service request — its checklists
+// (service_agreements), notifications, and progress notes all cascade with
+// it; any POS sale tied to it just loses that reference (kept, not
+// deleted). Only reachable from Trash, so a request always passes through
+// the reversible trash step first.
+export async function permanentlyDeleteHomeServiceRequest(formData: FormData) {
+  const actor = await getCurrentUser();
+  if (!canDeleteHomeServiceRequests(actor)) return;
+
+  const requestId = str(formData, "id");
+  await query("delete from home_service_requests where id=$1 and deleted_at is not null", [requestId]);
+  revalidatePath("/admin/trash");
 }
 
 export async function updateRequestNotes(formData: FormData) {

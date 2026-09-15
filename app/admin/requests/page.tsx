@@ -181,7 +181,8 @@ export default async function RequestsPage({
                 <DeleteButton
                   id={r.id}
                   action={deleteHomeServiceRequest}
-                  confirmMessage={`Permanently delete home service request ${r.reference}? This can't be undone.`}
+                  confirmMessage={`Move home service request ${r.reference} to Trash? You can restore it later from Trash.`}
+                  label="Move to Trash"
                   className="btn-secondary !py-1.5 text-xs !text-red-600"
                 />
               )}
@@ -239,7 +240,8 @@ export default async function RequestsPage({
                       <DeleteButton
                         id={r.id}
                         action={deleteHomeServiceRequest}
-                        confirmMessage={`Permanently delete home service request ${r.reference}? This can't be undone.`}
+                        confirmMessage={`Move home service request ${r.reference} to Trash? You can restore it later from Trash.`}
+                        label="Move to Trash"
                       />
                     )}
                   </div>

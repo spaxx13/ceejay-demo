@@ -273,6 +273,7 @@ export type HomeServiceRequest = {
   confirmationExpiresAt: string | null; // 2 hours after submission — the void-unconfirmed-requests cron cancels the request once this passes with confirmedAt still null
   confirmedAt: string | null; // set when the customer clicks the confirm link in their quotation email
   bookingGroupId: string | null; // shared by every device from the same "+ Add Another Device" submission — one technician assignment cascades to the whole group, since it's one visit to one address
+  deletedAt: string | null; // set when moved to Trash — null again once restored
 };
 
 export type SaleLineItem = {
@@ -329,6 +330,7 @@ export type RepairRecord = {
   cancelled: boolean;
   cancellationReason: string;
   cancelledAt: string | null;
+  deletedAt: string | null; // set when moved to Trash — null again once restored
 };
 
 export type ActivityLog = {

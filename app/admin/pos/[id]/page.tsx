@@ -338,14 +338,14 @@ export default async function RepairRecordDetailPage({ params }: { params: Promi
           <summary className="cursor-pointer text-sm font-medium text-red-600">Delete this record</summary>
           <div className="mt-3 space-y-2">
             <p className="text-xs text-slate-500">
-              Permanently erases this record and its checklists — unlike cancelling, this can&apos;t be undone and removes it from history
-              entirely.
+              Moves this record to Trash — it disappears from the normal list but can still be restored later from Trash, or deleted
+              permanently from there.
             </p>
             <DeleteButton
               id={record.id}
               action={deleteRepairRecord}
-              confirmMessage={`Permanently delete repair record ${record.reference}? This can't be undone.`}
-              label="Delete Record"
+              confirmMessage={`Move repair record ${record.reference} to Trash? You can restore it later from Trash.`}
+              label="Move to Trash"
               className="btn-secondary !text-red-600"
             />
           </div>
