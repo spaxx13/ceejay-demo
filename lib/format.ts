@@ -14,3 +14,10 @@ export function formatDate(value: string | Date): string {
   const date = typeof value === "string" ? new Date(value) : value;
   return date.toLocaleDateString("en-US", { timeZone: TIME_ZONE });
 }
+
+// "en-CA" formats as YYYY-MM-DD, matching the date strings request rows
+// are already truncated to (see toDateStr in lib/db.ts), so this can be
+// compared directly against r.preferredDatetime.
+export function todayDateStr(): string {
+  return new Date().toLocaleDateString("en-CA", { timeZone: TIME_ZONE });
+}
