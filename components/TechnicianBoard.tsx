@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { technicianUpdateStatus } from "@/lib/actions";
 import StatusBadge from "./StatusBadge";
+import Linkify from "./Linkify";
 import { formatDate, formatDateTime } from "@/lib/format";
 
 type Status = { id: string; label: string };
@@ -118,10 +119,9 @@ export default function TechnicianBoard({ requests, statuses }: { requests: Req[
               <DetailRow label="Service Type">{r.serviceTypeLabel}</DetailRow>
               <DetailRow label="Issue">{r.issueDescription}</DetailRow>
               <DetailRow label="Address">
-                {r.street}
-                {r.barangay ? `, Brgy. ${r.barangay}` : ""}, {r.city}
-                {r.province ? `, ${r.province}` : ""}
-                {r.landmark ? ` (near ${r.landmark})` : ""}
+                <Linkify
+                  text={`${r.street}${r.barangay ? `, Brgy. ${r.barangay}` : ""}, ${r.city}${r.province ? `, ${r.province}` : ""}${r.landmark ? ` (near ${r.landmark})` : ""}`}
+                />
               </DetailRow>
               <DetailRow label="Preferred">{formatDate(r.preferredDatetime)}</DetailRow>
               <DetailRow label="Vlog Consent">

@@ -19,6 +19,7 @@ import { getCurrentUser } from "@/lib/auth";
 import StatusBadge from "@/components/StatusBadge";
 import ResendReceiptButton from "@/components/ResendReceiptButton";
 import DeleteButton from "@/components/DeleteButton";
+import Linkify from "@/components/Linkify";
 import { reassignRequest, changeRequestStatus, updateRequestNotes, deleteHomeServiceRequest } from "@/lib/actions";
 import type { ServiceAgreement } from "@/lib/types";
 import { formatDate, formatDateTime } from "@/lib/format";
@@ -205,10 +206,9 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
             <dd className="text-slate-800">{req.issueDescription}</dd>
             <dt className="text-slate-400">Address</dt>
             <dd className="text-slate-800">
-              {req.street}
-              {req.barangay ? `, Brgy. ${req.barangay}` : ""}, {req.city}
-              {req.province ? `, ${req.province}` : ""}
-              {req.landmark ? ` (near ${req.landmark})` : ""}
+              <Linkify
+                text={`${req.street}${req.barangay ? `, Brgy. ${req.barangay}` : ""}, ${req.city}${req.province ? `, ${req.province}` : ""}${req.landmark ? ` (near ${req.landmark})` : ""}`}
+              />
             </dd>
             <dt className="text-slate-400">Preferred</dt>
             <dd className="text-slate-800">{formatDate(req.preferredDatetime)}</dd>
