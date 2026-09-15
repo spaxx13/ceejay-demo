@@ -939,7 +939,7 @@ export async function verifyHomeServiceOtp(emailInput: string, codeInput: string
 
 // ---------- Public Home Service Request ----------
 
-export type SubmitResult = { ok: true; reference: string } | { ok: false; error: string };
+export type SubmitResult = { ok: true; references: string[] } | { ok: false; error: string };
 
 // System fields carry fixed input names (independent of the admin's chosen
 // display order) so this reads the same regardless of how fields are
@@ -962,14 +962,7 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
   const city = str(formData, "city");
   const province = str(formData, "province");
   const barangay = str(formData, "barangay");
-  const serviceTypeId = str(formData, "serviceTypeId");
-  const issueDescription = str(formData, "issueDescription");
-  const photoDataUrlRaw = str(formData, "photoDataUrl");
-  const photoDataUrl = photoDataUrlRaw.startsWith("data:image/") ? photoDataUrlRaw : null;
   const preferredDatetime = str(formData, "preferredDatetime");
-  const deviceBrandId = str(formData, "deviceBrandId");
-  const deviceModelId = str(formData, "deviceModelId");
-  const deviceOther = str(formData, "deviceOther");
   const email = str(formData, "email");
   const landmark = str(formData, "landmark");
   const vlogConsent = formData.has("vlogConsent");
@@ -977,8 +970,6 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
   if (vlogConsent && vlogBlurPreference !== "blurred" && vlogBlurPreference !== "not_blurred") {
     return { ok: false, error: "Please choose whether your face should be blurred if we vlog this visit." };
   }
-  const screenQuality = str(formData, "screenQuality");
-  const backHousingColor = str(formData, "backHousingColor");
 
   const customFormFields = await getCustomFormFields();
   const systemFields = customFormFields.filter((f) => f.systemKey);
@@ -997,11 +988,6 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
     const otpRow = await queryOne<{ verified: boolean }>("select verified from otp_codes where email=$1", [email.trim().toLowerCase()]);
     if (!otpRow?.verified) return { ok: false, error: "Please verify your email address before submitting." };
   }
-  if (isRequired("device_brand") && !deviceBrandId) return { ok: false, error: `${label("device_brand")} is required.` };
-  if (isRequired("device_model") && !deviceModelId && !deviceOther) return { ok: false, error: `${label("device_model")} is required.` };
-  if (isRequired("service_type") && !serviceTypeId) return { ok: false, error: `${label("service_type")} is required.` };
-  if (isRequired("issue") && !issueDescription) return { ok: false, error: `${label("issue")} is required.` };
-  if (isRequired("photo") && !photoDataUrl) return { ok: false, error: `${label("photo")} is required.` };
   if (isRequired("street") && !street) return { ok: false, error: `${label("street")} is required.` };
   if (isRequired("city") && !city) return { ok: false, error: `${label("city")} is required.` };
   if (isRequired("province") && !province) return { ok: false, error: `${label("province")} is required.` };
@@ -1036,8 +1022,126 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
     }
   }
 
+  const allLookups = await getLookups();
+  const requestStatuses = allLookups.filter((l) => l.kind === "request_status").sort((a, b) => a.order - b.order);
+  // Home Service Requests are no longer auto-assigned to a technician on
+  // submission — every new request lands in the Unassigned queue for an
+  // admin to triage and assign manually. Whenever an email was captured, it
+  // first has to sit in "Pending Confirmation" until the customer clicks
+  // the link in their quotation email (or the 2-hour window lapses and
+  // the void-unconfirmed-requests cron cancels it) — only then is it truly
+  // "Pending" and ready to assign. No email means no way to send that link,
+  // so it skips straight to Pending as before. Whether confirmation is
+  // needed at all depends only on the shared email field, so it's the same
+  // for every device in this booking — only each device's own
+  // confirmation_token (below) needs to be distinct.
+  const pendingStatus = requestStatuses.find((s) => s.label === "Pending") ?? requestStatuses[0];
+  const pendingConfirmationStatus = requestStatuses.find((s) => s.label === "Pending Confirmation");
+  const initialStatus = email && pendingConfirmationStatus ? pendingConfirmationStatus : pendingStatus;
+  const needsConfirmation = initialStatus.id === pendingConfirmationStatus?.id;
+  const cancelledStatus = requestStatuses.find((s) => s.label === "Cancelled");
+
+  // A customer can book several devices in one submission (the "+ Add
+  // Another Device" repeater in HomeServiceForm.tsx) — everything above is
+  // shared once across the booking; everything below is read per device
+  // index (0-based, deviceCount total) and becomes its own
+  // home_service_requests row, so each still gets its own independent
+  // assignment, status, checklist, pricing, and confirmation email exactly
+  // like a single-device booking always has.
+  const deviceCount = Math.max(1, parseInt(str(formData, "deviceCount"), 10) || 1);
+
+  type DeviceInput = {
+    validDeviceBrandId: string | null;
+    validDeviceModelId: string | null;
+    finalDeviceOther: string;
+    validServiceTypeId: string | null;
+    serviceTypeLabel: string;
+    issueDescription: string;
+    photoDataUrl: string | null;
+    screenQuality: string;
+    backHousingColor: string;
+  };
+  const devices: DeviceInput[] = [];
+
+  for (let i = 0; i < deviceCount; i++) {
+    const n = deviceCount > 1 ? ` (Device ${i + 1})` : "";
+    const deviceBrandId = str(formData, `deviceBrandId_${i}`);
+    const deviceModelId = str(formData, `deviceModelId_${i}`);
+    const deviceOther = str(formData, `deviceOther_${i}`);
+    const serviceTypeId = str(formData, `serviceTypeId_${i}`);
+    const issueDescription = str(formData, `issueDescription_${i}`);
+    const photoDataUrlRaw = str(formData, `photoDataUrl_${i}`);
+    const photoDataUrl = photoDataUrlRaw.startsWith("data:image/") ? photoDataUrlRaw : null;
+    const screenQuality = str(formData, `screenQuality_${i}`);
+    const backHousingColor = str(formData, `backHousingColor_${i}`);
+
+    if (isRequired("device_brand") && !deviceBrandId) return { ok: false, error: `${label("device_brand")} is required.${n}` };
+    if (isRequired("device_model") && !deviceModelId && !deviceOther) return { ok: false, error: `${label("device_model")} is required.${n}` };
+    if (isRequired("service_type") && !serviceTypeId) return { ok: false, error: `${label("service_type")} is required.${n}` };
+    if (isRequired("issue") && !issueDescription) return { ok: false, error: `${label("issue")} is required.${n}` };
+    if (isRequired("photo") && !photoDataUrl) return { ok: false, error: `${label("photo")} is required.${n}` };
+
+    const selectedServiceType = allLookups.find((l) => l.id === serviceTypeId);
+    if (selectedServiceType?.label === "Screen Repair" && screenQuality !== "original" && screenQuality !== "high_quality") {
+      return { ok: false, error: `Please choose Original or High Quality for the screen repair.${n}` };
+    }
+    if (selectedServiceType?.label === "Back Housing (whole shell)" && !backHousingColor) {
+      return { ok: false, error: `Please specify the back housing color you want.${n}` };
+    }
+
+    // device_brand_id and service_type_id are foreign keys to the lookups
+    // table, but Admin > Request Form lets either field's type be switched
+    // away from "select" to a plain text input — a customer can then type
+    // anything (e.g. "apple" lowercase, a typo, a brand we don't stock) into
+    // what the DB expects to be a UUID. Fall back to storing that text where
+    // it's actually usable instead of failing the whole submission.
+    const validDeviceBrandId = UUID_RE.test(deviceBrandId) ? deviceBrandId : null;
+    const validDeviceModelId = UUID_RE.test(deviceModelId) ? deviceModelId : null;
+    const validServiceTypeId = UUID_RE.test(serviceTypeId) ? serviceTypeId : null;
+    const finalDeviceOther = deviceBrandId && !validDeviceBrandId ? [deviceBrandId, deviceOther].filter(Boolean).join(" ") : deviceOther;
+
+    // Guard against accidental double booking — a double-tapped Submit
+    // button, or a customer resubmitting because they weren't sure the
+    // first one went through — by blocking a second non-cancelled request
+    // for the same phone, device, and preferred day instead of silently
+    // creating a duplicate job. Skipped when no preferred date was
+    // collected at all, since there's nothing to disambiguate by then.
+    if (phone) {
+      const duplicate = await queryOne<{ id: string }>(
+        `select id from home_service_requests
+         where phone = $1
+           and device_brand_id is not distinct from $2
+           and device_model_id is not distinct from $3
+           and device_other = $4
+           and status_id is distinct from $5
+           and ($6::date is null or preferred_datetime::date = $6::date)
+         limit 1`,
+        [phone, validDeviceBrandId, validDeviceModelId, finalDeviceOther, cancelledStatus?.id ?? null, preferredDatetime || null]
+      );
+      if (duplicate) {
+        return {
+          ok: false,
+          error: `You already have a request for this device on this date.${n} Please wait for us to process it, or contact us if you'd like to make changes.`,
+        };
+      }
+    }
+
+    devices.push({
+      validDeviceBrandId,
+      validDeviceModelId,
+      finalDeviceOther,
+      validServiceTypeId,
+      serviceTypeLabel: selectedServiceType?.label ?? "",
+      issueDescription,
+      photoDataUrl,
+      screenQuality: selectedServiceType?.label === "Screen Repair" ? screenQuality : "",
+      backHousingColor: selectedServiceType?.label === "Back Housing (whole shell)" ? backHousingColor : "",
+    });
+  }
+
   // Only dedupe/create a customer record when there's a name or phone to
-  // identify one by — both fields can be switched off entirely.
+  // identify one by — both fields can be switched off entirely. Shared
+  // across every device in this booking, so it's created at most once here.
   const customers = await getCustomers();
   let customerId: string | null = phone
     ? customers.find((c) => c.phone.replace(/[\s-]/g, "") === phone.replace(/[\s-]/g, ""))?.id ?? null
@@ -1052,73 +1156,10 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
     await logActivity("customer", customerId, "Customer created from Home Service Request form", "System");
   }
 
-  const allLookups = await getLookups();
-  const selectedServiceType = allLookups.find((l) => l.id === serviceTypeId);
-  if (selectedServiceType?.label === "Screen Repair" && screenQuality !== "original" && screenQuality !== "high_quality") {
-    return { ok: false, error: "Please choose Original or High Quality for your screen repair." };
-  }
-  if (selectedServiceType?.label === "Back Housing (whole shell)" && !backHousingColor) {
-    return { ok: false, error: "Please specify the back housing color you want." };
-  }
-  const requestStatuses = allLookups.filter((l) => l.kind === "request_status").sort((a, b) => a.order - b.order);
-  // Home Service Requests are no longer auto-assigned to a technician on
-  // submission — every new request lands in the Unassigned queue for an
-  // admin to triage and assign manually. Whenever an email was captured, it
-  // first has to sit in "Pending Confirmation" until the customer clicks
-  // the link in their quotation email (or the 2-hour window lapses and
-  // the void-unconfirmed-requests cron cancels it) — only then is it truly
-  // "Pending" and ready to assign. No email means no way to send that link,
-  // so it skips straight to Pending as before.
-  const pendingStatus = requestStatuses.find((s) => s.label === "Pending") ?? requestStatuses[0];
-  const pendingConfirmationStatus = requestStatuses.find((s) => s.label === "Pending Confirmation");
-  const initialStatus = email && pendingConfirmationStatus ? pendingConfirmationStatus : pendingStatus;
-  const needsConfirmation = initialStatus.id === pendingConfirmationStatus?.id;
-  const confirmationToken = needsConfirmation ? crypto.randomUUID() : null;
-  const confirmationExpiresAt = needsConfirmation
-    ? new Date(Date.now() + BOOKING_CONFIRMATION_WINDOW_HOURS * 60 * 60 * 1000).toISOString()
-    : null;
-
   const now = new Date().toISOString();
-  const statusHistory = [{ statusId: initialStatus.id, at: now }];
-
-  // device_brand_id and service_type_id are foreign keys to the lookups
-  // table, but Admin > Request Form lets either field's type be switched
-  // away from "select" to a plain text input — a customer can then type
-  // anything (e.g. "apple" lowercase, a typo, a brand we don't stock) into
-  // what the DB expects to be a UUID. Fall back to storing that text where
-  // it's actually usable instead of failing the whole submission.
-  const validDeviceBrandId = UUID_RE.test(deviceBrandId) ? deviceBrandId : null;
-  const validDeviceModelId = UUID_RE.test(deviceModelId) ? deviceModelId : null;
-  const validServiceTypeId = UUID_RE.test(serviceTypeId) ? serviceTypeId : null;
-  const finalDeviceOther =
-    deviceBrandId && !validDeviceBrandId ? [deviceBrandId, deviceOther].filter(Boolean).join(" ") : deviceOther;
-
-  // Guard against accidental double booking — a double-tapped Submit button,
-  // or a customer resubmitting because they weren't sure the first one went
-  // through — by blocking a second non-cancelled request for the same
-  // phone, device, and preferred day instead of silently creating a
-  // duplicate job. Skipped when no preferred date was collected at all,
-  // since there's nothing to disambiguate by then.
-  if (phone) {
-    const cancelledStatus = requestStatuses.find((s) => s.label === "Cancelled");
-    const duplicate = await queryOne<{ id: string }>(
-      `select id from home_service_requests
-       where phone = $1
-         and device_brand_id is not distinct from $2
-         and device_model_id is not distinct from $3
-         and device_other = $4
-         and status_id is distinct from $5
-         and ($6::date is null or preferred_datetime::date = $6::date)
-       limit 1`,
-      [phone, validDeviceBrandId, validDeviceModelId, finalDeviceOther, cancelledStatus?.id ?? null, preferredDatetime || null]
-    );
-    if (duplicate) {
-      return {
-        ok: false,
-        error: "You already have a request for this device on this date. Please wait for us to process it, or contact us if you'd like to make changes.",
-      };
-    }
-  }
+  const lat = str(formData, "lat") ? Number(str(formData, "lat")) : null;
+  const lng = str(formData, "lng") ? Number(str(formData, "lng")) : null;
+  const year = new Date().getFullYear();
 
   // The reference number is the highest already-used number for this year,
   // plus one — not a row count, since deleting a request (canDeleteHomeServiceRequests)
@@ -1126,74 +1167,88 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
   // row count that undercounts references still in use (which a
   // count-based number would collide with on every attempt, not just a
   // concurrent one — this is what actually broke the public form on
-  // 2026-09-14). Retry with a freshly computed reference on a
-  // unique-constraint collision to also cover two submissions landing on
-  // the same number at the same time. Mirrors createRepairRecordDraft's fix
-  // for the same bug on repair_records.
-  const year = new Date().getFullYear();
-  let reference = "";
-  let created: { id: string } | null = null;
-  for (let attempt = 1; attempt <= 5; attempt++) {
-    const max = await queryOne<{ n: number }>(
-      "select coalesce(max(split_part(reference, '-', 3)::int), 0)::int as n from home_service_requests where reference like $1",
-      [`HSR-${year}-%`]
-    );
-    reference = `HSR-${year}-${String((max?.n ?? 0) + 1).padStart(4, "0")}`;
-    try {
-      created = await queryOne<{ id: string }>(
-        `insert into home_service_requests (
-          reference, customer_id, customer_name, phone, email, device_brand_id, device_model_id, device_other, service_type_id,
-          issue_description, photo_data_url, street, landmark, province, city, barangay, lat, lng, preferred_datetime,
-          status_id, status_history, custom_fields, vlog_consent, vlog_blur_preference, screen_quality, back_housing_color,
-          assigned_technician_id, auto_assigned, branch_id, queue_branch_id, confirmation_token, confirmation_expires_at
-        ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32)
-        returning id`,
-        [
-          reference,
-          customerId,
-          name,
-          phone,
-          email,
-          validDeviceBrandId,
-          validDeviceModelId,
-          finalDeviceOther,
-          validServiceTypeId,
-          issueDescription,
-          photoDataUrl,
-          street,
-          landmark,
-          province,
-          city,
-          barangay,
-          str(formData, "lat") ? Number(str(formData, "lat")) : null,
-          str(formData, "lng") ? Number(str(formData, "lng")) : null,
-          preferredDatetime || null,
-          initialStatus.id,
-          JSON.stringify(statusHistory),
-          JSON.stringify(customFields),
-          vlogConsent,
-          vlogBlurPreference,
-          selectedServiceType?.label === "Screen Repair" ? screenQuality : "",
-          selectedServiceType?.label === "Back Housing (whole shell)" ? backHousingColor : "",
-          null,
-          false,
-          null,
-          queueBranch?.id ?? null,
-          confirmationToken,
-          confirmationExpiresAt,
-        ]
+  // 2026-09-14). Recomputed fresh and retried on a unique-constraint
+  // collision to also cover two submissions (or two devices in the same
+  // submission) landing on the same number at the same time. Mirrors
+  // createRepairRecordDraft's fix for the same bug on repair_records.
+  const createdRequests: { id: string; reference: string; confirmationToken: string | null; device: DeviceInput }[] = [];
+  for (let i = 0; i < devices.length; i++) {
+    const d = devices[i];
+    const confirmationToken = needsConfirmation ? crypto.randomUUID() : null;
+    const confirmationExpiresAt = needsConfirmation
+      ? new Date(Date.now() + BOOKING_CONFIRMATION_WINDOW_HOURS * 60 * 60 * 1000).toISOString()
+      : null;
+    const statusHistory = [{ statusId: initialStatus.id, at: now }];
+
+    let created: { id: string } | null = null;
+    let reference = "";
+    for (let attempt = 1; attempt <= 5; attempt++) {
+      const max = await queryOne<{ n: number }>(
+        "select coalesce(max(split_part(reference, '-', 3)::int), 0)::int as n from home_service_requests where reference like $1",
+        [`HSR-${year}-%`]
       );
-      break;
-    } catch (e) {
-      const code = e && typeof e === "object" && "code" in e ? (e as { code: string }).code : "";
-      if (code === "23505" && attempt < 5) continue;
-      throw e;
+      reference = `HSR-${year}-${String((max?.n ?? 0) + 1).padStart(4, "0")}`;
+      try {
+        created = await queryOne<{ id: string }>(
+          `insert into home_service_requests (
+            reference, customer_id, customer_name, phone, email, device_brand_id, device_model_id, device_other, service_type_id,
+            issue_description, photo_data_url, street, landmark, province, city, barangay, lat, lng, preferred_datetime,
+            status_id, status_history, custom_fields, vlog_consent, vlog_blur_preference, screen_quality, back_housing_color,
+            assigned_technician_id, auto_assigned, branch_id, queue_branch_id, confirmation_token, confirmation_expires_at
+          ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32)
+          returning id`,
+          [
+            reference,
+            customerId,
+            name,
+            phone,
+            email,
+            d.validDeviceBrandId,
+            d.validDeviceModelId,
+            d.finalDeviceOther,
+            d.validServiceTypeId,
+            d.issueDescription,
+            d.photoDataUrl,
+            street,
+            landmark,
+            province,
+            city,
+            barangay,
+            lat,
+            lng,
+            preferredDatetime || null,
+            initialStatus.id,
+            JSON.stringify(statusHistory),
+            JSON.stringify(customFields),
+            vlogConsent,
+            vlogBlurPreference,
+            d.screenQuality,
+            d.backHousingColor,
+            null,
+            false,
+            null,
+            queueBranch?.id ?? null,
+            confirmationToken,
+            confirmationExpiresAt,
+          ]
+        );
+        break;
+      } catch (err) {
+        const code = err && typeof err === "object" && "code" in err ? (err as { code: string }).code : "";
+        if (code === "23505" && attempt < 5) continue;
+        throw err;
+      }
     }
+    createdRequests.push({ id: created!.id, reference, confirmationToken, device: d });
   }
 
+  const referenceList = createdRequests.map((r) => r.reference).join(", ");
   let smsNote = "";
   if (phone && smsConfigured()) {
-    const confirmMessage = `Hi ${name || "there"}, your Ceejay repair request ${reference} has been received! Our team will reach out soon to schedule your service.`;
+    const confirmMessage =
+      createdRequests.length > 1
+        ? `Hi ${name || "there"}, your Ceejay repair requests ${referenceList} have been received! Our team will reach out soon to schedule your service.`
+        : `Hi ${name || "there"}, your Ceejay repair request ${referenceList} has been received! Our team will reach out soon to schedule your service.`;
     try {
       await sendSms(phone, confirmMessage);
       smsNote = ` — confirmation SMS sent to ${phone}`;
@@ -1206,57 +1261,62 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
   // above: a missing RESEND_API_KEY, an unmatched device/service (no price
   // on file), or any other failure here must never block the request
   // itself from saving, so this always falls through to logActivity below.
-  let quoteNote = "";
-  if (email) {
-    try {
-      const [deviceModels, servicePrices] = await Promise.all([getDeviceModels(), getServicePrices()]);
-      const brand = allLookups.find((l) => l.id === validDeviceBrandId);
-      const deviceModel = deviceModels.find((m) => m.id === validDeviceModelId);
-      const deviceLabel = brand ? `${brand.label} ${deviceModel?.name ?? ""}`.trim() : finalDeviceOther || "Not specified";
-      const repairCost = selectedServiceType
-        ? getRepairQuote(servicePrices, selectedServiceType.label, validDeviceModelId ?? "", screenQuality)
-        : null;
-      const serviceFee = serviceFeeAmount(province, city);
-      const address = [street, barangay, city, province].filter(Boolean).join(", ") || "Not specified";
-      await sendQuotationEmail(email, {
-        customerName: name || "Customer",
-        reference,
-        requestDate: formatDate(now),
-        deviceLabel,
-        serviceType: selectedServiceType?.label ?? "Not specified",
-        issueDescription: issueDescription || "—",
-        preferredDate: preferredDatetime ? formatDate(preferredDatetime) : "To be confirmed",
-        address,
-        repairCost,
-        serviceFee,
-        confirmationUrl: confirmationToken ? `${SITE_URL}/confirm-booking/${confirmationToken}` : null,
-        confirmationWindowHours: BOOKING_CONFIRMATION_WINDOW_HOURS,
-      });
-      quoteNote = " — quotation emailed";
-    } catch (err) {
-      quoteNote = ` — quotation email failed to send (${err instanceof Error ? err.message : "unknown error"})`;
-    }
-  }
+  // One email per device — each carries its own device details, estimated
+  // cost, and (when confirmation is needed) its own confirmation link.
+  const address = [street, barangay, city, province].filter(Boolean).join(", ") || "Not specified";
+  const serviceFee = serviceFeeAmount(province, city);
+  const [deviceModels, servicePrices] = email ? await Promise.all([getDeviceModels(), getServicePrices()]) : [[], []];
 
-  await logActivity(
-    "home_service_request",
-    created!.id,
-    `Request ${reference} submitted and sent to the Unassigned queue for triage${smsNote}${quoteNote}`,
-    "System"
-  );
-  await notifyAdmins(
-    "new_request",
-    created!.id,
-    needsConfirmation
-      ? `${name || "A customer"} submitted a new Home Service Request ${reference} — awaiting their confirmation email click.`
-      : `${name || "A customer"} submitted a new Home Service Request ${reference} — now in the Unassigned queue.`
-  );
+  for (const cr of createdRequests) {
+    let quoteNote = "";
+    if (email) {
+      try {
+        const brand = allLookups.find((l) => l.id === cr.device.validDeviceBrandId);
+        const deviceModel = deviceModels.find((m) => m.id === cr.device.validDeviceModelId);
+        const deviceLabel = brand ? `${brand.label} ${deviceModel?.name ?? ""}`.trim() : cr.device.finalDeviceOther || "Not specified";
+        const repairCost = cr.device.serviceTypeLabel
+          ? getRepairQuote(servicePrices, cr.device.serviceTypeLabel, cr.device.validDeviceModelId ?? "", cr.device.screenQuality)
+          : null;
+        await sendQuotationEmail(email, {
+          customerName: name || "Customer",
+          reference: cr.reference,
+          requestDate: formatDate(now),
+          deviceLabel,
+          serviceType: cr.device.serviceTypeLabel || "Not specified",
+          issueDescription: cr.device.issueDescription || "—",
+          preferredDate: preferredDatetime ? formatDate(preferredDatetime) : "To be confirmed",
+          address,
+          repairCost,
+          serviceFee,
+          confirmationUrl: cr.confirmationToken ? `${SITE_URL}/confirm-booking/${cr.confirmationToken}` : null,
+          confirmationWindowHours: BOOKING_CONFIRMATION_WINDOW_HOURS,
+        });
+        quoteNote = " — quotation emailed";
+      } catch (err) {
+        quoteNote = ` — quotation email failed to send (${err instanceof Error ? err.message : "unknown error"})`;
+      }
+    }
+
+    await logActivity(
+      "home_service_request",
+      cr.id,
+      `Request ${cr.reference} submitted and sent to the Unassigned queue for triage${smsNote}${quoteNote}`,
+      "System"
+    );
+    await notifyAdmins(
+      "new_request",
+      cr.id,
+      needsConfirmation
+        ? `${name || "A customer"} submitted a new Home Service Request ${cr.reference} — awaiting their confirmation email click.`
+        : `${name || "A customer"} submitted a new Home Service Request ${cr.reference} — now in the Unassigned queue.`
+    );
+  }
 
   if (email) await query("delete from otp_codes where email=$1", [email.trim().toLowerCase()]);
 
   revalidatePath("/admin/requests");
   revalidatePath("/admin");
-  return { ok: true, reference };
+  return { ok: true, references: createdRequests.map((r) => r.reference) };
 }
 
 export type ConfirmBookingResult =

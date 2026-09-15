@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useActionState, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useActionState, useEffect, useRef, useState } from "react";
 import { submitHomeServiceRequest, sendHomeServiceOtp, verifyHomeServiceOtp } from "@/lib/actions";
 import { OTP_GATE_ENABLED } from "@/lib/config";
 import { PROVINCE_FEES, SUNDAY_ONLY_PROVINCES, nextSunday } from "@/lib/homeServiceFees";
@@ -52,6 +52,16 @@ type ServiceType = { id: string; label: string };
 type PhCity = { name: string; barangays: string[] };
 type PhProvince = { key: string; label: string; cities: PhCity[] };
 
+// One "+ Add Another Device" block's local UI state — everything else about
+// a device (issue description, photo, screen quality, etc.) lives directly
+// in the DOM as an indexed, uncontrolled field (deviceBrandId_0, _1, ...)
+// and is read from FormData on submit; only the bits that drive conditional
+// rendering need to be tracked here. `key` is a stable id for React and for
+// removal — not the same as the device's index, which shifts as blocks are
+// added/removed.
+type DeviceState = { key: number; brandId: string; showOther: boolean; serviceTypeId: string; agreedToServiceNotice: boolean };
+const DEVICE_FIELD_KEYS = new Set(["device_brand", "device_model", "service_type", "issue", "photo"]);
+
 // Matches the notice shown right above this dropdown — these require
 // in-branch equipment/parts we don't bring on a home visit, so they're kept
 // out of the options a customer can actually pick here (they're still
@@ -87,17 +97,29 @@ export default function HomeServiceForm({
 }) {
   const [state, formAction, pending] = useActionState(submitHomeServiceRequest, undefined);
   const formRef = useRef<HTMLFormElement>(null);
-  const [brandId, setBrandId] = useState("");
-  const [showOther, setShowOther] = useState(false);
   const [city, setCity] = useState("");
   const [province, setProvince] = useState("");
   const [barangay, setBarangay] = useState("");
-  const [serviceTypeId, setServiceTypeId] = useState("");
-  const [agreedToServiceNotice, setAgreedToServiceNotice] = useState(false);
   const [lat, setLat] = useState<number | null>(null);
   const [lng, setLng] = useState<number | null>(null);
   const streetRef = useRef<HTMLInputElement>(null);
   const [vlogConsent, setVlogConsent] = useState(false);
+
+  // One or more devices per booking — starts with a single blank block;
+  // "+ Add Another Device" appends another, sharing the contact/address
+  // fields above and below instead of asking the customer to fill the
+  // whole form out again per device.
+  const nextDeviceKeyRef = useRef(1);
+  const [devices, setDevices] = useState<DeviceState[]>([{ key: 0, brandId: "", showOther: false, serviceTypeId: "", agreedToServiceNotice: false }]);
+  function addDevice() {
+    setDevices((d) => [...d, { key: nextDeviceKeyRef.current++, brandId: "", showOther: false, serviceTypeId: "", agreedToServiceNotice: false }]);
+  }
+  function removeDevice(key: number) {
+    setDevices((d) => (d.length > 1 ? d.filter((x) => x.key !== key) : d));
+  }
+  function updateDevice(key: number, patch: Partial<DeviceState>) {
+    setDevices((d) => d.map((x) => (x.key === key ? { ...x, ...patch } : x)));
+  }
 
   // Province -> City -> Barangay cascading data, fetched on demand from a
   // static PSGC-derived asset rather than bundled into the JS — the "near"
@@ -213,7 +235,6 @@ export default function HomeServiceForm({
     }
   }
 
-  const modelsForBrand = useMemo(() => models.filter((m) => m.brandId === brandId), [models, brandId]);
   const streetActive = fields.some((f) => f.systemKey === "street");
   const emailField = fields.find((f) => f.systemKey === "email");
   const emailGateActive = OTP_GATE_ENABLED && (emailField?.active ?? false);
@@ -264,9 +285,9 @@ export default function HomeServiceForm({
         <p className="text-3xl">✅</p>
         <h2 className="text-lg font-semibold text-slate-800">{content.successTitle}</h2>
         <p className="text-sm text-slate-400">
-          Your reference number is
+          Your reference number{state.references.length > 1 ? "s are" : " is"}
           <br />
-          <span className="font-mono text-base font-semibold text-blue-300">{state.reference}</span>
+          <span className="font-mono text-base font-semibold text-blue-300">{state.references.join(", ")}</span>
         </p>
         <p className="text-sm text-slate-400">{content.successBody}</p>
         {sentEmail && (
@@ -337,8 +358,7 @@ export default function HomeServiceForm({
         // OTP verification (when the gate is on) now happens at submit
         // time, not inline here — see the bottom of the form.
         return renderGenericField(field, "email", "email");
-      case "issue":
-        return renderGenericField(field, "issueDescription");
+      // "issue" is rendered per device by renderDeviceBlockField below.
       case "landmark":
         return (
           <Fragment key={field.id}>
@@ -460,141 +480,9 @@ export default function HomeServiceForm({
           );
         }
         return renderGenericField(field, "preferredDatetime");
-      case "photo":
-        // A photo can't become text/select/checkbox without losing the
-        // actual image, so this one ignores `type` and always renders the
-        // upload widget.
-        return (
-          <div key={field.id} className="space-y-2">
-            <PhotoUpload label={field.label} required={req} />
-            <FormNotice icon="📷">
-              Please upload a photo of the device information (e.g. Settings &gt; About screen, or the back of the unit showing the model)
-              and, if applicable, a photo of the device&apos;s physical condition.
-            </FormNotice>
-          </div>
-        );
-      case "device_brand":
-        if (field.type !== "select") return renderGenericField(field, "deviceBrandId");
-        return (
-          <div key={field.id} className="space-y-1.5">
-            <label className="text-xs font-medium text-slate-500">
-              {field.label} {asterisk}
-            </label>
-            <select
-              name="deviceBrandId"
-              required={req}
-              className="input"
-              value={brandId}
-              onChange={(e) => {
-                setBrandId(e.target.value);
-                setShowOther(e.target.value === "other");
-              }}
-            >
-              <option value="">Select brand...</option>
-              {brands.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.label}
-                </option>
-              ))}
-              <option value="other">Other — please specify</option>
-            </select>
-          </div>
-        );
-      case "device_model":
-        // Off its native "select" type, this still lands in `deviceOther`
-        // (the free-text fallback the rest of the app already understands)
-        // rather than a dead field.
-        if (field.type !== "select") return renderGenericField(field, "deviceOther");
-        return (
-          <div key={field.id} className="space-y-1.5">
-            <label className="text-xs font-medium text-slate-500">
-              {field.label} {asterisk}
-            </label>
-            {showOther || modelsForBrand.length === 0 ? (
-              <input name="deviceOther" required={req} className="input" placeholder={field.placeholder} />
-            ) : (
-              <select name="deviceModelId" required={req} className="input">
-                <option value="">Select model...</option>
-                {modelsForBrand.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.name}
-                  </option>
-                ))}
-                <option value="">Other — specify below</option>
-              </select>
-            )}
-          </div>
-        );
-      case "service_type": {
-        if (field.type !== "select") return renderGenericField(field, "serviceTypeId");
-        const selectedServiceType = serviceTypes.find((s) => s.id === serviceTypeId);
-        const agreementNotice = selectedServiceType ? SERVICE_TYPE_AGREEMENT_NOTICES[selectedServiceType.label] : undefined;
-        return (
-          <div key={field.id} className="space-y-1.5">
-            <label className="text-xs font-medium text-slate-500">
-              {field.label} {asterisk}
-            </label>
-            <FormNotice>
-              We do not offer backglass replacement, camera repair, and board/power related issues on home service. You may contact our
-              branches for any concerns that is not listed on the dropdown list below.
-            </FormNotice>
-            <select
-              name="serviceTypeId"
-              required={req}
-              value={serviceTypeId}
-              onChange={(e) => {
-                setServiceTypeId(e.target.value);
-                setAgreedToServiceNotice(false);
-              }}
-              className="input"
-            >
-              <option value="">Select service type...</option>
-              {serviceTypes
-                .filter((s) => !EXCLUDED_FROM_HOME_SERVICE.has(s.label))
-                .map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.label}
-                  </option>
-                ))}
-            </select>
-            {selectedServiceType?.label === "Screen Repair" && (
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-slate-500">
-                  Screen Quality <span className="text-red-600">*</span>
-                </label>
-                <select name="screenQuality" required className="input">
-                  <option value="">Select quality...</option>
-                  <option value="original">Original</option>
-                  <option value="high_quality">High Quality (compatible)</option>
-                </select>
-              </div>
-            )}
-            {selectedServiceType?.label === "Back Housing (whole shell)" && (
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-slate-500">
-                  Back Housing Color <span className="text-red-600">*</span>
-                </label>
-                <input name="backHousingColor" required className="input" placeholder="e.g. Space Gray, Midnight Green" />
-              </div>
-            )}
-            {agreementNotice && (
-              <div className="space-y-2">
-                <FormNotice tone="blue">{agreementNotice}</FormNotice>
-                <label className="flex items-start gap-2 text-sm font-medium text-slate-700">
-                  <input
-                    type="checkbox"
-                    required
-                    checked={agreedToServiceNotice}
-                    onChange={(e) => setAgreedToServiceNotice(e.target.checked)}
-                    className="mt-0.5 h-4 w-4 rounded border-slate-300"
-                  />
-                  I Agree <span className="text-red-600">*</span>
-                </label>
-              </div>
-            )}
-          </div>
-        );
-      }
+      // device_brand, device_model, service_type, issue, and photo are
+      // rendered per device by renderDeviceBlockField below instead of
+      // here — see the "+ Add Another Device" repeater.
       case "street":
         // Places autocomplete only attaches while this field is at its
         // natural text type — otherwise there's no single text input to
@@ -624,10 +512,186 @@ export default function HomeServiceForm({
     }
   }
 
+  // The device-specific portion of the form (brand, model, service type +
+  // its conditional follow-ups, issue, photo) — rendered once per entry in
+  // `devices` instead of once for the whole form, each with its own
+  // indexed field names (e.g. deviceBrandId_0, deviceBrandId_1, ...) so
+  // lib/actions.ts can read `deviceCount` devices back out of one FormData.
+  function renderDeviceBlockField(field: CustomFormField, device: DeviceState, index: number, update: (patch: Partial<DeviceState>) => void) {
+    const req = field.required;
+    const asterisk = req && <span className="text-red-600">*</span>;
+    const modelsForBrand = models.filter((m) => m.brandId === device.brandId);
+    const selectedServiceType = serviceTypes.find((s) => s.id === device.serviceTypeId);
+    const agreementNotice = selectedServiceType ? SERVICE_TYPE_AGREEMENT_NOTICES[selectedServiceType.label] : undefined;
+
+    switch (field.systemKey) {
+      case "device_brand":
+        if (field.type !== "select") return renderGenericField(field, `deviceBrandId_${index}`);
+        return (
+          <div key={field.id} className="space-y-1.5">
+            <label className="text-xs font-medium text-slate-500">
+              {field.label} {asterisk}
+            </label>
+            <select
+              name={`deviceBrandId_${index}`}
+              required={req}
+              className="input"
+              value={device.brandId}
+              onChange={(e) => update({ brandId: e.target.value, showOther: e.target.value === "other" })}
+            >
+              <option value="">Select brand...</option>
+              {brands.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.label}
+                </option>
+              ))}
+              <option value="other">Other — please specify</option>
+            </select>
+          </div>
+        );
+      case "device_model":
+        if (field.type !== "select") return renderGenericField(field, `deviceOther_${index}`);
+        return (
+          <div key={field.id} className="space-y-1.5">
+            <label className="text-xs font-medium text-slate-500">
+              {field.label} {asterisk}
+            </label>
+            {device.showOther || modelsForBrand.length === 0 ? (
+              <input name={`deviceOther_${index}`} required={req} className="input" placeholder={field.placeholder} />
+            ) : (
+              <select name={`deviceModelId_${index}`} required={req} className="input">
+                <option value="">Select model...</option>
+                {modelsForBrand.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name}
+                  </option>
+                ))}
+                <option value="">Other — specify below</option>
+              </select>
+            )}
+          </div>
+        );
+      case "service_type":
+        if (field.type !== "select") return renderGenericField(field, `serviceTypeId_${index}`);
+        return (
+          <div key={field.id} className="space-y-1.5">
+            <label className="text-xs font-medium text-slate-500">
+              {field.label} {asterisk}
+            </label>
+            <FormNotice>
+              We do not offer backglass replacement, camera repair, and board/power related issues on home service. You may contact our
+              branches for any concerns that is not listed on the dropdown list below.
+            </FormNotice>
+            <select
+              name={`serviceTypeId_${index}`}
+              required={req}
+              value={device.serviceTypeId}
+              onChange={(e) => update({ serviceTypeId: e.target.value, agreedToServiceNotice: false })}
+              className="input"
+            >
+              <option value="">Select service type...</option>
+              {serviceTypes
+                .filter((s) => !EXCLUDED_FROM_HOME_SERVICE.has(s.label))
+                .map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.label}
+                  </option>
+                ))}
+            </select>
+            {selectedServiceType?.label === "Screen Repair" && (
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-slate-500">
+                  Screen Quality <span className="text-red-600">*</span>
+                </label>
+                <select name={`screenQuality_${index}`} required className="input">
+                  <option value="">Select quality...</option>
+                  <option value="original">Original</option>
+                  <option value="high_quality">High Quality (compatible)</option>
+                </select>
+              </div>
+            )}
+            {selectedServiceType?.label === "Back Housing (whole shell)" && (
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-slate-500">
+                  Back Housing Color <span className="text-red-600">*</span>
+                </label>
+                <input name={`backHousingColor_${index}`} required className="input" placeholder="e.g. Space Gray, Midnight Green" />
+              </div>
+            )}
+            {agreementNotice && (
+              <div className="space-y-2">
+                <FormNotice tone="blue">{agreementNotice}</FormNotice>
+                <label className="flex items-start gap-2 text-sm font-medium text-slate-700">
+                  <input
+                    type="checkbox"
+                    required
+                    checked={device.agreedToServiceNotice}
+                    onChange={(e) => update({ agreedToServiceNotice: e.target.checked })}
+                    className="mt-0.5 h-4 w-4 rounded border-slate-300"
+                  />
+                  I Agree <span className="text-red-600">*</span>
+                </label>
+              </div>
+            )}
+          </div>
+        );
+      case "issue":
+        return renderGenericField(field, `issueDescription_${index}`);
+      case "photo":
+        // A photo can't become text/select/checkbox without losing the
+        // actual image, so this one ignores `type` and always renders the
+        // upload widget.
+        return (
+          <div key={field.id} className="space-y-2">
+            <PhotoUpload name={`photoDataUrl_${index}`} label={field.label} required={req} />
+            <FormNotice icon="📷">
+              Please upload a photo of the device information (e.g. Settings &gt; About screen, or the back of the unit showing the model)
+              and, if applicable, a photo of the device&apos;s physical condition.
+            </FormNotice>
+          </div>
+        );
+      default:
+        return null;
+    }
+  }
+
+  // Fields are already sorted by the admin's configured order (see
+  // app/(site)/request/page.tsx). The device-scoped fields (brand, model,
+  // service type, issue, photo) are pulled out as one contiguous block —
+  // wherever they fall in that order — and rendered once per device
+  // instead of once for the whole form; everything before/after them stays
+  // shared across the whole booking, same as before this repeater existed.
+  const deviceKeyIndexes = fields.map((f, i) => (f.systemKey && DEVICE_FIELD_KEYS.has(f.systemKey) ? i : -1)).filter((i) => i >= 0);
+  const firstDeviceIdx = deviceKeyIndexes[0] ?? -1;
+  const lastDeviceIdx = deviceKeyIndexes[deviceKeyIndexes.length - 1] ?? -1;
+  const fieldsBeforeDevices = firstDeviceIdx >= 0 ? fields.slice(0, firstDeviceIdx) : fields;
+  const deviceFields = firstDeviceIdx >= 0 ? fields.slice(firstDeviceIdx, lastDeviceIdx + 1) : [];
+  const fieldsAfterDevices = firstDeviceIdx >= 0 ? fields.slice(lastDeviceIdx + 1) : [];
+
   return (
     <form ref={formRef} action={formAction} className="card space-y-5">
       <input type="hidden" name="serviceArea" value={area} />
-      {fields.map((f) => (f.systemKey ? renderSystemField(f) : <DynamicFormField key={f.id} field={f} />))}
+      <input type="hidden" name="deviceCount" value={devices.length} />
+      {fieldsBeforeDevices.map((f) => (f.systemKey ? renderSystemField(f) : <DynamicFormField key={f.id} field={f} />))}
+
+      {devices.map((device, index) => (
+        <div key={device.key} className="space-y-4 rounded-xl border border-slate-200 p-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-slate-700">Device {index + 1}</h3>
+            {devices.length > 1 && (
+              <button type="button" onClick={() => removeDevice(device.key)} className="text-xs text-red-600 hover:underline">
+                Remove
+              </button>
+            )}
+          </div>
+          {deviceFields.map((f) => (f.systemKey ? renderDeviceBlockField(f, device, index, (patch) => updateDevice(device.key, patch)) : null))}
+        </div>
+      ))}
+      <button type="button" onClick={addDevice} className="btn-secondary w-full text-sm">
+        + Add Another Device
+      </button>
+
+      {fieldsAfterDevices.map((f) => (f.systemKey ? renderSystemField(f) : <DynamicFormField key={f.id} field={f} />))}
 
       {state && !state.ok && <p className="text-sm text-red-600">{state.error}</p>}
 
