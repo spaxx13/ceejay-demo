@@ -172,6 +172,28 @@ export async function sendQuotationEmail(
   if (error) throw new Error(error.message);
 }
 
+function escapeHtml(s: string) {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+export async function sendLeadReplyEmail(to: string, opts: { customerName: string; message: string }) {
+  const client = getClient();
+  const { error } = await client.emails.send({
+    from: FROM,
+    to,
+    subject: `Reply from Ceejay Cellphone Repair Shop`,
+    html: `
+      <div style="font-family: -apple-system, sans-serif; max-width: 480px; margin: 0 auto; color: #1e293b;">
+        <p style="font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8;">Ceejay Cellphone Repair Shop</p>
+        <h2 style="margin: 4px 0 16px;">Hi ${escapeHtml(opts.customerName)},</h2>
+        <p style="font-size: 14px; line-height: 1.5; white-space: pre-line;">${escapeHtml(opts.message)}</p>
+        <p style="font-size: 13px; color: #64748b;">If you have any questions, just reply to this email.</p>
+      </div>
+    `,
+  });
+  if (error) throw new Error(error.message);
+}
+
 export async function sendCancellationEmail(to: string, opts: { customerName: string; reference: string; reason: string }) {
   const client = getClient();
   const { error } = await client.emails.send({

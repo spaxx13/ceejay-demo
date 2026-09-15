@@ -31,7 +31,7 @@ import {
   canAccessCrm,
 } from "./db";
 import { getCurrentUser, setSession, clearSession, requireRole } from "./auth";
-import { sendOtpEmail, sendRepairReceiptEmail, sendCancellationEmail, sendQuotationEmail } from "./email";
+import { sendOtpEmail, sendRepairReceiptEmail, sendCancellationEmail, sendQuotationEmail, sendLeadReplyEmail } from "./email";
 import { sendSms, smsConfigured, getAccountStatus, type SmsAccountStatus } from "./sms";
 import { SUNDAY_ONLY_PROVINCES, serviceFeeAmount } from "./homeServiceFees";
 import { getRepairQuote } from "./servicePricing";
@@ -1747,13 +1747,30 @@ export async function addLeadNote(formData: FormData) {
   const leadId = str(formData, "id");
   const note = str(formData, "note");
   const followUpDate = str(formData, "followUpDate");
+  const emailToCustomer = formData.has("emailToCustomer");
   if (!note) return;
   if (followUpDate) {
     await query("update leads set notes = notes || case when notes = '' then '' else E'\\n' end || $1, follow_up_date=$2 where id=$3", [note, followUpDate, leadId]);
   } else {
     await query("update leads set notes = notes || case when notes = '' then '' else E'\\n' end || $1 where id=$2", [note, leadId]);
   }
-  await logActivity("lead", leadId, `Note added by ${user?.name ?? "Admin"}: ${note}`, user?.name ?? "Admin");
+
+  let emailNote = "";
+  if (emailToCustomer) {
+    const lead = await queryOne<{ name: string; email: string }>("select name, email from leads where id=$1", [leadId]);
+    if (lead?.email) {
+      try {
+        await sendLeadReplyEmail(lead.email, { customerName: lead.name, message: note });
+        emailNote = ` — emailed to ${lead.email}`;
+      } catch (err) {
+        emailNote = ` — email failed to send to ${lead.email} (${err instanceof Error ? err.message : "unknown error"})`;
+      }
+    } else {
+      emailNote = " — no email on file, not sent";
+    }
+  }
+
+  await logActivity("lead", leadId, `Note added by ${user?.name ?? "Admin"}: ${note}${emailNote}`, user?.name ?? "Admin");
   revalidatePath(`/admin/crm/${leadId}`);
 }
 
