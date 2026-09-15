@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { getLookups, getTechnicians, getRequests, canManageHomeServiceRequests, canDeleteHomeServiceRequests, isBranchHidden } from "@/lib/db";
+import { getLookups, getTechnicians, getBranches, getRequests, canManageHomeServiceRequests, canDeleteHomeServiceRequests, isBranchHidden } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import StatusBadge from "@/components/StatusBadge";
 import DeleteButton from "@/components/DeleteButton";
@@ -16,8 +16,16 @@ export default async function RequestsPage({
   if (!canManageHomeServiceRequests(user)) redirect("/admin");
 
   const sp = await searchParams;
-  const [lookups, technicians, allRequests] = await Promise.all([getLookups(), getTechnicians(), getRequests()]);
+  const [lookups, technicians, branches, allRequests] = await Promise.all([getLookups(), getTechnicians(), getBranches(), getRequests()]);
   const statuses = lookups.filter((l) => l.kind === "request_status").sort((a, b) => a.order - b.order);
+
+  // A "home service technician" is one whose branch assignment includes an
+  // address-less branch — the near/far home-service queues — same signal
+  // already used to gate the technician dropdown on the request detail page.
+  // Branch-only/POS technicians never get one of those, so they're excluded
+  // here rather than cluttering the list with people who don't do home visits.
+  const homeServiceBranchIds = branches.filter((b) => !b.address).map((b) => b.id);
+  const homeServiceTechnicians = technicians.filter((t) => t.active && t.branchIds.some((id) => homeServiceBranchIds.includes(id)));
 
   // Queue scoping — a branch admin assigned to only one queue's backend
   // branch never sees the other queue's requests here, even via filters.
@@ -40,11 +48,12 @@ export default async function RequestsPage({
   const todayStr = todayDateStr();
   const isShowingToday = sp.date === todayStr;
 
-  // Total assigned requests per technician, regardless of the current
-  // filters — lets the admin spot technicians who haven't been handed
-  // any request yet (count of 0) alongside everyone else's load.
-  const technicianCounts = technicians
-    .map((t) => ({ id: t.id, name: t.name, count: visibleRequests.filter((r) => r.assignedTechnicianId === t.id).length }))
+  // Today's assigned requests per home service technician — scoped to today
+  // (not the whole backlog) so this answers "who's covered for today" and
+  // "who's still free today," not a lifetime tally.
+  const todaysRequests = visibleRequests.filter((r) => r.preferredDatetime.startsWith(todayStr));
+  const technicianCounts = homeServiceTechnicians
+    .map((t) => ({ id: t.id, name: t.name, count: todaysRequests.filter((r) => r.assignedTechnicianId === t.id).length }))
     .sort((a, b) => a.count - b.count || a.name.localeCompare(b.name));
 
   function labelFor(id: string | null, list: { id: string; label?: string; name?: string }[]) {
@@ -81,8 +90,8 @@ export default async function RequestsPage({
       </div>
 
       <div className="card">
-        <h2 className="text-sm font-semibold text-slate-700">Technician Workload</h2>
-        <p className="mt-1 text-xs text-slate-400">Total requests assigned per technician — a count of 0 means they haven&apos;t been assigned anything yet.</p>
+        <h2 className="text-sm font-semibold text-slate-700">Technician Workload — Today</h2>
+        <p className="mt-1 text-xs text-slate-400">Requests assigned per home service technician for today — a count of 0 means they haven&apos;t been assigned anything yet.</p>
         <div className="mt-3 flex flex-wrap gap-2">
           {technicianCounts.map((t) => (
             <span
@@ -108,7 +117,7 @@ export default async function RequestsPage({
         </select>
         <select name="technician" defaultValue={sp.technician ?? ""} className="input w-44">
           <option value="">All technicians</option>
-          {technicians.map((t) => (
+          {homeServiceTechnicians.map((t) => (
             <option key={t.id} value={t.id}>
               {t.name}
             </option>
