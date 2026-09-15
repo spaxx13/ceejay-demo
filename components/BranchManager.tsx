@@ -59,7 +59,39 @@ export default function BranchManager({ branches }: { branches: Branch[] }) {
         </form>
       </div>
 
-      <div className="card overflow-x-auto">
+      {/* Mobile: one card per branch — a 5-column table doesn't fit a phone
+          screen, so this reflows the same fields as a stacked summary. */}
+      <div className="space-y-3 sm:hidden">
+        {branches.length === 0 && <p className="card text-center text-sm text-slate-400">No branches yet. Add the first one above.</p>}
+        {branches.map((b) => (
+          <div key={b.id} className="card space-y-2">
+            <div className="flex items-start justify-between gap-2">
+              <p className="text-sm font-medium text-slate-800">{b.name}</p>
+              <form action={toggleBranchActive}>
+                <input type="hidden" name="id" value={b.id} />
+                <button
+                  type="submit"
+                  className={`badge border ${b.active ? "border-green-200 bg-green-50 text-green-700" : "border-slate-300 bg-slate-100 text-slate-500"}`}
+                >
+                  {b.active ? "Active" : "Inactive"}
+                </button>
+              </form>
+            </div>
+            <div className="grid grid-cols-2 gap-y-1 text-xs">
+              <span className="text-slate-400">Address</span>
+              <span className="text-right text-slate-600">{b.address || "—"}</span>
+              <span className="text-slate-400">Contact</span>
+              <span className="text-right text-slate-600">{b.contactNumber || "—"}</span>
+            </div>
+            <button className="btn-secondary block w-full !py-1.5 text-xs" onClick={() => setEditingId(b.id)}>
+              Edit
+            </button>
+          </div>
+        ))}
+      </div>
+
+      {/* Desktop/tablet: full table, same fields. */}
+      <div className="hidden card overflow-x-auto sm:block">
         <table className="w-full text-left text-sm">
           <thead>
             <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-400">

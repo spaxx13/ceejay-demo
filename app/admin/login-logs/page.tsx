@@ -56,36 +56,53 @@ export default async function LoginLogsPage({ searchParams }: { searchParams: Pr
       </div>
 
       <form className="card flex flex-wrap items-end gap-3">
-        <div className="space-y-1.5">
+        <div className="w-full space-y-1.5 sm:w-auto">
           <label className="text-xs font-medium text-slate-500">Search</label>
-          <input name="q" defaultValue={sp.q ?? ""} placeholder="Name or email..." className="input w-56" />
+          <input name="q" defaultValue={sp.q ?? ""} placeholder="Name or email..." className="input w-full sm:w-56" />
         </div>
-        <div className="space-y-1.5">
+        <div className="w-full space-y-1.5 sm:w-auto">
           <label className="text-xs font-medium text-slate-500">Role</label>
-          <select name="role" defaultValue={sp.role ?? ""} className="input w-40">
+          <select name="role" defaultValue={sp.role ?? ""} className="input w-full sm:w-40">
             <option value="">All roles</option>
             <option value="owner_admin">Owner Admin</option>
             <option value="branch_admin">Branch Admin</option>
             <option value="technician">Technician</option>
           </select>
         </div>
-        <div className="space-y-1.5">
+        <div className="w-full space-y-1.5 sm:w-auto">
           <label className="text-xs font-medium text-slate-500">From</label>
-          <input type="date" name="from" defaultValue={sp.from ?? ""} className="input w-44" />
+          <input type="date" name="from" defaultValue={sp.from ?? ""} className="input w-full sm:w-44" />
         </div>
-        <div className="space-y-1.5">
+        <div className="w-full space-y-1.5 sm:w-auto">
           <label className="text-xs font-medium text-slate-500">To</label>
-          <input type="date" name="to" defaultValue={sp.to ?? ""} className="input w-44" />
+          <input type="date" name="to" defaultValue={sp.to ?? ""} className="input w-full sm:w-44" />
         </div>
-        <button type="submit" className="btn-secondary">
+        <button type="submit" className="btn-secondary flex-1 sm:flex-none">
           Filter
         </button>
-        <Link href="/admin/login-logs" className="btn-secondary">
+        <Link href="/admin/login-logs" className="btn-secondary flex-1 text-center sm:flex-none">
           Clear
         </Link>
       </form>
 
-      <div className="card overflow-x-auto">
+      {/* Mobile: one card per login — a 4-column table with full email
+          addresses still doesn't fit a phone screen. */}
+      <div className="space-y-3 sm:hidden">
+        {logs.length === 0 && <p className="card text-center text-sm text-slate-400">No logins recorded for this filter.</p>}
+        {logs.map((l) => (
+          <div key={l.id} className="card space-y-1.5">
+            <div className="flex items-start justify-between gap-2">
+              <p className="text-sm font-medium text-slate-800">{l.userName}</p>
+              <span className="shrink-0 text-xs text-slate-500">{ROLE_LABELS[l.role]}</span>
+            </div>
+            <p className="text-xs text-slate-500 break-all">{l.userEmail}</p>
+            <p className="text-xs text-slate-400">{formatDateTime(l.at)}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Desktop/tablet: full table, same fields. */}
+      <div className="hidden card overflow-x-auto sm:block">
         <table className="w-full text-left text-sm">
           <thead>
             <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-400">

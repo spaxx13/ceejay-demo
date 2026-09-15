@@ -334,7 +334,62 @@ export default function UserManager({
         </form>
       </div>
 
-      <div className="card overflow-x-auto">
+      {/* Mobile: one card per staff account — a 5-column table doesn't fit
+          a phone screen, so this reflows the same fields as a stacked
+          summary. */}
+      <div className="space-y-3 sm:hidden">
+        {users.length === 0 && <p className="card text-center text-sm text-slate-400">No staff accounts yet.</p>}
+        {users.map((u) => (
+          <div key={u.id} className="card space-y-2">
+            <div className="flex items-start justify-between gap-2">
+              <p className="text-sm font-medium text-slate-800">
+                {u.name}
+                {u.id === currentUserId && <span className="ml-1.5 text-[11px] text-slate-400">(you)</span>}
+              </p>
+              {u.id === currentUserId ? (
+                <span className="badge border border-green-200 bg-green-50 text-green-700">Active</span>
+              ) : (
+                <form action={toggleUserActive}>
+                  <input type="hidden" name="id" value={u.id} />
+                  <button
+                    type="submit"
+                    className={`badge border ${u.active ? "border-green-200 bg-green-50 text-green-700" : "border-slate-300 bg-slate-100 text-slate-500"}`}
+                  >
+                    {u.active ? "Active" : "Inactive"}
+                  </button>
+                </form>
+              )}
+            </div>
+            <div className="grid grid-cols-2 gap-y-1 text-xs">
+              <span className="text-slate-400">Email</span>
+              <span className="text-right text-slate-600">{u.email}</span>
+              <span className="text-slate-400">Role</span>
+              <span className="text-right text-slate-600">{ROLE_LABELS[u.role]}</span>
+            </div>
+            <div className="flex gap-1.5 pt-1">
+              <button className="btn-secondary flex-1 !py-1.5 text-xs" onClick={() => startEdit(u)}>
+                Edit
+              </button>
+              {u.id !== currentUserId && (
+                <form
+                  className="flex-1"
+                  action={(fd) => {
+                    if (confirm(`Delete "${u.name}"'s account? This can't be undone.`)) deleteUser(fd);
+                  }}
+                >
+                  <input type="hidden" name="id" value={u.id} />
+                  <button type="submit" className="btn-secondary w-full !py-1.5 text-xs !text-red-600">
+                    Delete
+                  </button>
+                </form>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Desktop/tablet: full table, same fields. */}
+      <div className="hidden card overflow-x-auto sm:block">
         <table className="w-full text-left text-sm">
           <thead>
             <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-400">

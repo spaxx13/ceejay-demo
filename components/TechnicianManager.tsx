@@ -124,7 +124,54 @@ export default function TechnicianManager({ technicians, branches }: { technicia
         </form>
       </div>
 
-      <div className="card overflow-x-auto">
+      {/* Mobile: one card per technician — a 6-column table doesn't fit a
+          phone screen, so this reflows the same fields as a stacked
+          summary. */}
+      <div className="space-y-3 sm:hidden">
+        {technicians.map((t) => (
+          <div key={t.id} className="card space-y-2">
+            <div className="flex items-start justify-between gap-2">
+              <p className="text-sm font-medium text-slate-800">{t.name}</p>
+              <form action={toggleTechnicianActive}>
+                <input type="hidden" name="id" value={t.id} />
+                <button
+                  type="submit"
+                  className={`badge border ${t.active ? "border-green-200 bg-green-50 text-green-700" : "border-slate-300 bg-slate-100 text-slate-500"}`}
+                >
+                  {t.active ? "Active" : "Inactive"}
+                </button>
+              </form>
+            </div>
+            <div className="grid grid-cols-2 gap-y-1 text-xs">
+              <span className="text-slate-400">Contact</span>
+              <span className="text-right text-slate-600">{t.contactNumber || "—"}</span>
+              <span className="text-slate-400">Branch(es)</span>
+              <span className="text-right text-slate-600">{branches.filter((b) => t.branchIds.includes(b.id)).map((b) => b.name).join(", ") || "—"}</span>
+              <span className="text-slate-400">Earnings Share</span>
+              <span className="text-right text-slate-600">{t.earningsSharePercent}%</span>
+            </div>
+            <div className="flex gap-1.5 pt-1">
+              <button className="btn-secondary flex-1 !py-1.5 text-xs" onClick={() => startEdit(t)}>
+                Edit
+              </button>
+              <form
+                className="flex-1"
+                action={(fd) => {
+                  if (confirm(`Delete "${t.name}"? This can't be undone. Any account linked to them stays, just unlinked.`)) deleteTechnician(fd);
+                }}
+              >
+                <input type="hidden" name="id" value={t.id} />
+                <button type="submit" className="btn-secondary w-full !py-1.5 text-xs !text-red-600">
+                  Delete
+                </button>
+              </form>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Desktop/tablet: full table, same fields. */}
+      <div className="hidden card overflow-x-auto sm:block">
         <table className="w-full text-left text-sm">
           <thead>
             <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-400">
