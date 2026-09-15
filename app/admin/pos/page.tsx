@@ -140,15 +140,15 @@ export default async function PosPage({ searchParams }: { searchParams: Promise<
       </div>
 
       <form className="card flex flex-wrap gap-3">
-        <input name="q" defaultValue={sp.q ?? ""} placeholder="Search customer, technician, device, or reference..." className="input w-72" />
-        <input type="date" name="date" defaultValue={sp.date ?? ""} className="input w-44" />
-        <select name="status" defaultValue={sp.status ?? ""} className="input w-40">
+        <input name="q" defaultValue={sp.q ?? ""} placeholder="Search customer, technician, device, or reference..." className="input w-full sm:w-72" />
+        <input type="date" name="date" defaultValue={sp.date ?? ""} className="input w-full sm:w-44" />
+        <select name="status" defaultValue={sp.status ?? ""} className="input w-full sm:w-40">
           <option value="">All statuses</option>
           <option value="pending">Pending</option>
           <option value="completed">Completed</option>
           <option value="cancelled">Cancelled</option>
         </select>
-        <select name="branch" defaultValue={sp.branch ?? ""} className="input w-40">
+        <select name="branch" defaultValue={sp.branch ?? ""} className="input w-full sm:w-40">
           <option value="">All branches</option>
           {branches.map((b) => (
             <option key={b.id} value={b.id}>
@@ -156,15 +156,72 @@ export default async function PosPage({ searchParams }: { searchParams: Promise<
             </option>
           ))}
         </select>
-        <button type="submit" className="btn-secondary">
+        <button type="submit" className="btn-secondary flex-1 sm:flex-none">
           Filter
         </button>
-        <Link href="/admin/pos" className="btn-secondary">
+        <Link href="/admin/pos" className="btn-secondary flex-1 text-center sm:flex-none">
           Clear
         </Link>
       </form>
 
-      <div className="card overflow-x-auto">
+      {/* Mobile: one card per record — a 9-column table (with an Actions
+          column) doesn't fit a phone screen, so this reflows the same
+          fields as a stacked summary instead. */}
+      <div className="space-y-3 sm:hidden">
+        {records.length === 0 && <p className="card text-center text-sm text-slate-400">No repair records yet.</p>}
+        {records.map((r) => (
+          <div key={`${r.kind}-${r.id}`} className={`card space-y-2 ${r.status === "cancelled" ? "opacity-60" : ""}`}>
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <p className="font-mono text-xs text-blue-300">
+                  {r.reference}
+                  {r.kind === "home_service" && <span className="ml-1.5 badge border border-blue-200 bg-blue-50 text-blue-500">Home Service</span>}
+                </p>
+                <p className="mt-0.5 text-sm font-medium text-slate-800">{r.customerName}</p>
+              </div>
+              <div className="shrink-0">
+                {r.status === "cancelled" && <span className="badge border border-red-200 bg-red-50 text-red-700">Cancelled</span>}
+                {r.status === "completed" && <span className="badge border border-green-200 bg-green-50 text-green-700">Completed</span>}
+                {r.status === "pending" && <span className="badge border border-amber-200 bg-amber-50 text-amber-700">Pending</span>}
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-y-1 text-xs">
+              <span className="text-slate-400">Branch</span>
+              <span className="text-right text-slate-600">{branchName(r.branchId)}</span>
+              <span className="text-slate-400">Device</span>
+              <span className="text-right text-slate-600">{r.device || "—"}</span>
+              <span className="text-slate-400">Technician</span>
+              <span className="text-right text-slate-600">{r.technicianName || "—"}</span>
+              <span className="text-slate-400">Cost</span>
+              <span className="text-right font-semibold text-slate-800">{peso(r.cost)}</span>
+              <span className="text-slate-400">Date</span>
+              <span className="text-right text-slate-600">{formatDateTime(r.createdAt)}</span>
+            </div>
+            <div className="flex gap-1.5 pt-1">
+              {r.resumable ? (
+                <PopupLink href={r.viewHref} className="btn-primary flex-1 text-center !py-1.5 text-xs">
+                  Resume
+                </PopupLink>
+              ) : (
+                <Link href={r.viewHref} className="btn-secondary flex-1 text-center !py-1.5 text-xs">
+                  View
+                </Link>
+              )}
+              {r.kind === "pos" && user?.role === "owner_admin" && (
+                <DeleteButton
+                  id={r.id}
+                  action={deleteRepairRecord}
+                  confirmMessage={`Permanently delete repair record ${r.reference}? This can't be undone.`}
+                  className="btn-secondary !py-1.5 text-xs !text-red-600"
+                />
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Desktop/tablet: full table, same fields. */}
+      <div className="hidden card overflow-x-auto sm:block">
         <table className="w-full text-left text-sm">
           <thead>
             <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-400">
