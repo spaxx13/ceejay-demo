@@ -26,10 +26,11 @@ export default async function TechnicianPage() {
       const serviceType = lookups.find((l) => l.id === r.serviceTypeId);
       const status = statuses.find((s) => s.id === r.statusId);
       // Same numbers the quotation email showed the customer, recomputed
-      // from the request's own fields (never persisted) — only meaningful
-      // once the customer has confirmed, since that's the price they agreed to.
-      const repairCost = r.confirmedAt && serviceType?.label ? getRepairQuote(servicePrices, serviceType.label, r.deviceModelId ?? "", r.screenQuality) : null;
-      const serviceFee = r.confirmedAt ? serviceFeeAmount(r.province, r.city) : null;
+      // from the request's own fields (never persisted) — shown to the
+      // technician regardless of confirmation so they know the job's
+      // quotation before heading out, same as the admin request view.
+      const repairCost = serviceType?.label ? getRepairQuote(servicePrices, serviceType.label, r.deviceModelId ?? "", r.screenQuality) : null;
+      const serviceFee = serviceFeeAmount(r.province, r.city);
       return {
         id: r.id,
         reference: r.reference,

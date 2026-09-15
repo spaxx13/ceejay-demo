@@ -123,12 +123,13 @@ export default function TechnicianBoard({ requests, statuses }: { requests: Req[
               <DetailRow label="Device">{r.deviceLabel}</DetailRow>
               <DetailRow label="Service Type">{r.serviceTypeLabel}</DetailRow>
               <DetailRow label="Issue">{r.issueDescription}</DetailRow>
-              {r.confirmedAt && (r.repairCost !== null || r.serviceFee !== null) && (
-                <DetailRow label="Price">
-                  {r.repairCost !== null ? peso(r.repairCost) : "Repair cost to be confirmed"}
-                  {r.serviceFee !== null && <span className="text-sm text-slate-400"> + {peso(r.serviceFee)} service fee</span>}
-                </DetailRow>
-              )}
+              <DetailRow label="Quotation">
+                {r.repairCost !== null ? peso(r.repairCost) : "Confirmed upon inspection"}
+                {r.serviceFee !== null && <span className="text-sm text-slate-400"> + {peso(r.serviceFee)} service fee</span>}
+                {r.repairCost !== null && r.serviceFee !== null && (
+                  <span className="block text-sm text-slate-400">Total: {peso(r.repairCost + r.serviceFee)}</span>
+                )}
+              </DetailRow>
               <DetailRow label="Address">
                 <Linkify
                   text={`${r.street}${r.barangay ? `, Brgy. ${r.barangay}` : ""}, ${r.city}${r.province ? `, ${r.province}` : ""}${r.landmark ? ` (near ${r.landmark})` : ""}`}
