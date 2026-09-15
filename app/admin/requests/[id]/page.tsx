@@ -11,6 +11,7 @@ import {
   getServiceAgreements,
   getRepairProgressByRequestId,
   getRequestsByBookingGroup,
+  getServicePrices,
   canManageHomeServiceRequests,
   canDeleteHomeServiceRequests,
   isBranchHidden,
@@ -23,6 +24,10 @@ import Linkify from "@/components/Linkify";
 import { reassignRequest, changeRequestStatus, updateRequestNotes, deleteHomeServiceRequest } from "@/lib/actions";
 import type { ServiceAgreement } from "@/lib/types";
 import { formatDate, formatDateTime } from "@/lib/format";
+import { serviceFeeAmount } from "@/lib/homeServiceFees";
+import { getRepairQuote } from "@/lib/servicePricing";
+
+const peso = (n: number) => `₱${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 const RESULT_LABEL: Record<string, string> = { pass: "Pass", fail: "Fail", na: "N/A" };
 
@@ -97,7 +102,7 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
   // guessing/bookmarking its URL directly.
   if (isBranchHidden(user, req.queueBranchId)) redirect("/admin/requests");
 
-  const [lookups, deviceModels, technicians, branches, activityLog, customFormFields, agreements, repairProgress, bookingGroup] =
+  const [lookups, deviceModels, technicians, branches, activityLog, customFormFields, agreements, repairProgress, bookingGroup, servicePrices] =
     await Promise.all([
       getLookups(),
       getDeviceModels(),
@@ -108,11 +113,30 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
       getServiceAgreements(),
       getRepairProgressByRequestId(req.id),
       req.bookingGroupId ? getRequestsByBookingGroup(req.bookingGroupId) : Promise.resolve([]),
+      getServicePrices(),
     ]);
   // Other devices from the same "+ Add Another Device" submission — same
   // visit, same address, one technician assignment cascades across all of
   // them (see reassignRequest()).
   const bookingSiblings = bookingGroup.filter((r) => r.id !== req.id);
+  // Same numbers the quotation email showed the customer, recomputed from
+  // each request's own stored fields (never persisted) — one repair cost
+  // line per device in the booking, plus the single service fee for the
+  // shared visit/address.
+  const quotationDevices = (req.bookingGroupId ? bookingGroup : [req]).map((r) => {
+    const rBrand = lookups.find((l) => l.id === r.deviceBrandId);
+    const rModel = deviceModels.find((m) => m.id === r.deviceModelId);
+    const rServiceType = lookups.find((l) => l.id === r.serviceTypeId);
+    const repairCost = rServiceType?.label ? getRepairQuote(servicePrices, rServiceType.label, r.deviceModelId ?? "", r.screenQuality) : null;
+    return {
+      id: r.id,
+      reference: r.reference,
+      deviceLabel: rBrand ? `${rBrand.label} ${rModel?.name ?? ""}`.trim() : r.deviceOther || "Not specified",
+      serviceTypeLabel: rServiceType?.label ?? "Service",
+      repairCost,
+    };
+  });
+  const quotedServiceFee = serviceFeeAmount(req.province, req.city);
   const statuses = lookups.filter((l) => l.kind === "request_status").sort((a, b) => a.order - b.order);
   const serviceType = lookups.find((l) => l.id === req.serviceTypeId);
   const brand = lookups.find((l) => l.id === req.deviceBrandId);
@@ -175,6 +199,36 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
           </div>
         </div>
       )}
+
+      <div className="card space-y-3">
+        <h3 className="text-sm font-semibold text-slate-800">Quotation</h3>
+        <p className="text-xs text-slate-500">The same quotation that was emailed to the customer.</p>
+        <div className="space-y-2">
+          {quotationDevices.map((d) => (
+            <div key={d.id} className="flex items-start justify-between gap-3 border-b border-slate-100 pb-2 last:border-0 last:pb-0 text-sm">
+              <div>
+                <p className="text-slate-800">
+                  {d.deviceLabel} — {d.serviceTypeLabel}
+                </p>
+                <p className="font-mono text-xs text-slate-400">{d.reference}</p>
+              </div>
+              <span className="shrink-0 text-slate-800">{d.repairCost !== null ? peso(d.repairCost) : "Confirmed upon inspection"}</span>
+            </div>
+          ))}
+          <div className="flex items-center justify-between gap-3 pt-1 text-sm">
+            <p className="text-slate-500">Service Fee (one visit)</p>
+            <span className="text-slate-800">{quotedServiceFee !== null ? peso(quotedServiceFee) : "—"}</span>
+          </div>
+          {quotedServiceFee !== null && quotationDevices.every((d) => d.repairCost !== null) && (
+            <div className="flex items-center justify-between gap-3 border-t border-slate-200 pt-2 text-sm font-semibold">
+              <p className="text-slate-700">Total</p>
+              <span className="text-slate-900">
+                {peso(quotationDevices.reduce((sum, d) => sum + (d.repairCost ?? 0), 0) + quotedServiceFee)}
+              </span>
+            </div>
+          )}
+        </div>
+      </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="card space-y-3 lg:col-span-2">
