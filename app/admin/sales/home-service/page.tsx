@@ -100,52 +100,94 @@ export default async function HomeServiceSalesPage({ searchParams }: { searchPar
       </form>
       {!hasFilter && <p className="-mt-3 text-xs text-slate-400">Showing today&apos;s sales ({today}). Set a date range above to see other days.</p>}
 
-      <div className="card overflow-x-auto">
-        <table className="w-full text-left text-sm">
-          <thead>
-            <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-400">
-              <th className="pb-2 pr-3 font-medium">Technician</th>
-              <th className="pb-2 pr-3 font-medium">Jobs</th>
-              <th className="pb-2 pr-3 font-medium">Total Amount</th>
-              <th className="pb-2 pr-3 font-medium">Parts/Material Cost</th>
-              <th className="pb-2 pr-3 font-medium">Net Amount</th>
-              <th className="pb-2 pr-3 font-medium">Company Share (30%)</th>
-              <th className="pb-2 font-medium">Technician Share (70%)</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.length === 0 && (
-              <tr>
-                <td colSpan={7} className="py-6 text-center text-slate-400">
-                  No home service sales recorded for this range.
-                </td>
-              </tr>
-            )}
+      {rows.length === 0 && <p className="card text-center text-sm text-slate-400">No home service sales recorded for this range.</p>}
+
+      {rows.length > 0 && (
+        <>
+          {/* Mobile: one stacked card per technician — a 7-column table
+              doesn't fit a phone screen, so this reflows the same figures
+              as label/value pairs instead of forcing horizontal scroll. */}
+          <div className="space-y-2 sm:hidden">
             {rows.map((r) => (
-              <tr key={r.name} className={`border-b border-slate-200 last:border-0 ${r.name === "Unassigned" ? "opacity-60" : ""}`}>
-                <td className="py-3 pr-3 font-medium text-slate-800">{r.name}</td>
-                <td className="py-3 pr-3 text-slate-500">{r.count}</td>
-                <td className="py-3 pr-3 text-slate-800">{peso(r.totalAmount)}</td>
-                <td className="py-3 pr-3 text-red-700">−{peso(r.partsCost)}</td>
-                <td className="py-3 pr-3 font-semibold text-slate-900">{peso(r.netAmount)}</td>
-                <td className="py-3 pr-3 text-green-700">{peso(r.companyShare)}</td>
-                <td className="py-3 font-semibold text-blue-300">{peso(r.technicianShare)}</td>
-              </tr>
+              <div key={r.name} className={`card space-y-2 ${r.name === "Unassigned" ? "opacity-60" : ""}`}>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-medium text-slate-800">{r.name}</p>
+                  <p className="shrink-0 text-xs text-slate-400">{r.count} job{r.count === 1 ? "" : "s"}</p>
+                </div>
+                <div className="grid grid-cols-2 gap-y-1 text-xs">
+                  <span className="text-slate-400">Total Amount</span>
+                  <span className="text-right text-slate-800">{peso(r.totalAmount)}</span>
+                  <span className="text-slate-400">Parts/Material Cost</span>
+                  <span className="text-right text-red-700">−{peso(r.partsCost)}</span>
+                  <span className="font-medium text-slate-500">Net Amount</span>
+                  <span className="text-right font-medium text-slate-900">{peso(r.netAmount)}</span>
+                  <span className="text-green-700">Company Share (30%)</span>
+                  <span className="text-right text-green-700">{peso(r.companyShare)}</span>
+                  <span className="font-medium text-blue-300">Technician Share (70%)</span>
+                  <span className="text-right font-medium text-blue-300">{peso(r.technicianShare)}</span>
+                </div>
+              </div>
             ))}
-            {rows.length > 0 && (
-              <tr className="font-semibold text-slate-900">
-                <td className="pt-3 pr-3">Total</td>
-                <td className="pt-3 pr-3">{grandTotal.count}</td>
-                <td className="pt-3 pr-3 font-normal text-slate-500">{peso(grandTotal.totalAmount)}</td>
-                <td className="pt-3 pr-3 text-red-700">−{peso(grandTotal.partsCost)}</td>
-                <td className="pt-3 pr-3">{peso(grandTotal.netAmount)}</td>
-                <td className="pt-3 pr-3 text-green-700">{peso(grandTotal.companyShare)}</td>
-                <td className="pt-3 text-blue-300">{peso(grandTotal.technicianShare)}</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+            <div className="rounded-lg border border-slate-300 bg-slate-50 p-3">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <p className="text-sm font-semibold text-slate-900">Total</p>
+                <p className="text-xs text-slate-500">{grandTotal.count} job{grandTotal.count === 1 ? "" : "s"}</p>
+              </div>
+              <div className="grid grid-cols-2 gap-y-1 text-xs">
+                <span className="text-slate-500">Total Amount</span>
+                <span className="text-right text-slate-800">{peso(grandTotal.totalAmount)}</span>
+                <span className="text-slate-500">Parts/Material Cost</span>
+                <span className="text-right text-red-700">−{peso(grandTotal.partsCost)}</span>
+                <span className="font-semibold text-slate-700">Net Amount</span>
+                <span className="text-right font-semibold text-slate-900">{peso(grandTotal.netAmount)}</span>
+                <span className="font-medium text-green-700">Company Share (30%)</span>
+                <span className="text-right font-medium text-green-700">{peso(grandTotal.companyShare)}</span>
+                <span className="font-medium text-blue-300">Technician Share (70%)</span>
+                <span className="text-right font-medium text-blue-300">{peso(grandTotal.technicianShare)}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Desktop/tablet: full table, same figures. */}
+          <div className="hidden card overflow-x-auto sm:block">
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-400">
+                  <th className="pb-2 pr-3 font-medium">Technician</th>
+                  <th className="pb-2 pr-3 font-medium">Jobs</th>
+                  <th className="pb-2 pr-3 font-medium">Total Amount</th>
+                  <th className="pb-2 pr-3 font-medium">Parts/Material Cost</th>
+                  <th className="pb-2 pr-3 font-medium">Net Amount</th>
+                  <th className="pb-2 pr-3 font-medium">Company Share (30%)</th>
+                  <th className="pb-2 font-medium">Technician Share (70%)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r) => (
+                  <tr key={r.name} className={`border-b border-slate-200 last:border-0 ${r.name === "Unassigned" ? "opacity-60" : ""}`}>
+                    <td className="py-3 pr-3 font-medium text-slate-800">{r.name}</td>
+                    <td className="py-3 pr-3 text-slate-500">{r.count}</td>
+                    <td className="py-3 pr-3 text-slate-800">{peso(r.totalAmount)}</td>
+                    <td className="py-3 pr-3 text-red-700">−{peso(r.partsCost)}</td>
+                    <td className="py-3 pr-3 font-semibold text-slate-900">{peso(r.netAmount)}</td>
+                    <td className="py-3 pr-3 text-green-700">{peso(r.companyShare)}</td>
+                    <td className="py-3 font-semibold text-blue-300">{peso(r.technicianShare)}</td>
+                  </tr>
+                ))}
+                <tr className="font-semibold text-slate-900">
+                  <td className="pt-3 pr-3">Total</td>
+                  <td className="pt-3 pr-3">{grandTotal.count}</td>
+                  <td className="pt-3 pr-3 font-normal text-slate-500">{peso(grandTotal.totalAmount)}</td>
+                  <td className="pt-3 pr-3 text-red-700">−{peso(grandTotal.partsCost)}</td>
+                  <td className="pt-3 pr-3">{peso(grandTotal.netAmount)}</td>
+                  <td className="pt-3 pr-3 text-green-700">{peso(grandTotal.companyShare)}</td>
+                  <td className="pt-3 text-blue-300">{peso(grandTotal.technicianShare)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
     </div>
   );
 }
