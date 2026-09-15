@@ -194,6 +194,22 @@ export async function sendLeadReplyEmail(to: string, opts: { customerName: strin
   if (error) throw new Error(error.message);
 }
 
+export async function sendBroadcastEmail(to: string, opts: { subject: string; message: string }) {
+  const client = getClient();
+  const { error } = await client.emails.send({
+    from: FROM,
+    to,
+    subject: opts.subject,
+    html: `
+      <div style="font-family: -apple-system, sans-serif; max-width: 480px; margin: 0 auto; color: #1e293b;">
+        <p style="font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8;">Ceejay Cellphone Repair Shop</p>
+        <p style="font-size: 14px; line-height: 1.5; white-space: pre-line;">${escapeHtml(opts.message)}</p>
+      </div>
+    `,
+  });
+  if (error) throw new Error(error.message);
+}
+
 export async function sendCancellationEmail(to: string, opts: { customerName: string; reference: string; reason: string }) {
   const client = getClient();
   const { error } = await client.emails.send({
