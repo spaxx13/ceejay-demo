@@ -194,8 +194,11 @@ export async function sendLeadReplyEmail(to: string, opts: { customerName: strin
   if (error) throw new Error(error.message);
 }
 
-export async function sendBroadcastEmail(to: string, opts: { subject: string; message: string }) {
+export async function sendBroadcastEmail(to: string, opts: { subject: string; message: string; photos?: string[] }) {
   const client = getClient();
+  const photosHtml = (opts.photos ?? [])
+    .map((src) => `<img src="${src}" alt="" style="max-width: 100%; border-radius: 8px; margin-top: 12px; display: block;" />`)
+    .join("");
   const { error } = await client.emails.send({
     from: FROM,
     to,
@@ -204,6 +207,7 @@ export async function sendBroadcastEmail(to: string, opts: { subject: string; me
       <div style="font-family: -apple-system, sans-serif; max-width: 480px; margin: 0 auto; color: #1e293b;">
         <p style="font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8;">Ceejay Cellphone Repair Shop</p>
         <p style="font-size: 14px; line-height: 1.5; white-space: pre-line;">${escapeHtml(opts.message)}</p>
+        ${photosHtml}
       </div>
     `,
   });

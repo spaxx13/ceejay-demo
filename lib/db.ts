@@ -23,6 +23,8 @@ import type {
   Expense,
   LoginLog,
   PushSubscription,
+  CrmBroadcast,
+  CrmBroadcastStatus,
 } from "./types";
 import { sendPushToUsers } from "./push";
 import { sendSms, smsConfigured } from "./sms";
@@ -566,6 +568,112 @@ export async function getNotifications() {
 }
 export async function getExpenses() {
   return (await query<ExpenseRow>("select * from expenses order by expense_date desc, created_at desc")).map(mapExpense);
+}
+
+type CrmBroadcastRow = {
+  id: string;
+  subject: string;
+  message: string;
+  photos: string[];
+  scheduled_at: Date | null;
+  status: CrmBroadcastStatus;
+  recipient_estimate: number;
+  sent_count: number;
+  failed_count: number;
+  created_by: string;
+  created_at: Date;
+  sent_at: Date | null;
+};
+function mapCrmBroadcast(r: CrmBroadcastRow): CrmBroadcast {
+  return {
+    id: r.id,
+    subject: r.subject,
+    message: r.message,
+    photos: r.photos ?? [],
+    scheduledAt: toIsoOrNull(r.scheduled_at),
+    status: r.status,
+    recipientEstimate: r.recipient_estimate,
+    sentCount: r.sent_count,
+    failedCount: r.failed_count,
+    createdBy: r.created_by,
+    createdAt: toIso(r.created_at),
+    sentAt: toIsoOrNull(r.sent_at),
+  };
+}
+
+export async function getCrmBroadcasts() {
+  return (await query<CrmBroadcastRow>("select * from crm_broadcasts order by created_at desc limit 50")).map(mapCrmBroadcast);
+}
+
+// Polled by the send-scheduled-broadcasts cron — every "pending" broadcast
+// whose scheduled_at has already passed.
+export async function getDueCrmBroadcasts() {
+  return (
+    await query<CrmBroadcastRow>("select * from crm_broadcasts where status = 'pending' and scheduled_at <= now() order by scheduled_at asc")
+  ).map(mapCrmBroadcast);
+}
+
+// Every distinct email across leads and customers — the audience for CRM >
+// Send Announcement. Shared by the immediate-send action and the
+// send-scheduled-broadcasts cron, so a scheduled broadcast reaches whoever
+// is actually in the CRM at send time, not a stale snapshot from when it
+// was queued.
+export async function getCrmBroadcastRecipients(): Promise<string[]> {
+  const [leads, customers] = await Promise.all([
+    query<{ email: string }>("select email from leads where email <> ''"),
+    query<{ email: string }>("select email from customers where email <> ''"),
+  ]);
+  const seen = new Set<string>();
+  const recipients: string[] = [];
+  for (const r of [...leads, ...customers]) {
+    const key = r.email.toLowerCase().trim();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    recipients.push(r.email);
+  }
+  return recipients;
+}
+
+export async function createCrmBroadcast(input: {
+  subject: string;
+  message: string;
+  photos: string[];
+  scheduledAt: Date | null;
+  status: CrmBroadcastStatus;
+  recipientEstimate: number;
+  sentCount: number;
+  failedCount: number;
+  createdBy: string;
+  sentAt: Date | null;
+}) {
+  const row = await queryOne<CrmBroadcastRow>(
+    `insert into crm_broadcasts (subject, message, photos, scheduled_at, status, recipient_estimate, sent_count, failed_count, created_by, sent_at)
+     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) returning *`,
+    [
+      input.subject,
+      input.message,
+      JSON.stringify(input.photos),
+      input.scheduledAt,
+      input.status,
+      input.recipientEstimate,
+      input.sentCount,
+      input.failedCount,
+      input.createdBy,
+      input.sentAt,
+    ]
+  );
+  return row ? mapCrmBroadcast(row) : null;
+}
+
+// Marks a scheduled broadcast as sent/failed once the cron has actually
+// delivered it — the only writer of these columns after the row is queued.
+export async function markCrmBroadcastSent(id: string, status: "sent" | "failed", sentCount: number, failedCount: number) {
+  await query("update crm_broadcasts set status=$1, sent_count=$2, failed_count=$3, sent_at=now() where id=$4", [status, sentCount, failedCount, id]);
+}
+
+// Only a still-pending (not yet sent) scheduled broadcast can be cancelled.
+export async function cancelCrmBroadcast(id: string) {
+  await query("update crm_broadcasts set status='cancelled' where id=$1 and status='pending'", [id]);
 }
 
 export async function getUserById(id: string) {

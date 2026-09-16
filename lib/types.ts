@@ -428,3 +428,23 @@ export type Notification = {
   createdAt: string;
   readAt: string | null;
 };
+
+// A CRM > Send Announcement broadcast, sent immediately or scheduled for
+// later. "pending" means scheduledAt is in the future and the
+// send-scheduled-broadcasts cron hasn't picked it up yet; an immediate send
+// goes straight to "sent"/"failed" with scheduledAt left null.
+export type CrmBroadcastStatus = "pending" | "sent" | "failed" | "cancelled";
+export type CrmBroadcast = {
+  id: string;
+  subject: string;
+  message: string;
+  photos: string[]; // base64 data URLs, already compressed client-side
+  scheduledAt: string | null; // null = sent immediately, no scheduling
+  status: CrmBroadcastStatus;
+  recipientEstimate: number; // recipient count at the time this was created/scheduled — the actual send recomputes the live list
+  sentCount: number;
+  failedCount: number;
+  createdBy: string; // user name
+  createdAt: string;
+  sentAt: string | null;
+};

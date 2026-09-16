@@ -24,6 +24,9 @@ import {
   getServiceAgreements,
   getRepairRecordStatus,
   getCustomFormFields,
+  getCrmBroadcastRecipients,
+  createCrmBroadcast,
+  cancelCrmBroadcast,
   logActivity,
   notifyAdmins,
   canManageHomeServiceRequests,
@@ -1741,13 +1744,24 @@ export async function assignLead(formData: FormData) {
   revalidatePath(`/admin/crm/${leadId}`);
 }
 
-export type BroadcastResult = { ok: true; sent: number; failed: number; total: number } | { ok: false; error: string };
+const MAX_BROADCAST_PHOTOS = 4;
+
+export type BroadcastResult =
+  | { ok: true; scheduled: false; sent: number; failed: number; total: number }
+  | { ok: true; scheduled: true; scheduledAt: string; total: number }
+  | { ok: false; error: string };
 
 // Announcements/promos go to every distinct email on file across leads and
 // customers — deduped since a converted lead's email also appears on their
 // customer record. Owner-admin only: this reaches people across every
 // branch at once, unlike the rest of CRM which branch admins can touch
 // within their own branch's leads.
+//
+// A blank "scheduledAt" sends immediately, same as before. A future
+// "scheduledAt" instead queues a crm_broadcasts row with status "pending"
+// and returns without sending anything — the send-scheduled-broadcasts
+// cron (app/api/cron/send-scheduled-broadcasts) picks it up once due,
+// recomputing the recipient list fresh at that time.
 export async function sendCrmBroadcast(_prev: BroadcastResult | undefined, formData: FormData): Promise<BroadcastResult> {
   const user = await getCurrentUser();
   if (!user || user.role !== "owner_admin") return { ok: false, error: "Owner admin access required." };
@@ -1756,32 +1770,72 @@ export async function sendCrmBroadcast(_prev: BroadcastResult | undefined, formD
   const message = str(formData, "message");
   if (!subject || !message) return { ok: false, error: "Please provide both a subject and a message." };
 
-  const [leads, customers] = await Promise.all([
-    query<{ email: string }>("select email from leads where email <> ''"),
-    query<{ email: string }>("select email from customers where email <> ''"),
-  ]);
+  const photos = listStr(formData, "photos")
+    .filter((p) => p.startsWith("data:image/"))
+    .slice(0, MAX_BROADCAST_PHOTOS);
 
-  const seen = new Set<string>();
-  const recipients: string[] = [];
-  for (const r of [...leads, ...customers]) {
-    const key = r.email.toLowerCase().trim();
-    if (!key || seen.has(key)) continue;
-    seen.add(key);
-    recipients.push(r.email);
+  const scheduledAtRaw = str(formData, "scheduledAt");
+  const scheduledAt = scheduledAtRaw ? new Date(scheduledAtRaw) : null;
+  if (scheduledAt && Number.isNaN(scheduledAt.getTime())) return { ok: false, error: "That schedule date/time isn't valid." };
+  const isFutureSchedule = !!scheduledAt && scheduledAt.getTime() > Date.now();
+
+  const recipients = await getCrmBroadcastRecipients();
+  if (recipients.length === 0) return { ok: false, error: "No leads or customers have an email on file." };
+
+  if (isFutureSchedule) {
+    await createCrmBroadcast({
+      subject,
+      message,
+      photos,
+      scheduledAt,
+      status: "pending",
+      recipientEstimate: recipients.length,
+      sentCount: 0,
+      failedCount: 0,
+      createdBy: user.name,
+      sentAt: null,
+    });
+    revalidatePath("/admin/crm/broadcast");
+    return { ok: true, scheduled: true, scheduledAt: scheduledAt!.toISOString(), total: recipients.length };
   }
 
   let sent = 0;
   let failed = 0;
   for (const email of recipients) {
     try {
-      await sendBroadcastEmail(email, { subject, message });
+      await sendBroadcastEmail(email, { subject, message, photos });
       sent++;
     } catch {
       failed++;
     }
   }
 
-  return { ok: true, sent, failed, total: recipients.length };
+  await createCrmBroadcast({
+    subject,
+    message,
+    photos,
+    scheduledAt: null,
+    status: failed === recipients.length ? "failed" : "sent",
+    recipientEstimate: recipients.length,
+    sentCount: sent,
+    failedCount: failed,
+    createdBy: user.name,
+    sentAt: new Date(),
+  });
+  revalidatePath("/admin/crm/broadcast");
+
+  return { ok: true, scheduled: false, sent, failed, total: recipients.length };
+}
+
+// Cancels a still-pending scheduled broadcast before the cron sends it —
+// no-ops if it already sent (cancelCrmBroadcast only touches status='pending' rows).
+export async function cancelScheduledBroadcast(formData: FormData) {
+  const user = await getCurrentUser();
+  if (!user || user.role !== "owner_admin") return;
+  const id = str(formData, "id");
+  if (!id) return;
+  await cancelCrmBroadcast(id);
+  revalidatePath("/admin/crm/broadcast");
 }
 
 export async function addLeadNote(formData: FormData) {
