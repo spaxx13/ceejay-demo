@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { getLookups, getTechnicians, getBranches, getRequests, canManageHomeServiceRequests, canDeleteHomeServiceRequests, isBranchHidden } from "@/lib/db";
+import { getLookups, getTechnicians, getBranches, getRequests, getDeviceModels, canManageHomeServiceRequests, canDeleteHomeServiceRequests, isBranchHidden } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import StatusBadge from "@/components/StatusBadge";
 import DeleteButton from "@/components/DeleteButton";
@@ -17,7 +17,13 @@ export default async function RequestsPage({
   if (!canManageHomeServiceRequests(user)) redirect("/admin");
 
   const sp = await searchParams;
-  const [lookups, technicians, branches, allRequests] = await Promise.all([getLookups(), getTechnicians(), getBranches(), getRequests()]);
+  const [lookups, technicians, branches, allRequests, deviceModels] = await Promise.all([
+    getLookups(),
+    getTechnicians(),
+    getBranches(),
+    getRequests(),
+    getDeviceModels(),
+  ]);
   const statuses = lookups.filter((l) => l.kind === "request_status").sort((a, b) => a.order - b.order);
 
   // A "home service technician" is one whose branch assignment includes an
@@ -71,6 +77,12 @@ export default async function RequestsPage({
     if (!id) return "—";
     const found = list.find((x) => x.id === id);
     return found?.label ?? found?.name ?? "—";
+  }
+
+  function deviceLabelFor(r: (typeof requests)[number]) {
+    const brand = lookups.find((l) => l.id === r.deviceBrandId);
+    const model = deviceModels.find((m) => m.id === r.deviceModelId);
+    return brand ? `${brand.label} ${model?.name ?? ""}`.trim() : r.deviceOther || "—";
   }
 
   function qs(params: Record<string, string | undefined>) {
@@ -148,7 +160,7 @@ export default async function RequestsPage({
         </Link>
       </form>
 
-      {/* Mobile: one card per request — a 6-column table (with a Delete
+      {/* Mobile: one card per request — a 7-column table (with a Delete
           button in the last column) doesn't fit a phone screen without
           horizontal scroll, so this reflows the same fields as a stacked
           summary instead. */}
@@ -174,6 +186,11 @@ export default async function RequestsPage({
               <StatusBadge label={labelFor(r.statusId, statuses)} />
             </div>
             <div className="grid grid-cols-2 gap-y-1 text-xs">
+              <span className="text-slate-400">Device</span>
+              <span className="text-right text-slate-600">
+                {deviceLabelFor(r)}
+                <span className="block text-slate-400">{labelFor(r.serviceTypeId, lookups)}</span>
+              </span>
               <span className="text-slate-400">Technician</span>
               <span className={r.assignedTechnicianId ? "text-right text-slate-600" : "text-right text-amber-700"}>
                 {r.assignedTechnicianId ? labelFor(r.assignedTechnicianId, technicians) : "Unassigned"}
@@ -206,6 +223,7 @@ export default async function RequestsPage({
             <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-400">
               <th className="pb-2 pr-3">Reference</th>
               <th className="pb-2 pr-3">Customer</th>
+              <th className="pb-2 pr-3">Device</th>
               <th className="pb-2 pr-3">Technician</th>
               <th className="pb-2 pr-3">Preferred</th>
               <th className="pb-2 pr-3">Status</th>
@@ -215,7 +233,7 @@ export default async function RequestsPage({
           <tbody>
             {requests.length === 0 && (
               <tr>
-                <td colSpan={6} className="py-6 text-center text-slate-400">
+                <td colSpan={7} className="py-6 text-center text-slate-400">
                   No requests match these filters.
                 </td>
               </tr>
@@ -234,6 +252,10 @@ export default async function RequestsPage({
                   )}
                 </td>
                 <td className="py-3 pr-3 text-slate-800">{r.customerName}</td>
+                <td className="py-3 pr-3 text-slate-500">
+                  {deviceLabelFor(r)}
+                  <span className="block text-xs text-slate-400">{labelFor(r.serviceTypeId, lookups)}</span>
+                </td>
                 <td className="py-3 pr-3 text-slate-500">{r.assignedTechnicianId ? labelFor(r.assignedTechnicianId, technicians) : <span className="text-amber-700">Unassigned</span>}</td>
                 <td className="py-3 pr-3 text-slate-500">{formatDate(r.preferredDatetime)}</td>
                 <td className="py-3 pr-3">
