@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getRequests, getLookups, query, logActivity, notifyAdmins } from "@/lib/db";
+import { sendCancellationEmail } from "@/lib/email";
 
 // Runs every 15 minutes (see vercel.json) and cancels any Home Service
 // Request still sitting in "Pending Confirmation" past its 2-hour window —
@@ -32,7 +33,22 @@ export async function GET(req: NextRequest) {
       (r.adminNotes ? "\n" : "") + "Auto-cancelled: customer did not confirm within the 2-hour window.",
       r.id,
     ]);
-    await logActivity("home_service_request", r.id, `Request ${r.reference} auto-cancelled — not confirmed within the window`, "System");
+
+    let emailNote = "";
+    if (r.email) {
+      try {
+        await sendCancellationEmail(r.email, {
+          customerName: r.customerName,
+          reference: r.reference,
+          reason: "The booking wasn't confirmed within the 2-hour window.",
+        });
+        emailNote = ` — cancellation email sent to ${r.email}`;
+      } catch (err) {
+        emailNote = ` — cancellation email failed to send to ${r.email} (${err instanceof Error ? err.message : "unknown error"})`;
+      }
+    }
+
+    await logActivity("home_service_request", r.id, `Request ${r.reference} auto-cancelled — not confirmed within the window${emailNote}`, "System");
     await notifyAdmins("new_request", r.id, `Request ${r.reference} was auto-cancelled — the customer didn't confirm within the window.`);
     voided++;
   }
