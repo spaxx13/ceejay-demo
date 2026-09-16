@@ -32,19 +32,22 @@ export default async function HomeServiceSalesPage({ searchParams }: { searchPar
   // that can open Sales sees all of it.
   const homeServiceJobs = agreements.filter((a) => a.phase === "post_repair" && a.requestId && inRange(a.completedAt.slice(0, 10)));
 
-  type TechTotals = { name: string; count: number; totalAmount: number; partsCost: number };
+  type Job = { deviceLabel: string; amount: number };
+  type TechTotals = { name: string; count: number; totalAmount: number; partsCost: number; jobs: Job[] };
   const totals = new Map<string, TechTotals>();
   const ensure = (rawName: string) => {
     const name = rawName.trim() || "Unassigned";
-    if (!totals.has(name)) totals.set(name, { name, count: 0, totalAmount: 0, partsCost: 0 });
+    if (!totals.has(name)) totals.set(name, { name, count: 0, totalAmount: 0, partsCost: 0, jobs: [] });
     return totals.get(name)!;
   };
 
   for (const a of homeServiceJobs) {
     const bucket = ensure(a.technicianName);
+    const amount = a.cost + a.laborCost;
     bucket.count += 1;
-    bucket.totalAmount += a.cost + a.laborCost;
+    bucket.totalAmount += amount;
     bucket.partsCost += a.partsCost;
+    bucket.jobs.push({ deviceLabel: a.deviceLabel || "Device not specified", amount });
   }
 
   const rows = Array.from(totals.values())
@@ -114,6 +117,14 @@ export default async function HomeServiceSalesPage({ searchParams }: { searchPar
                   <p className="text-sm font-medium text-slate-800">{r.name}</p>
                   <p className="shrink-0 text-xs text-slate-400">{r.count} job{r.count === 1 ? "" : "s"}</p>
                 </div>
+                <ul className="space-y-0.5 border-b border-slate-100 pb-2 text-xs text-slate-500">
+                  {r.jobs.map((j, i) => (
+                    <li key={i} className="flex items-center justify-between gap-2">
+                      <span>{j.deviceLabel}</span>
+                      <span className="shrink-0 text-slate-400">{peso(j.amount)}</span>
+                    </li>
+                  ))}
+                </ul>
                 <div className="grid grid-cols-2 gap-y-1 text-xs">
                   <span className="text-slate-400">Total Amount</span>
                   <span className="text-right text-slate-800">{peso(r.totalAmount)}</span>
@@ -155,6 +166,7 @@ export default async function HomeServiceSalesPage({ searchParams }: { searchPar
                 <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-400">
                   <th className="pb-2 pr-3 font-medium">Technician</th>
                   <th className="pb-2 pr-3 font-medium">Jobs</th>
+                  <th className="pb-2 pr-3 font-medium">Unit(s)</th>
                   <th className="pb-2 pr-3 font-medium">Total Amount</th>
                   <th className="pb-2 pr-3 font-medium">Parts/Material Cost</th>
                   <th className="pb-2 pr-3 font-medium">Net Amount</th>
@@ -167,6 +179,13 @@ export default async function HomeServiceSalesPage({ searchParams }: { searchPar
                   <tr key={r.name} className={`border-b border-slate-200 last:border-0 ${r.name === "Unassigned" ? "opacity-60" : ""}`}>
                     <td className="py-3 pr-3 font-medium text-slate-800">{r.name}</td>
                     <td className="py-3 pr-3 text-slate-500">{r.count}</td>
+                    <td className="py-3 pr-3 text-slate-500">
+                      {r.jobs.map((j, i) => (
+                        <span key={i} className="block whitespace-nowrap">
+                          {j.deviceLabel}
+                        </span>
+                      ))}
+                    </td>
                     <td className="py-3 pr-3 text-slate-800">{peso(r.totalAmount)}</td>
                     <td className="py-3 pr-3 text-red-700">−{peso(r.partsCost)}</td>
                     <td className="py-3 pr-3 font-semibold text-slate-900">{peso(r.netAmount)}</td>
@@ -177,6 +196,7 @@ export default async function HomeServiceSalesPage({ searchParams }: { searchPar
                 <tr className="font-semibold text-slate-900">
                   <td className="pt-3 pr-3">Total</td>
                   <td className="pt-3 pr-3">{grandTotal.count}</td>
+                  <td className="pt-3 pr-3"></td>
                   <td className="pt-3 pr-3 font-normal text-slate-500">{peso(grandTotal.totalAmount)}</td>
                   <td className="pt-3 pr-3 text-red-700">−{peso(grandTotal.partsCost)}</td>
                   <td className="pt-3 pr-3">{peso(grandTotal.netAmount)}</td>
