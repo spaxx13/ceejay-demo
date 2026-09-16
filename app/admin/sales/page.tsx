@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getBranches, getRepairRecords, getExpenses, getTechnicians, isBranchHidden, canViewAllBranchSales, technicianSharePercent } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import SalesTabs from "@/components/SalesTabs";
+import BarBreakdownChart from "@/components/BarBreakdownChart";
 
 const peso = (n: number) => `₱${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
@@ -169,6 +170,8 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
   // Service tab instead, so nobody sees it duplicated in two places.
   const visibleRows = rowsWithExpenses.filter((r) => r.branchId !== null);
 
+  const revenueByBranch = visibleRows.map((r) => ({ label: r.name, value: r.revenue })).sort((a, b) => b.value - a.value);
+
   return (
     <div className="space-y-6">
       <div>
@@ -224,6 +227,13 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
             <p className="text-xs text-slate-400">Total Transactions</p>
             <p className="mt-1 text-2xl font-bold text-slate-900">{grandTotal.count}</p>
           </div>
+        </div>
+      )}
+
+      {showAllBranches && visibleRows.length > 1 && (
+        <div className="card">
+          <h3 className="mb-3 text-sm font-semibold text-slate-800">Revenue by Branch</h3>
+          <BarBreakdownChart data={revenueByBranch} formatValue={peso} emptyMessage="No sales in this range yet." />
         </div>
       )}
 

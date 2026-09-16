@@ -4,6 +4,7 @@ import { getLookups, getTechnicians, getBranches, getRequests, canManageHomeServ
 import { getCurrentUser } from "@/lib/auth";
 import StatusBadge from "@/components/StatusBadge";
 import DeleteButton from "@/components/DeleteButton";
+import BarBreakdownChart from "@/components/BarBreakdownChart";
 import { deleteHomeServiceRequest } from "@/lib/actions";
 import { formatDate, todayDateStr } from "@/lib/format";
 
@@ -56,6 +57,8 @@ export default async function RequestsPage({
   const todayStr = todayDateStr();
   const isShowingToday = sp.date === todayStr;
 
+  const requestsByStatus = statuses.map((s) => ({ label: s.label, value: visibleRequests.filter((r) => r.statusId === s.id).length }));
+
   // Today's assigned requests per home service technician — scoped to today
   // (not the whole backlog) so this answers "who's covered for today" and
   // "who's still free today," not a lifetime tally.
@@ -95,6 +98,11 @@ export default async function RequestsPage({
             {sp.unassigned === "1" ? "Showing Unassigned" : `Unassigned Queue (${unassignedCount})`}
           </Link>
         </div>
+      </div>
+
+      <div className="card">
+        <h3 className="mb-3 text-sm font-semibold text-slate-800">Requests by Status</h3>
+        <BarBreakdownChart data={requestsByStatus} emptyMessage="No requests yet." />
       </div>
 
       <div className="card">

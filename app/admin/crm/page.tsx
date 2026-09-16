@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { getLookups, getLeads, getCustomers, getUsers, getBranches, isBranchHidden, canAccessCrm } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import StatusBadge from "@/components/StatusBadge";
+import BarBreakdownChart from "@/components/BarBreakdownChart";
 import { createLead, createCustomer } from "@/lib/actions";
 import { formatDate } from "@/lib/format";
 
@@ -84,6 +85,16 @@ export default async function CrmPage({ searchParams }: { searchParams: Promise<
   if (statusFilter) people = people.filter((p) => p.type === "lead" && leadStatuses.find((s) => s.label === p.statusLabel)?.id === statusFilter);
   if (query) people = people.filter((p) => p.name.toLowerCase().includes(query) || p.phone.includes(query) || p.email.toLowerCase().includes(query));
 
+  const customerSourceCounts = Object.entries(
+    allCustomers.reduce<Record<string, number>>((acc, c) => {
+      const key = c.source || "Unspecified";
+      acc[key] = (acc[key] ?? 0) + 1;
+      return acc;
+    }, {})
+  )
+    .map(([label, value]) => ({ label, value }))
+    .sort((a, b) => b.value - a.value);
+
   const typeLink = (t: string) => `/admin/crm?type=${t}`;
   const typeClass = (active: boolean) =>
     `rounded-md px-4 py-2 text-sm font-medium transition-colors ${active ? "bg-blue-200 text-blue-300" : "text-slate-500 hover:bg-slate-100 hover:text-slate-800"}`;
@@ -131,6 +142,11 @@ export default async function CrmPage({ searchParams }: { searchParams: Promise<
             Search
           </button>
         </form>
+      </div>
+
+      <div className="card">
+        <h3 className="mb-3 text-sm font-semibold text-slate-800">Customers by Source</h3>
+        <BarBreakdownChart data={customerSourceCounts} emptyMessage="No customer data yet." />
       </div>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
