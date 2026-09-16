@@ -128,7 +128,9 @@ export default async function AdminDashboard() {
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <div>
             <h3 className="text-sm font-semibold text-slate-800">Sales Trend — Last 14 Days</h3>
-            <p className="mt-0.5 text-xs text-slate-400">POS repair revenue per day. Dashed line marks the 14-day average.</p>
+            <p className="mt-0.5 text-xs text-slate-400">
+              Bars are POS revenue per day. Dashed line is the 14-day average; the dark line tracks the 3-day trend.
+            </p>
           </div>
           <div className="text-right">
             <p className="text-xs text-slate-400">This week vs last week</p>

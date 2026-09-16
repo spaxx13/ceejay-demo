@@ -25,8 +25,17 @@ export default function SalesTrendChart({ data }: { data: Point[] }) {
 
   const yFor = (v: number) => padTop + chartH - (v / niceMax) * chartH;
   const xFor = (i: number) => padLeft + i * slotW + (slotW - barW) / 2;
+  const midXFor = (i: number) => xFor(i) + barW / 2;
 
   const hasData = data.some((d) => d.value > 0);
+
+  // 3-day trailing average — smooths day-to-day noise so the line reads as
+  // "which way is this going" rather than retracing every bar's own value.
+  const movingAvg = data.map((_, i) => {
+    const window = data.slice(Math.max(0, i - 2), i + 1);
+    return window.reduce((s, d) => s + d.value, 0) / window.length;
+  });
+  const linePoints = movingAvg.map((v, i) => `${midXFor(i)},${yFor(v)}`).join(" ");
 
   return (
     <svg viewBox={`0 0 ${width} ${height}`} className="h-auto w-full" role="img" aria-label="Daily sales revenue trend">
@@ -83,6 +92,19 @@ export default function SalesTrendChart({ data }: { data: Point[] }) {
         <text x={width / 2} y={height / 2} textAnchor="middle" className="fill-slate-400 text-xs">
           No sales recorded in this period.
         </text>
+      )}
+
+      {hasData && (
+        <g>
+          <polyline points={linePoints} fill="none" className="stroke-slate-700" strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
+          {movingAvg.map((v, i) => (
+            <circle key={data[i].date} cx={midXFor(i)} cy={yFor(v)} r={3} className="fill-slate-700 stroke-white" strokeWidth={1.5}>
+              <title>
+                {data[i].label} (3-day avg): {peso(v)}
+              </title>
+            </circle>
+          ))}
+        </g>
       )}
     </svg>
   );
