@@ -1,10 +1,9 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { CHECKLIST_TEMPLATE, SERVICE_AGREEMENT_TERMS } from "@/lib/checklist";
-import { getRequestById, getLookups, getDeviceModels, getServiceAgreements, getRepairProgressByRequestId } from "@/lib/db";
+import { getRequestById, getLookups, getDeviceModels, getServiceAgreements } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import ChecklistForm from "@/components/ChecklistForm";
-import RepairProgressForm from "@/components/RepairProgressForm";
 import AgreementSummary from "@/components/AgreementSummary";
 import ResendReceiptButton from "@/components/ResendReceiptButton";
 
@@ -14,11 +13,10 @@ export default async function TechnicianChecklistPage({ params }: { params: Prom
   if (!req) notFound();
   if (!user || req.assignedTechnicianId !== user.technicianId) redirect("/technician");
 
-  const [lookups, deviceModels, agreements, repairProgress] = await Promise.all([
+  const [lookups, deviceModels, agreements] = await Promise.all([
     getLookups(),
     getDeviceModels(),
     getServiceAgreements(),
-    getRepairProgressByRequestId(id),
   ]);
   const brand = lookups.find((l) => l.id === req.deviceBrandId);
   const model = deviceModels.find((m) => m.id === req.deviceModelId);
@@ -58,8 +56,6 @@ export default async function TechnicianChecklistPage({ params }: { params: Prom
           ✅ This job is Completed — both checklists were saved and sent to the customer.
         </div>
       )}
-
-      <RepairProgressForm requestId={req.id} progress={repairProgress} />
 
       {pre && <AgreementSummary agreement={pre} title={`Pre-Repair Checklist completed — ${pre.reference}`} />}
 
