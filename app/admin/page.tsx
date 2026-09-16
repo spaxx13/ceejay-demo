@@ -13,7 +13,10 @@ import {
 } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import StatusBadge from "@/components/StatusBadge";
+import SalesTrendChart from "@/components/SalesTrendChart";
 import { formatDateTime } from "@/lib/format";
+
+const peso = (n: number) => `₱${Math.round(n).toLocaleString()}`;
 
 export default async function AdminDashboard() {
   const [user, allRequests, technicians, leads, customers, lookups, repairRecords, agreements] = await Promise.all([
@@ -47,6 +50,35 @@ export default async function AdminDashboard() {
 
   const recent = [...requests].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)).slice(0, 6);
   const requestsAccess = canManageHomeServiceRequests(user);
+
+  // Same source and scoping as Branch/Daily Sales — POS repair records only,
+  // excluding cancelled jobs and anything outside this account's branches —
+  // so the trend below never disagrees with the Sales pages it summarizes.
+  const posSales = repairRecords.filter((r) => !r.cancelled && !isBranchHidden(user, r.branchId));
+  const revenueByDate = new Map<string, number>();
+  for (const r of posSales) revenueByDate.set(r.serviceDate, (revenueByDate.get(r.serviceDate) ?? 0) + r.cost);
+
+  const trendDays = 14;
+  const dateNDaysAgo = (n: number) => {
+    const d = new Date();
+    d.setDate(d.getDate() - n);
+    return d.toISOString().slice(0, 10);
+  };
+  const trendData = Array.from({ length: trendDays }, (_, i) => {
+    const date = dateNDaysAgo(trendDays - 1 - i);
+    return { date, label: date.slice(5).replace("-", "/"), value: revenueByDate.get(date) ?? 0 };
+  });
+
+  // "Is it ok?" needs a comparison, not just a number — this week's total
+  // against the 7 days before it, same bucketing the trend chart uses.
+  const sumRange = (fromDaysAgo: number, toDaysAgo: number) => {
+    let sum = 0;
+    for (let n = fromDaysAgo; n >= toDaysAgo; n--) sum += revenueByDate.get(dateNDaysAgo(n)) ?? 0;
+    return sum;
+  };
+  const thisWeekTotal = sumRange(6, 0);
+  const lastWeekTotal = sumRange(13, 7);
+  const weekChangePct = lastWeekTotal > 0 ? ((thisWeekTotal - lastWeekTotal) / lastWeekTotal) * 100 : null;
 
   const stats = [
     { label: "Today's Repairs", value: todayRecords.length, href: "/admin/pos" },
@@ -91,6 +123,30 @@ export default async function AdminDashboard() {
           <span className="text-sm text-blue-300">Configure →</span>
         </Link>
       )}
+
+      <div className="card">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h3 className="text-sm font-semibold text-slate-800">Sales Trend — Last 14 Days</h3>
+            <p className="mt-0.5 text-xs text-slate-400">POS repair revenue per day. Dashed line marks the 14-day average.</p>
+          </div>
+          <div className="text-right">
+            <p className="text-xs text-slate-400">This week vs last week</p>
+            {weekChangePct === null ? (
+              <p className="text-sm font-semibold text-slate-500">{peso(thisWeekTotal)}</p>
+            ) : (
+              <p className={`text-sm font-semibold ${weekChangePct >= 0 ? "text-green-700" : "text-red-700"}`}>
+                {weekChangePct >= 0 ? "▲" : "▼"} {Math.abs(weekChangePct).toFixed(0)}%{" "}
+                <span className="font-normal text-slate-400">({peso(thisWeekTotal)})</span>
+              </p>
+            )}
+          </div>
+        </div>
+        <SalesTrendChart data={trendData} />
+        <Link href="/admin/sales/daily" className="mt-2 inline-block text-xs text-blue-300 hover:underline">
+          View full daily breakdown →
+        </Link>
+      </div>
 
       {requestsAccess && (
       <div className="card overflow-x-auto">
