@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import { logoutAction } from "@/lib/actions";
 import Logo from "@/components/Logo";
+import PushSubscribe from "@/components/PushSubscribe";
 
 export default async function TechnicianLayout({ children }: { children: React.ReactNode }) {
   const user = await getCurrentUser();
@@ -34,6 +35,9 @@ export default async function TechnicianLayout({ children }: { children: React.R
               </button>
             </form>
           </div>
+        </div>
+        <div className="mx-auto max-w-2xl px-4 pb-3">
+          <PushSubscribe vapidPublicKey={process.env.VAPID_PUBLIC_KEY ?? null} />
         </div>
       </div>
       <main className="mx-auto max-w-2xl px-4 py-6 print:p-0">{children}</main>
