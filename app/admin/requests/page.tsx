@@ -1,12 +1,26 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { getLookups, getTechnicians, getBranches, getRequests, getDeviceModels, canManageHomeServiceRequests, canDeleteHomeServiceRequests, isBranchHidden } from "@/lib/db";
+import {
+  getLookups,
+  getTechnicians,
+  getBranches,
+  getRequests,
+  getDeviceModels,
+  getServiceAgreements,
+  homeServiceSalesByTechnician,
+  sumHomeServiceSales,
+  canManageHomeServiceRequests,
+  canDeleteHomeServiceRequests,
+  isBranchHidden,
+} from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import StatusBadge from "@/components/StatusBadge";
 import DeleteButton from "@/components/DeleteButton";
 import BarBreakdownChart from "@/components/BarBreakdownChart";
 import { deleteHomeServiceRequest } from "@/lib/actions";
 import { formatDate, todayDateStr } from "@/lib/format";
+
+const peso = (n: number) => `₱${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 export default async function RequestsPage({
   searchParams,
@@ -17,12 +31,13 @@ export default async function RequestsPage({
   if (!canManageHomeServiceRequests(user)) redirect("/admin");
 
   const sp = await searchParams;
-  const [lookups, technicians, branches, allRequests, deviceModels] = await Promise.all([
+  const [lookups, technicians, branches, allRequests, deviceModels, agreements] = await Promise.all([
     getLookups(),
     getTechnicians(),
     getBranches(),
     getRequests(),
     getDeviceModels(),
+    getServiceAgreements(),
   ]);
   const statuses = lookups.filter((l) => l.kind === "request_status").sort((a, b) => a.order - b.order);
 
@@ -72,6 +87,12 @@ export default async function RequestsPage({
   const technicianCounts = homeServiceTechnicians
     .map((t) => ({ id: t.id, name: t.name, count: todaysRequests.filter((r) => r.assignedTechnicianId === t.id).length }))
     .sort((a, b) => a.count - b.count || a.name.localeCompare(b.name));
+
+  // Same 30/70 split as Sales > Home Service, scoped to today only — a
+  // quick "how are we doing" summary so this page doesn't need its own
+  // date-range picker; the full breakdown is still one click away there.
+  const salesRows = homeServiceSalesByTechnician(agreements, (date) => date === todayStr);
+  const salesTotal = sumHomeServiceSales(salesRows);
 
   function labelFor(id: string | null, list: { id: string; label?: string; name?: string }[]) {
     if (!id) return "—";
@@ -132,6 +153,40 @@ export default async function RequestsPage({
             </span>
           ))}
         </div>
+      </div>
+
+      <div className="card">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h3 className="text-sm font-semibold text-slate-800">Home Service Sales — Today</h3>
+            <p className="mt-0.5 text-xs text-slate-400">Completed jobs only, same 30/70 split as the full Sales report.</p>
+          </div>
+          <Link href="/admin/sales/home-service" className="text-xs text-blue-300 hover:underline">
+            View full report →
+          </Link>
+        </div>
+        {salesRows.length === 0 ? (
+          <p className="text-sm text-slate-400">No home service jobs completed yet today.</p>
+        ) : (
+          <>
+            <div className="mb-3 flex flex-wrap gap-2">
+              {salesRows.map((r) => (
+                <span
+                  key={r.name}
+                  className={`rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-600 ${r.name === "Unassigned" ? "opacity-60" : ""}`}
+                >
+                  {r.name}: {peso(r.totalAmount)}
+                </span>
+              ))}
+            </div>
+            <div className="grid grid-cols-2 gap-y-1 text-xs sm:grid-cols-4">
+              <span className="text-slate-400">Total Amount ({salesTotal.count} job{salesTotal.count === 1 ? "" : "s"})</span>
+              <span className="text-right text-slate-800 sm:text-left">{peso(salesTotal.totalAmount)}</span>
+              <span className="font-medium text-green-700">Company Share (30%)</span>
+              <span className="text-right font-medium text-green-700 sm:text-left">{peso(salesTotal.companyShare)}</span>
+            </div>
+          </>
+        )}
       </div>
 
       <form className="card flex flex-wrap gap-3">

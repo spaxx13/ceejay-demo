@@ -1,10 +1,8 @@
 import Link from "next/link";
-import { getServiceAgreements } from "@/lib/db";
+import { getServiceAgreements, homeServiceSalesByTechnician, sumHomeServiceSales } from "@/lib/db";
 import SalesTabs from "@/components/SalesTabs";
 
 const peso = (n: number) => `₱${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-const COMPANY_SHARE = 0.3;
-const TECHNICIAN_SHARE = 0.7;
 
 export default async function HomeServiceSalesPage({ searchParams }: { searchParams: Promise<{ from?: string; to?: string }> }) {
   const sp = await searchParams;
@@ -30,48 +28,8 @@ export default async function HomeServiceSalesPage({ searchParams }: { searchPar
   // branch tag is incidental (whichever branch the technician was
   // dispatched from), not a meaningful visibility boundary — every account
   // that can open Sales sees all of it.
-  const homeServiceJobs = agreements.filter((a) => a.phase === "post_repair" && a.requestId && inRange(a.completedAt.slice(0, 10)));
-
-  type Job = { deviceLabel: string; amount: number };
-  type TechTotals = { name: string; count: number; totalAmount: number; partsCost: number; jobs: Job[] };
-  const totals = new Map<string, TechTotals>();
-  const ensure = (rawName: string) => {
-    const name = rawName.trim() || "Unassigned";
-    if (!totals.has(name)) totals.set(name, { name, count: 0, totalAmount: 0, partsCost: 0, jobs: [] });
-    return totals.get(name)!;
-  };
-
-  for (const a of homeServiceJobs) {
-    const bucket = ensure(a.technicianName);
-    const amount = a.cost + a.laborCost;
-    bucket.count += 1;
-    bucket.totalAmount += amount;
-    bucket.partsCost += a.partsCost;
-    bucket.jobs.push({ deviceLabel: a.deviceLabel || "Device not specified", amount });
-  }
-
-  const rows = Array.from(totals.values())
-    .map((t) => {
-      const netAmount = Math.max(0, t.totalAmount - t.partsCost);
-      return { ...t, netAmount, companyShare: netAmount * COMPANY_SHARE, technicianShare: netAmount * TECHNICIAN_SHARE };
-    })
-    .sort((a, b) => {
-      if (a.name === "Unassigned") return 1;
-      if (b.name === "Unassigned") return -1;
-      return b.totalAmount - a.totalAmount;
-    });
-
-  const grandTotal = rows.reduce(
-    (acc, r) => ({
-      count: acc.count + r.count,
-      totalAmount: acc.totalAmount + r.totalAmount,
-      partsCost: acc.partsCost + r.partsCost,
-      netAmount: acc.netAmount + r.netAmount,
-      companyShare: acc.companyShare + r.companyShare,
-      technicianShare: acc.technicianShare + r.technicianShare,
-    }),
-    { count: 0, totalAmount: 0, partsCost: 0, netAmount: 0, companyShare: 0, technicianShare: 0 }
-  );
+  const rows = homeServiceSalesByTechnician(agreements, inRange);
+  const grandTotal = sumHomeServiceSales(rows);
 
   return (
     <div className="space-y-6">

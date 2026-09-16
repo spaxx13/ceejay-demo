@@ -493,6 +493,70 @@ export async function getCustomFormFields() {
 export async function getServiceAgreements() {
   return (await query<ServiceAgreementRow>("select * from service_agreements order by created_at desc")).map(mapServiceAgreement);
 }
+
+export const HOME_SERVICE_COMPANY_SHARE = 0.3;
+export const HOME_SERVICE_TECHNICIAN_SHARE = 0.7;
+
+export type HomeServiceSalesRow = {
+  name: string;
+  count: number;
+  totalAmount: number;
+  partsCost: number;
+  netAmount: number;
+  companyShare: number;
+  technicianShare: number;
+  jobs: { deviceLabel: string; amount: number }[];
+};
+
+// Shared by Sales > Home Service and the Home Service Requests dashboard
+// summary — same "Total Amount = Repair Price + Labor/Service Cost" and
+// 30/70 Net Amount split computed in exactly one place, so the two pages
+// can never disagree on a figure.
+export function homeServiceSalesByTechnician(agreements: ServiceAgreement[], inRange: (date: string) => boolean): HomeServiceSalesRow[] {
+  const homeServiceJobs = agreements.filter((a) => a.phase === "post_repair" && a.requestId && inRange(a.completedAt.slice(0, 10)));
+
+  type TechTotals = { name: string; count: number; totalAmount: number; partsCost: number; jobs: { deviceLabel: string; amount: number }[] };
+  const totals = new Map<string, TechTotals>();
+  const ensure = (rawName: string) => {
+    const name = rawName.trim() || "Unassigned";
+    if (!totals.has(name)) totals.set(name, { name, count: 0, totalAmount: 0, partsCost: 0, jobs: [] });
+    return totals.get(name)!;
+  };
+
+  for (const a of homeServiceJobs) {
+    const bucket = ensure(a.technicianName);
+    const amount = a.cost + a.laborCost;
+    bucket.count += 1;
+    bucket.totalAmount += amount;
+    bucket.partsCost += a.partsCost;
+    bucket.jobs.push({ deviceLabel: a.deviceLabel || "Device not specified", amount });
+  }
+
+  return Array.from(totals.values())
+    .map((t) => {
+      const netAmount = Math.max(0, t.totalAmount - t.partsCost);
+      return { ...t, netAmount, companyShare: netAmount * HOME_SERVICE_COMPANY_SHARE, technicianShare: netAmount * HOME_SERVICE_TECHNICIAN_SHARE };
+    })
+    .sort((a, b) => {
+      if (a.name === "Unassigned") return 1;
+      if (b.name === "Unassigned") return -1;
+      return b.totalAmount - a.totalAmount;
+    });
+}
+
+export function sumHomeServiceSales(rows: HomeServiceSalesRow[]) {
+  return rows.reduce(
+    (acc, r) => ({
+      count: acc.count + r.count,
+      totalAmount: acc.totalAmount + r.totalAmount,
+      partsCost: acc.partsCost + r.partsCost,
+      netAmount: acc.netAmount + r.netAmount,
+      companyShare: acc.companyShare + r.companyShare,
+      technicianShare: acc.technicianShare + r.technicianShare,
+    }),
+    { count: 0, totalAmount: 0, partsCost: 0, netAmount: 0, companyShare: 0, technicianShare: 0 }
+  );
+}
 export async function getRepairProgressByRequestId(requestId: string): Promise<RepairProgress | null> {
   const row = await queryOne<RepairProgressRow>("select * from repair_progress where request_id = $1", [requestId]);
   return row ? mapRepairProgress(row) : null;
