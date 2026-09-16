@@ -2,16 +2,21 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import { logoutAction } from "@/lib/actions";
+import { getUnstartedJobCount } from "@/lib/db";
 import Logo from "@/components/Logo";
 import PushSubscribe from "@/components/PushSubscribe";
+import AppBadgeSync from "@/components/AppBadgeSync";
 
 export default async function TechnicianLayout({ children }: { children: React.ReactNode }) {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
   if (user.role !== "technician") redirect("/admin");
 
+  const unstartedCount = user.technicianId ? await getUnstartedJobCount(user.technicianId) : 0;
+
   return (
     <div className="min-h-screen">
+      <AppBadgeSync count={unstartedCount} />
       <div className="glass sticky top-0 z-10 print:hidden">
         <div className="mx-auto flex max-w-2xl items-center justify-between px-4 py-3">
           <span className="flex items-center gap-2">

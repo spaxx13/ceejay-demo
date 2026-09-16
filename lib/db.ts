@@ -715,7 +715,11 @@ export async function notifyAdmins(type: Notification["type"], requestId: string
     const adminIds = new Set(admins.map((a) => a.id));
     const recipientSubs = subs.filter((s) => adminIds.has(s.userId));
     if (recipientSubs.length > 0) {
-      const { expiredEndpoints } = await sendPushToUsers(recipientSubs, { title: "Ceejay Admin", body: message, url });
+      // Included on every push so the home-screen icon badge updates from
+      // the service worker even while the app is closed — same unread
+      // count getNotifications()'s caller already shows in the sidebar.
+      const unread = await queryOne<{ n: number }>("select count(*)::int as n from notifications where read_at is null");
+      const { expiredEndpoints } = await sendPushToUsers(recipientSubs, { title: "Ceejay Admin", body: message, url, badgeCount: unread?.n ?? undefined });
       if (expiredEndpoints.length > 0) {
         await query("delete from push_subscriptions where endpoint = any($1)", [expiredEndpoints]);
       }
@@ -732,6 +736,23 @@ export async function notifyAdmins(type: Notification["type"], requestId: string
   }
 }
 
+// How many jobs are assigned to this technician but not yet started —
+// status "Assigned", not yet moved to En Route/In Progress. Drives the
+// Technician app's home-screen icon badge (both the on-open sync in
+// app/technician/layout.tsx and the push-time update in notifyTechnician
+// below), so a technician sees at a glance how many new jobs are waiting
+// on them without opening the app.
+export async function getUnstartedJobCount(technicianId: string) {
+  const row = await queryOne<{ n: number }>(
+    `select count(*)::int as n
+     from home_service_requests r
+     join lookups l on l.id = r.status_id
+     where r.assigned_technician_id = $1 and l.label = 'Assigned' and r.deleted_at is null`,
+    [technicianId]
+  );
+  return row?.n ?? 0;
+}
+
 // Web push to one technician's own device(s) — e.g. a new job assignment.
 // A technician's login is a `users` row with technician_id set to their
 // technicians.id, so push_subscriptions (keyed by users.id) has to go
@@ -746,7 +767,13 @@ export async function notifyTechnician(technicianId: string, message: string, ur
     const subs = (await getPushSubscriptions()).filter((s) => s.userId === techUser.id);
     if (subs.length === 0) return;
 
-    const { expiredEndpoints } = await sendPushToUsers(subs, { title: "Ceejay", body: message, url });
+    // Badge count = jobs assigned to this technician that they haven't
+    // started yet ("Assigned" status, not yet moved to En Route/In
+    // Progress) — the same "new job" count the technician layout badges
+    // with on open, kept in sync here so it also updates while the app is
+    // closed. See getUnstartedJobCount below.
+    const badgeCount = await getUnstartedJobCount(technicianId);
+    const { expiredEndpoints } = await sendPushToUsers(subs, { title: "Ceejay", body: message, url, badgeCount });
     if (expiredEndpoints.length > 0) {
       await query("delete from push_subscriptions where endpoint = any($1)", [expiredEndpoints]);
     }

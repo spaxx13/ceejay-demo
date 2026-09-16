@@ -3,6 +3,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { getNotifications, canManageHomeServiceRequests, canAccessCrm } from "@/lib/db";
 import AdminNav from "@/components/AdminNav";
 import PwaNotificationBar from "@/components/PwaNotificationBar";
+import AppBadgeSync from "@/components/AppBadgeSync";
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const user = await getCurrentUser();
@@ -13,6 +14,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
 
   return (
     <>
+      <AppBadgeSync count={unreadCount} />
       <PwaNotificationBar unreadCount={unreadCount} />
       <div className="min-h-screen md:flex">
         <AdminNav

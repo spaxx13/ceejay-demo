@@ -11,12 +11,25 @@ self.addEventListener("push", (event) => {
   }
 
   event.waitUntil(
-    self.registration.showNotification(data.title, {
-      body: data.body,
-      icon: "/icon-192.png",
-      badge: "/icon-192.png",
-      data: { url: data.url },
-    })
+    (async () => {
+      await self.registration.showNotification(data.title, {
+        body: data.body,
+        icon: "/icon-192.png",
+        badge: "/icon-192.png",
+        data: { url: data.url },
+      });
+      // Home-screen icon badge count — only iOS/Safari's newer Badging API
+      // exposes this from a service worker; older/unsupported browsers just
+      // skip it silently.
+      if (typeof data.badgeCount === "number" && "setAppBadge" in self.registration) {
+        try {
+          if (data.badgeCount > 0) await self.registration.setAppBadge(data.badgeCount);
+          else await self.registration.clearAppBadge();
+        } catch {
+          // Badging unsupported/blocked — the notification itself already went through.
+        }
+      }
+    })()
   );
 });
 
