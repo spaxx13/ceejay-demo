@@ -715,7 +715,11 @@ export async function notifyAdmins(type: Notification["type"], requestId: string
     const adminIds = new Set(admins.map((a) => a.id));
     const recipientSubs = subs.filter((s) => adminIds.has(s.userId));
     if (recipientSubs.length > 0) {
-      const { expiredEndpoints } = await sendPushToUsers(recipientSubs, { title: "Ceejay Admin", body: message, url });
+      // Included on every push so the home-screen icon badge updates from
+      // the service worker even while the app is closed — same unread
+      // count getNotifications()'s caller already shows in the sidebar.
+      const unread = await queryOne<{ n: number }>("select count(*)::int as n from notifications where read_at is null");
+      const { expiredEndpoints } = await sendPushToUsers(recipientSubs, { title: "Ceejay Admin", body: message, url, badgeCount: unread?.n ?? undefined });
       if (expiredEndpoints.length > 0) {
         await query("delete from push_subscriptions where endpoint = any($1)", [expiredEndpoints]);
       }

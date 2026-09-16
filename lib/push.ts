@@ -17,7 +17,11 @@ function ensureVapid() {
   vapidConfigured = true;
 }
 
-export type PushPayload = { title: string; body: string; url: string };
+// badgeCount, when set, is applied to the installed app's home-screen icon
+// (the Badging API) straight from the service worker's push handler — so
+// the number updates even while the app is closed, not just next time it's
+// opened. Omit it for a push that shouldn't change the badge.
+export type PushPayload = { title: string; body: string; url: string; badgeCount?: number };
 
 // Sends to every given subscription in parallel; a subscription the push
 // service reports as gone (410) or unknown (404) is expired — its endpoint
