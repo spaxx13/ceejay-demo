@@ -179,11 +179,17 @@ export default async function RequestsPage({
                 </span>
               ))}
             </div>
-            <div className="grid grid-cols-2 gap-y-1 text-xs sm:grid-cols-4">
-              <span className="text-slate-400">Total Amount ({salesTotal.count} job{salesTotal.count === 1 ? "" : "s"})</span>
-              <span className="text-right text-slate-800 sm:text-left">{peso(salesTotal.totalAmount)}</span>
-              <span className="font-medium text-green-700">Company Share (30%)</span>
-              <span className="text-right font-medium text-green-700 sm:text-left">{peso(salesTotal.companyShare)}</span>
+            <div className="flex flex-wrap gap-x-8 gap-y-3 border-t border-slate-100 pt-3">
+              <div>
+                <p className="text-xs text-slate-400">
+                  Total Amount ({salesTotal.count} job{salesTotal.count === 1 ? "" : "s"})
+                </p>
+                <p className="mt-0.5 text-sm font-semibold text-slate-800">{peso(salesTotal.totalAmount)}</p>
+              </div>
+              <div>
+                <p className="text-xs text-green-700">Company Share (30%)</p>
+                <p className="mt-0.5 text-sm font-semibold text-green-700">{peso(salesTotal.companyShare)}</p>
+              </div>
             </div>
           </>
         )}
