@@ -29,6 +29,7 @@ import {
   cancelCrmBroadcast,
   logActivity,
   notifyAdmins,
+  notifyTechnician,
   canManageHomeServiceRequests,
   canDeleteHomeServiceRequests,
   canAccessCrm,
@@ -1509,6 +1510,7 @@ export async function reassignRequest(formData: FormData) {
       `Manually reassigned to ${tech?.name ?? technicianId} by ${user?.name ?? "Admin"}${smsNote}`,
       user?.name ?? "Admin"
     );
+    await notifyTechnician(technicianId, `New job assigned: ${req.reference} — ${req.customerName || "a customer"}`, "/technician");
   } else {
     await logActivity("home_service_request", req.id, `Unassigned by ${user?.name ?? "Admin"}`, user?.name ?? "Admin");
   }
