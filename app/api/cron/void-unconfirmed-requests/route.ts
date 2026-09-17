@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getRequests, getLookups, query, logActivity, notifyAdmins } from "@/lib/db";
 import { sendCancellationEmail } from "@/lib/email";
+import { sendSms, normalizePhone } from "@/lib/sms";
 
 // Runs every 15 minutes (see vercel.json) and cancels any Home Service
 // Request still sitting in "Pending Confirmation" past its 2-hour window —
@@ -48,7 +49,20 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    await logActivity("home_service_request", r.id, `Request ${r.reference} auto-cancelled — not confirmed within the window${emailNote}`, "System");
+    let smsNote = "";
+    if (r.phone) {
+      try {
+        await sendSms(
+          normalizePhone(r.phone),
+          `Hi ${r.customerName || "there"}, your Ceejay repair request ${r.reference} has been cancelled — it wasn't confirmed within the 2-hour window. You're welcome to book again anytime.`
+        );
+        smsNote = ` — cancellation SMS sent to ${r.phone}`;
+      } catch (err) {
+        smsNote = ` — cancellation SMS failed to send to ${r.phone} (${err instanceof Error ? err.message : "unknown error"})`;
+      }
+    }
+
+    await logActivity("home_service_request", r.id, `Request ${r.reference} auto-cancelled — not confirmed within the window${emailNote}${smsNote}`, "System");
     await notifyAdmins("new_request", r.id, `Request ${r.reference} was auto-cancelled — the customer didn't confirm within the window.`);
     voided++;
   }

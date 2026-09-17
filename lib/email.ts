@@ -63,23 +63,6 @@ export async function sendRepairReceiptEmail(
   if (error) throw new Error(error.message);
 }
 
-export async function sendOtpEmail(to: string, code: string) {
-  const client = getClient();
-  const { error } = await client.emails.send({
-    from: FROM,
-    to,
-    subject: `${code} is your Ceejay verification code`,
-    html: `
-      <div style="font-family: -apple-system, sans-serif; max-width: 420px; margin: 0 auto;">
-        <p>Your verification code for the Ceejay Cellphone Repair Shop home service request is:</p>
-        <p style="font-size: 32px; font-weight: 700; letter-spacing: 6px; margin: 24px 0;">${code}</p>
-        <p style="color: #667; font-size: 13px;">This code expires in 10 minutes. If you didn't request this, you can ignore this email.</p>
-      </div>
-    `,
-  });
-  if (error) throw new Error(error.message);
-}
-
 export type QuotationDevice = {
   reference: string;
   deviceLabel: string;
@@ -208,6 +191,27 @@ export async function sendBroadcastEmail(to: string, opts: { subject: string; me
         <p style="font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8;">Ceejay Cellphone Repair Shop</p>
         <p style="font-size: 14px; line-height: 1.5; white-space: pre-line;">${escapeHtml(opts.message)}</p>
         ${photosHtml}
+      </div>
+    `,
+  });
+  if (error) throw new Error(error.message);
+}
+
+export async function sendAppointmentReminderEmail(to: string, opts: { customerName: string; reference: string; preferredDatetime: string }) {
+  const client = getClient();
+  const { error } = await client.emails.send({
+    from: FROM,
+    to,
+    subject: `Reminder: your Ceejay appointment is tomorrow — ${opts.reference}`,
+    html: `
+      <div style="font-family: -apple-system, sans-serif; max-width: 480px; margin: 0 auto; color: #1e293b;">
+        <p style="font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8;">Ceejay Cellphone Repair Shop</p>
+        <h2 style="margin: 4px 0 16px;">See you tomorrow!</h2>
+        <p style="font-size: 14px; line-height: 1.5;">
+          Hi ${escapeHtml(opts.customerName)}, this is a reminder that your home service appointment
+          <strong>${opts.reference}</strong> is scheduled for <strong>${escapeHtml(opts.preferredDatetime)}</strong>.
+        </p>
+        <p style="font-size: 13px; color: #64748b;">If you need to reschedule or have any questions, just reply to this email or contact the branch you visited.</p>
       </div>
     `,
   });
