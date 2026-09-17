@@ -342,6 +342,21 @@ export type ActivityLog = {
   at: string;
 };
 
+// One message in a lead/customer's conversation thread — distinct from the
+// single freeform "notes" field (one running blurb) and from ActivityLog
+// (system-generated status-change entries): this is a chat-style timeline
+// staff log every call/text/email/note against, in order.
+export type ConversationMessage = {
+  id: string;
+  entityType: "lead" | "customer";
+  entityId: string;
+  channel: "note" | "call" | "sms" | "email" | "chat";
+  direction: "outbound" | "inbound"; // outbound = staff -> customer, inbound = customer -> staff
+  message: string;
+  staffName: string; // who logged it — blank for a pure inbound entry with no clear logger
+  createdAt: string;
+};
+
 // A record of every successful staff login — name/email/role are snapshots
 // taken at login time, so the log stays fully readable even if the account
 // is later renamed or deleted (userId just goes null, per the FK).

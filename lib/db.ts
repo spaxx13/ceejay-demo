@@ -23,6 +23,7 @@ import type {
   Expense,
   LoginLog,
   PushSubscription,
+  ConversationMessage,
   CrmBroadcast,
   CrmBroadcastStatus,
 } from "./types";
@@ -693,6 +694,22 @@ export async function getUserAuthByEmail(email: string): Promise<(User & { passw
 
 export async function logActivity(entityType: ActivityLog["entityType"], entityId: string, message: string, actor: string) {
   await query("insert into activity_log (entity_type, entity_id, message, actor) values ($1,$2,$3,$4)", [entityType, entityId, message, actor]);
+}
+
+type ConversationRow = {
+  id: string; entity_type: ConversationMessage["entityType"]; entity_id: string; channel: ConversationMessage["channel"];
+  direction: ConversationMessage["direction"]; message: string; staff_name: string; created_at: Date;
+};
+function mapConversationMessage(r: ConversationRow): ConversationMessage {
+  return {
+    id: r.id, entityType: r.entity_type, entityId: r.entity_id, channel: r.channel, direction: r.direction,
+    message: r.message, staffName: r.staff_name, createdAt: toIso(r.created_at),
+  };
+}
+export async function getConversation(entityType: ConversationMessage["entityType"], entityId: string) {
+  return (
+    await query<ConversationRow>("select * from conversations where entity_type=$1 and entity_id=$2 order by created_at asc", [entityType, entityId])
+  ).map(mapConversationMessage);
 }
 
 export async function getPushSubscriptions() {

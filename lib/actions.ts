@@ -1540,10 +1540,21 @@ export async function changeRequestStatus(formData: FormData) {
   const status = lookups.find((l) => l.id === statusId);
   if (!req || !status) return;
   const statusHistory = [...req.statusHistory, { statusId, at: new Date().toISOString() }];
-  await query("update home_service_requests set status_id=$1, status_history=$2 where id=$3", [statusId, JSON.stringify(statusHistory), requestId]);
+  const cancelled = status.label === "Cancelled";
+  if (cancelled) {
+    // Cancelling auto-trashes the request (reversible from Trash) so it stops
+    // cluttering the active queue; the linked Customer/CRM record is a
+    // separate table and is never touched, so that history stays intact.
+    await query(
+      "update home_service_requests set status_id=$1, status_history=$2, deleted_at=now() where id=$3",
+      [statusId, JSON.stringify(statusHistory), requestId]
+    );
+  } else {
+    await query("update home_service_requests set status_id=$1, status_history=$2 where id=$3", [statusId, JSON.stringify(statusHistory), requestId]);
+  }
 
   let emailNote = "";
-  if (status.label === "Cancelled" && req.email) {
+  if (cancelled && req.email) {
     try {
       await sendCancellationEmail(req.email, { customerName: req.customerName, reference: req.reference, reason: "" });
       emailNote = ` — cancellation email sent to ${req.email}`;
@@ -1554,20 +1565,28 @@ export async function changeRequestStatus(formData: FormData) {
   await logActivity(
     "home_service_request",
     req.id,
-    `Status changed to "${status.label}" by ${user?.name ?? "Admin"}${emailNote}`,
+    `Status changed to "${status.label}" by ${user?.name ?? "Admin"}${cancelled ? " — moved to Trash" : ""}${emailNote}`,
     user?.name ?? "Admin"
   );
   revalidatePath("/admin/requests");
   revalidatePath(`/admin/requests/${requestId}`);
   revalidatePath("/technician");
+  if (cancelled) {
+    revalidatePath("/admin/pos");
+    revalidatePath("/admin/sales/home-service");
+    revalidatePath("/admin/sales/materials");
+    revalidatePath("/admin/trash");
+    revalidatePath("/admin");
+  }
 }
 
 // Moves a home service request to Trash — hides it from the normal list,
 // technician board, and sales reports, but it can still be restored from
 // Trash. Only permanentlyDeleteHomeServiceRequest actually erases it.
-// Cancelling a request keeps it visible for history; trashing hides it
-// entirely, so it's gated by canDeleteHomeServiceRequests — owner admins
-// always, branch admins only when explicitly granted (Staff Accounts).
+// Manual "Move to Trash" (any status); changeRequestStatus/technicianUpdateStatus
+// also auto-trash a request the moment its status becomes "Cancelled", so this
+// is still gated by canDeleteHomeServiceRequests — owner admins always, branch
+// admins only when explicitly granted (Staff Accounts).
 export async function deleteHomeServiceRequest(formData: FormData) {
   const actor = await getCurrentUser();
   if (!canDeleteHomeServiceRequests(actor)) return;
@@ -1899,6 +1918,29 @@ export async function addCustomerNote(formData: FormData) {
   revalidatePath(`/admin/crm/${customerId}`);
 }
 
+// Logs one message into a lead/customer's Conversation thread — a
+// chat-style timeline distinct from the single freeform "notes" field,
+// so staff can record the actual back-and-forth (calls, texts, emails, or
+// just a quick note) in order, not just a running summary blurb.
+export async function addConversationMessage(formData: FormData) {
+  const user = await getCurrentUser();
+  if (!canAccessCrm(user)) return;
+  const entityType = str(formData, "entityType");
+  if (entityType !== "lead" && entityType !== "customer") return;
+  const entityId = str(formData, "entityId");
+  const message = str(formData, "message");
+  if (!message) return;
+  const direction = str(formData, "direction") === "inbound" ? "inbound" : "outbound";
+  const channelRaw = str(formData, "channel");
+  const channel = (["note", "call", "sms", "email", "chat"] as const).includes(channelRaw as never) ? channelRaw : "note";
+
+  await query(
+    "insert into conversations (entity_type, entity_id, channel, direction, message, staff_name) values ($1,$2,$3,$4,$5,$6)",
+    [entityType, entityId, channel, direction, message, user?.name ?? "Staff"]
+  );
+  revalidatePath(`/admin/crm/${entityId}`);
+}
+
 // ---------- Technician view ----------
 
 export async function technicianUpdateStatus(formData: FormData) {
@@ -1913,15 +1955,16 @@ export async function technicianUpdateStatus(formData: FormData) {
 
   const statusHistory = [...req.statusHistory, { statusId, at: new Date().toISOString() }];
   const adminNotes = note ? (req.adminNotes ? `${req.adminNotes}\n[${user?.name}] ${note}` : `[${user?.name}] ${note}`) : req.adminNotes;
-  await query("update home_service_requests set status_id=$1, status_history=$2, admin_notes=$3 where id=$4", [
-    statusId,
-    JSON.stringify(statusHistory),
-    adminNotes,
-    requestId,
-  ]);
+  const cancelled = status.label === "Cancelled";
+  // Cancelling auto-trashes the request (reversible from Trash); the linked
+  // Customer/CRM record lives in a separate table and is untouched.
+  await query(
+    `update home_service_requests set status_id=$1, status_history=$2, admin_notes=$3${cancelled ? ", deleted_at=now()" : ""} where id=$4`,
+    [statusId, JSON.stringify(statusHistory), adminNotes, requestId]
+  );
 
   let emailNote = "";
-  if (status.label === "Cancelled" && req.email) {
+  if (cancelled && req.email) {
     try {
       await sendCancellationEmail(req.email, { customerName: req.customerName, reference: req.reference, reason: note });
       emailNote = ` — cancellation email sent to ${req.email}`;
@@ -1932,7 +1975,7 @@ export async function technicianUpdateStatus(formData: FormData) {
   await logActivity(
     "home_service_request",
     req.id,
-    `Status updated to "${status.label}" by technician ${user?.name ?? ""}${note ? ` — ${note}` : ""}${emailNote}`,
+    `Status updated to "${status.label}" by technician ${user?.name ?? ""}${note ? ` — ${note}` : ""}${cancelled ? " — moved to Trash" : ""}${emailNote}`,
     user?.name ?? "Technician"
   );
   if (status.label === "In Progress") {
@@ -1946,6 +1989,12 @@ export async function technicianUpdateStatus(formData: FormData) {
   revalidatePath("/admin/requests");
   revalidatePath(`/admin/requests/${requestId}`);
   revalidatePath("/admin");
+  if (cancelled) {
+    revalidatePath("/admin/pos");
+    revalidatePath("/admin/sales/home-service");
+    revalidatePath("/admin/sales/materials");
+    revalidatePath("/admin/trash");
+  }
 }
 
 // Free-form work-in-progress notes — the technician can save this repeatedly

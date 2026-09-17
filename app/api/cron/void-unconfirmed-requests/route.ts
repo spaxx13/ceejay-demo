@@ -28,12 +28,12 @@ export async function GET(req: NextRequest) {
   let voided = 0;
   for (const r of due) {
     const statusHistory = [...r.statusHistory, { statusId: cancelledStatus.id, at: new Date().toISOString() }];
-    await query("update home_service_requests set status_id=$1, status_history=$2, admin_notes = admin_notes || $3 where id=$4", [
-      cancelledStatus.id,
-      JSON.stringify(statusHistory),
-      (r.adminNotes ? "\n" : "") + "Auto-cancelled: customer did not confirm within the 2-hour window.",
-      r.id,
-    ]);
+    // Auto-trash on cancel, same as a manual cancel — the linked Customer/CRM
+    // record lives in a separate table and is untouched.
+    await query(
+      "update home_service_requests set status_id=$1, status_history=$2, admin_notes = admin_notes || $3, deleted_at=now() where id=$4",
+      [cancelledStatus.id, JSON.stringify(statusHistory), (r.adminNotes ? "\n" : "") + "Auto-cancelled: customer did not confirm within the 2-hour window.", r.id]
+    );
 
     let emailNote = "";
     if (r.email) {
@@ -62,7 +62,12 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    await logActivity("home_service_request", r.id, `Request ${r.reference} auto-cancelled — not confirmed within the window${emailNote}${smsNote}`, "System");
+    await logActivity(
+      "home_service_request",
+      r.id,
+      `Request ${r.reference} auto-cancelled and moved to Trash — not confirmed within the window${emailNote}${smsNote}`,
+      "System"
+    );
     await notifyAdmins("new_request", r.id, `Request ${r.reference} was auto-cancelled — the customer didn't confirm within the window.`);
     voided++;
   }

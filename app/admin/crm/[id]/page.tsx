@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { getLeadById, getCustomerById, getLookups, getActivity, getRequests, getRepairRecords, getUsers, getServiceAgreements, getRepairRecordStatus, getBranches, isBranchHidden, canAccessCrm } from "@/lib/db";
+import { getLeadById, getCustomerById, getLookups, getActivity, getRequests, getDeletedRequests, getRepairRecords, getUsers, getServiceAgreements, getRepairRecordStatus, getBranches, isBranchHidden, canAccessCrm, getConversation } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import StatusBadge from "@/components/StatusBadge";
+import ConversationThread from "@/components/ConversationThread";
 import { updateLeadStatus, addLeadNote, convertLeadToCustomer, addCustomerNote, assignLead } from "@/lib/actions";
 import { formatDate, formatDateTime } from "@/lib/format";
 
@@ -18,7 +19,7 @@ export default async function CrmDetailPage({ params }: { params: Promise<{ id: 
   const lead = await getLeadById(id);
   if (lead) {
     if (isBranchHidden(user, lead.branchId)) redirect("/admin/crm");
-    const [lookups, activityLog, users, branches] = await Promise.all([getLookups(), getActivity(), getUsers(), getBranches()]);
+    const [lookups, activityLog, users, branches, conversation] = await Promise.all([getLookups(), getActivity(), getUsers(), getBranches(), getConversation("lead", lead.id)]);
     const leadStatuses = lookups.filter((l) => l.kind === "lead_status").sort((a, b) => a.order - b.order);
     const currentStatus = leadStatuses.find((s) => s.id === lead.statusId);
     const activity = activityLog.filter((a) => a.entityType === "lead" && a.entityId === lead.id).sort((a, b) => (a.at < b.at ? 1 : -1));
@@ -125,6 +126,8 @@ export default async function CrmDetailPage({ params }: { params: Promise<{ id: 
           </div>
         </div>
 
+        <ConversationThread entityType="lead" entityId={lead.id} messages={conversation} />
+
         <div className="card space-y-3">
           <h3 className="text-sm font-semibold text-slate-800">Activity Log</h3>
           <ul className="space-y-2 text-sm">
@@ -143,14 +146,20 @@ export default async function CrmDetailPage({ params }: { params: Promise<{ id: 
 
   const customer = await getCustomerById(id);
   if (!customer) notFound();
-  const [lookups, activityLog, allRequests, allRepairRecords, agreements] = await Promise.all([
+  const [lookups, activityLog, allRequests, allTrashedRequests, allRepairRecords, agreements, conversation] = await Promise.all([
     getLookups(),
     getActivity(),
     getRequests(),
+    getDeletedRequests(),
     getRepairRecords(),
     getServiceAgreements(),
+    getConversation("customer", customer.id),
   ]);
-  const requests = allRequests.filter((r) => r.customerId === customer.id).sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+  // Trashed (e.g. auto-trashed on Cancelled) requests still belong to the
+  // customer's history here — only the active Requests list/board hides them.
+  const requests = [...allRequests, ...allTrashedRequests]
+    .filter((r) => r.customerId === customer.id)
+    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
   const repairRecords = allRepairRecords.filter((r) => r.customerId === customer.id).sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
   const totalSpent = repairRecords.filter((r) => !r.cancelled).reduce((sum, r) => sum + r.cost, 0);
   const requestStatuses = lookups.filter((l) => l.kind === "request_status");
@@ -207,7 +216,10 @@ export default async function CrmDetailPage({ params }: { params: Promise<{ id: 
                     </Link>
                     <p className="text-xs text-slate-400">{formatDate(r.createdAt)}</p>
                   </div>
-                  {status && <StatusBadge label={status.label} />}
+                  <div className="flex items-center gap-1.5">
+                    {status && <StatusBadge label={status.label} />}
+                    {r.deletedAt && <span className="badge border border-slate-200 bg-slate-50 text-slate-400">In Trash</span>}
+                  </div>
                 </li>
               );
             })}
@@ -242,6 +254,8 @@ export default async function CrmDetailPage({ params }: { params: Promise<{ id: 
           })}
         </ul>
       </div>
+
+      <ConversationThread entityType="customer" entityId={customer.id} messages={conversation} />
 
       <div className="card space-y-3">
         <h3 className="text-sm font-semibold text-slate-800">Activity Log</h3>
