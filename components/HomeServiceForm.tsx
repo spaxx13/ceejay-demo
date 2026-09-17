@@ -87,6 +87,7 @@ export default function HomeServiceForm({
   content,
   fields,
   area,
+  smsAvailable,
 }: {
   brands: Brand[];
   models: Model[];
@@ -94,6 +95,7 @@ export default function HomeServiceForm({
   content: RequestFormContent;
   fields: CustomFormField[];
   area: HomeServiceQueue;
+  smsAvailable: boolean;
 }) {
   const [state, formAction, pending] = useActionState(submitHomeServiceRequest, undefined);
   const formRef = useRef<HTMLFormElement>(null);
@@ -156,28 +158,31 @@ export default function HomeServiceForm({
     return `A flat rate service fee of ${peso(fee.base)} is applicable within ${province} area.`;
   }
 
-  // Email OTP verification — anti-spam gate, run at submit time: the
+  // SMS OTP verification — anti-spam gate, run at submit time: the
   // customer fills out the whole form, hits Submit, and only entering the
-  // code that arrives by email actually completes the request. Nothing is
+  // code that arrives by SMS actually completes the request. Nothing is
   // written to the server until the code is verified.
   const [otpStage, setOtpStage] = useState<"idle" | "sent">("idle");
-  const [sentEmail, setSentEmail] = useState("");
+  const [sentPhone, setSentPhone] = useState("");
   const [otpCode, setOtpCode] = useState("");
   const [sendingOtp, setSendingOtp] = useState(false);
   const [verifyingOtp, setVerifyingOtp] = useState(false);
   const [otpError, setOtpError] = useState("");
+  // Captured on submit purely to display "we sent your quotation to X" on
+  // the success screen — independent of the phone-based OTP gate above.
+  const [sentEmail, setSentEmail] = useState("");
 
   async function handleProceedToOtp() {
     const form = formRef.current;
     if (!form) return;
     if (!form.reportValidity()) return; // surfaces the browser's native "please fill this in" on any missing required field
-    const email = String(new FormData(form).get("email") ?? "").trim();
+    const phone = String(new FormData(form).get("phone") ?? "").trim();
     setOtpError("");
     setSendingOtp(true);
     try {
-      const res = await sendHomeServiceOtp(email);
+      const res = await sendHomeServiceOtp(phone);
       if (res.ok) {
-        setSentEmail(email);
+        setSentPhone(phone);
         setOtpCode("");
         setOtpStage("sent");
       } else {
@@ -194,7 +199,7 @@ export default function HomeServiceForm({
     setOtpError("");
     setSendingOtp(true);
     try {
-      const res = await sendHomeServiceOtp(sentEmail);
+      const res = await sendHomeServiceOtp(sentPhone);
       if (res.ok) {
         setOtpCode("");
       } else {
@@ -211,7 +216,7 @@ export default function HomeServiceForm({
     setOtpError("");
     setVerifyingOtp(true);
     try {
-      const res = await verifyHomeServiceOtp(sentEmail, otpCode);
+      const res = await verifyHomeServiceOtp(sentPhone, otpCode);
       if (!res.ok) {
         setOtpError(res.error);
         return;
@@ -236,8 +241,13 @@ export default function HomeServiceForm({
   }
 
   const streetActive = fields.some((f) => f.systemKey === "street");
-  const emailField = fields.find((f) => f.systemKey === "email");
-  const emailGateActive = OTP_GATE_ENABLED && (emailField?.active ?? false);
+  const phoneField = fields.find((f) => f.systemKey === "phone");
+  // Also requires smsAvailable (whether SEMAPHORE_API_KEY is actually set)
+  // so the form degrades gracefully — with no SMS provider configured,
+  // customers submit without an OTP step instead of being stuck on a "send
+  // code" button that can only ever fail. Matches the server-side check in
+  // submitHomeServiceRequest, which skips the gate the same way.
+  const phoneGateActive = OTP_GATE_ENABLED && smsAvailable && (phoneField?.active ?? false);
 
   useEffect(() => {
     if (!GOOGLE_MAPS_KEY || !streetActive) return;
@@ -674,7 +684,12 @@ export default function HomeServiceForm({
   const fieldsAfterDevices = firstDeviceIdx >= 0 ? fields.slice(lastDeviceIdx + 1) : [];
 
   return (
-    <form ref={formRef} action={formAction} className="card space-y-5">
+    <form
+      ref={formRef}
+      action={formAction}
+      onSubmit={(e) => setSentEmail(String(new FormData(e.currentTarget).get("email") ?? "").trim())}
+      className="card space-y-5"
+    >
       <input type="hidden" name="serviceArea" value={area} />
       <input type="hidden" name="deviceCount" value={devices.length} />
       {fieldsBeforeDevices.map((f) => (f.systemKey ? renderSystemField(f) : <DynamicFormField key={f.id} field={f} />))}
@@ -708,13 +723,13 @@ export default function HomeServiceForm({
         {serviceFeeNote() && <p className="mt-2 font-semibold">{serviceFeeNote()}</p>}
       </FormNotice>
 
-      {!emailGateActive && (
+      {!phoneGateActive && (
         <button type="submit" disabled={pending} className="btn-primary w-full">
           {pending ? "Submitting..." : content.submitButtonLabel}
         </button>
       )}
 
-      {emailGateActive && otpStage === "idle" && (
+      {phoneGateActive && otpStage === "idle" && (
         <>
           <button type="button" onClick={handleProceedToOtp} disabled={sendingOtp} className="btn-primary w-full">
             {sendingOtp ? "Sending verification code..." : content.submitButtonLabel}
@@ -723,12 +738,12 @@ export default function HomeServiceForm({
         </>
       )}
 
-      {emailGateActive && otpStage === "sent" && (
+      {phoneGateActive && otpStage === "sent" && (
         <div className="space-y-3 rounded-lg border-2 border-blue-300 bg-blue-50 p-4">
-          <p className="text-sm font-semibold text-blue-900">🔒 Verify your email to complete this request</p>
+          <p className="text-sm font-semibold text-blue-900">🔒 Verify your phone to complete this request</p>
           <p className="text-sm font-medium text-blue-900">
-            Please enter the OTP that we sent to your email address ({sentEmail}). This will help us ensure that the service booking is
-            legitimate and requested by a real human. Please check your inbox or Spam/Junk folder.
+            Please enter the OTP we sent by SMS to {sentPhone}. This will help us ensure that the service booking is legitimate and
+            requested by a real human.
           </p>
           <div className="flex gap-2">
             <input

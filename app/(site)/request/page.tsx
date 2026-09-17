@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getLookups, getDeviceModels, getRequestFormContent, getCustomFormFields } from "@/lib/db";
 import HomeServiceForm from "@/components/HomeServiceForm";
+import { smsConfigured } from "@/lib/sms";
 import type { HomeServiceQueue } from "@/lib/types";
 
 // The customer picks their service area up front (?area=near|far) — this
@@ -90,7 +91,15 @@ export default async function RequestPage({ searchParams }: { searchParams: Prom
             This form has no active fields right now — add or re-enable some from Admin &gt; Settings &gt; Request Form.
           </p>
         ) : (
-          <HomeServiceForm brands={brands} models={models} serviceTypes={serviceTypes} content={content} fields={fields} area={area} />
+          <HomeServiceForm
+            brands={brands}
+            models={models}
+            serviceTypes={serviceTypes}
+            content={content}
+            fields={fields}
+            area={area}
+            smsAvailable={smsConfigured()}
+          />
         )}
       </div>
     </main>
