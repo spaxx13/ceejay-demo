@@ -184,16 +184,16 @@ export default async function RequestsPage({
                 </span>
               ))}
             </div>
-            <div className="flex flex-wrap gap-x-8 gap-y-3 border-t border-slate-100 pt-3">
+            <div className="flex flex-wrap items-center gap-x-8 gap-y-3 border-t border-slate-100 pt-3">
               <div>
                 <p className="text-xs text-slate-400">
                   Total Amount ({salesTotal.count} job{salesTotal.count === 1 ? "" : "s"})
                 </p>
                 <p className="mt-0.5 text-sm font-semibold text-slate-800">{peso(salesTotal.totalAmount)}</p>
               </div>
-              <div>
-                <p className="text-xs text-green-700">Company Share (30%)</p>
-                <p className="mt-0.5 text-sm font-semibold text-green-700">{peso(salesTotal.companyShare)}</p>
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border-2 border-green-300 bg-green-50 px-3 py-2">
+                <span className="text-xs font-semibold text-green-900">Company Share (30%)</span>
+                <span className="break-all text-lg font-bold text-green-900">{peso(salesTotal.companyShare)}</span>
               </div>
             </div>
           </>
