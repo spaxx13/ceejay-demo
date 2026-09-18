@@ -467,10 +467,12 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
                           <>
                             <span className="text-slate-500">Business Expenses</span>
                             <span className="text-right text-red-700">−{peso(r.technicianExpenses)}</span>
-                            <span className="font-semibold text-slate-900">Net (After Expenses)</span>
+                            <span className="font-semibold text-slate-900">Technician Share (Net)</span>
                             <span className="text-right font-semibold text-slate-900">{peso(r.technicianNetAfterExpenses)}</span>
                           </>
                         )}
+                        <span className="font-semibold text-slate-900">Business Share (Net)</span>
+                        <span className="text-right font-semibold text-slate-900">{peso(r.businessShareNet)}</span>
                       </div>
                     </div>
                   </div>
@@ -489,7 +491,8 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
                           <th className="pb-2 pr-3 font-medium">Share (Tech)</th>
                           <th className="pb-2 pr-3 font-medium">Remaining (Business)</th>
                           <th className="pb-2 pr-3 font-medium">Business Expenses</th>
-                          <th className="pb-2 font-medium">Net (After Expenses)</th>
+                          <th className="pb-2 pr-3 font-medium">Technician Share (Net)</th>
+                          <th className="pb-2 font-medium">Business Share (Net)</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -509,7 +512,8 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
                             <td className="py-2 pr-3 text-amber-700">{t.sharePercent >= 100 ? "—" : peso(t.share)}</td>
                             <td className="py-2 pr-3 text-blue-300">{peso(t.remaining)}</td>
                             <td className="py-2 pr-3 text-red-700">−{peso(t.techFinalExpense)}</td>
-                            <td className="py-2 font-medium text-slate-900">{peso(t.netAfterExpenses)}</td>
+                            <td className="py-2 pr-3 font-medium text-slate-900">{peso(t.netAfterExpenses)}</td>
+                            <td className="py-2 text-slate-400">—</td>
                           </tr>
                         ))}
                         <tr className="font-semibold text-slate-900">
@@ -522,7 +526,8 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
                           <td className="pt-2 pr-3 text-amber-700">{peso(r.technicianShare)}</td>
                           <td className="pt-2 pr-3 text-blue-300">{peso(r.remaining)}</td>
                           <td className="pt-2 pr-3 text-red-700">−{peso(r.technicianExpenses)}</td>
-                          <td className="pt-2">{peso(r.technicianNetAfterExpenses)}</td>
+                          <td className="pt-2 pr-3">{peso(r.technicianNetAfterExpenses)}</td>
+                          <td className="pt-2">{peso(r.businessShareNet)}</td>
                         </tr>
                       </tbody>
                     </table>
