@@ -163,10 +163,15 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
   // either way it always counts once toward the true combined total below.
   const netProfitExpenseRows = expenses.filter((e) => inRange(e.expenseDate) && e.target === "owner_total_sales");
   const remainingExpenseRows = expenses.filter((e) => inRange(e.expenseDate) && e.target === "owner_final_total_sales");
+  // "Technician's Final Total Sales" expenses always name a technician —
+  // deducted straight from that technician's own Share, same as the By
+  // Technician report (never spread proportionally like Net Profit ones).
+  const technicianExpenseRows = expenses.filter((e) => inRange(e.expenseDate) && e.target === "technician_final_total_sales");
   const amountFor = (list: typeof expenses, branchId: string | null) =>
     list.filter((e) => e.branchId === null || e.branchId === branchId).reduce((s, e) => s + e.amount, 0);
   const totalNetProfitExpenses = netProfitExpenseRows.reduce((s, e) => s + e.amount, 0);
   const totalBusinessExpenses = remainingExpenseRows.reduce((s, e) => s + e.amount, 0);
+  const totalTechnicianExpenses = technicianExpenseRows.reduce((s, e) => s + e.amount, 0);
 
   // "Net Profit (Before Sharing)" expenses shrink the pool that actually
   // gets divided. An expense can optionally be tied to one technician (the
@@ -192,14 +197,28 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
     const netProfitExpenses = branchNetProfitExpenseRows.reduce((s, e) => s + e.amount, 0);
     const netProfitBeforeSharing = r.netProfit - netProfitExpenses;
 
+    const branchTechnicianExpenseRows = technicianExpenseRows.filter((e) => e.branchId === null || e.branchId === r.branchId);
+
     const technicians = r.technicians.map((t) => {
       const unassignedShare = r.netProfit !== 0 ? unassignedNetProfitExpenses * (t.netProfit / r.netProfit) : 0;
       const tNetProfitBeforeSharing = t.netProfit - (targetedExpensesByTech.get(t.name) ?? 0) - unassignedShare;
       const scale = t.netProfit !== 0 ? tNetProfitBeforeSharing / t.netProfit : 1;
-      return { ...t, share: t.share * scale, remaining: tNetProfitBeforeSharing - t.share * scale };
+      const share = t.share * scale;
+      const remaining = tNetProfitBeforeSharing - share;
+      // "Technician's Final Total Sales" expenses always name a technician
+      // and come straight out of their Share — except a 100%-share
+      // (owner-technician) whose Share is always ₱0, so it comes out of
+      // their Remaining instead, same convention as the By Technician report.
+      const isFullShare = t.sharePercent >= 100;
+      const techFinalExpense = branchTechnicianExpenseRows.filter((e) => e.technicianName === t.name).reduce((s, e) => s + e.amount, 0);
+      const shareNet = isFullShare ? share : share - techFinalExpense;
+      const remainingNet = isFullShare ? remaining - techFinalExpense : remaining;
+      return { ...t, share, remaining, techFinalExpense, shareNet, remainingNet };
     });
     const technicianShare = technicians.reduce((s, t) => s + t.share, 0);
-    const remaining = netProfitBeforeSharing - technicianShare;
+    const technicianExpenses = technicians.reduce((s, t) => s + t.techFinalExpense, 0);
+    const technicianShareNet = technicians.reduce((s, t) => s + t.shareNet, 0);
+    const remaining = technicians.reduce((s, t) => s + t.remainingNet, 0);
     const businessExpenses = amountFor(remainingExpenseRows, r.branchId);
     return {
       ...r,
@@ -207,6 +226,8 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
       netProfitExpenses,
       netProfitBeforeSharing,
       technicianShare,
+      technicianExpenses,
+      technicianShareNet,
       remaining,
       businessExpenses,
       businessShareNet: remaining - businessExpenses,
@@ -215,6 +236,12 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
   const grandNetProfitBeforeSharing = grandTotal.netProfit - totalNetProfitExpenses;
   const grandScale = grandTotal.netProfit !== 0 ? grandNetProfitBeforeSharing / grandTotal.netProfit : 1;
   const grandTechnicianShare = grandTotal.technicianShare * grandScale;
+  // Approximates the same way grandScale already does — a 100%-share
+  // (owner-technician) whose own expense should spill into Remaining
+  // instead of Share is a rare edge case, so this combined summary treats
+  // every technician expense as coming out of Share; each branch card
+  // below gets it exactly right per technician.
+  const grandTechnicianShareNet = grandTechnicianShare - totalTechnicianExpenses;
   const grandRemaining = grandNetProfitBeforeSharing - grandTechnicianShare;
   const grandBusinessShareNet = grandRemaining - totalBusinessExpenses;
 
@@ -332,6 +359,18 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
                     <td className="py-2 pr-3 pl-5 text-slate-500">Technician Share (per technician&apos;s own %)</td>
                     <td className="py-2 pr-3 text-right text-amber-700">{peso(r.technicianShare)}</td>
                   </tr>
+                  {r.technicianExpenses > 0 && (
+                    <>
+                      <tr className="border-b border-slate-100">
+                        <td className="py-2 pr-3 pl-5 text-slate-600">− Business Expenses (Technician)</td>
+                        <td className="py-2 pr-3 text-right text-red-700">−{peso(r.technicianExpenses)}</td>
+                      </tr>
+                      <tr className="border-b border-slate-100">
+                        <td className="py-2 pr-3 pl-5 font-semibold text-slate-700">Technician Share (Net)</td>
+                        <td className="py-2 pr-3 text-right font-semibold text-amber-700">{peso(r.technicianShareNet)}</td>
+                      </tr>
+                    </>
+                  )}
                   <tr className="border-b border-slate-200">
                     <td className="py-2 pr-3 pl-5 font-semibold text-slate-700">Remaining (Business Share)</td>
                     <td className="py-2 pr-3 text-right font-semibold text-blue-300">{peso(r.remaining)}</td>
@@ -388,6 +427,14 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
                           <span className="text-right text-amber-700">{t.sharePercent >= 100 ? "—" : peso(t.share)}</span>
                           <span className="text-blue-300">Remaining (Biz)</span>
                           <span className="text-right text-blue-300">{peso(t.remaining)}</span>
+                          {t.techFinalExpense > 0 && (
+                            <>
+                              <span className="text-slate-400">Business Expenses</span>
+                              <span className="text-right text-red-700">−{peso(t.techFinalExpense)}</span>
+                              <span className="font-medium text-slate-700">Net (After Expenses)</span>
+                              <span className="text-right font-medium text-slate-900">{peso(t.shareNet + t.remainingNet)}</span>
+                            </>
+                          )}
                         </div>
                       </div>
                     ))}
@@ -407,6 +454,14 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
                         <span className="text-right font-medium text-amber-700">{peso(r.technicianShare)}</span>
                         <span className="font-medium text-blue-300">Remaining (Biz)</span>
                         <span className="text-right font-medium text-blue-300">{peso(r.remaining)}</span>
+                        {r.technicianExpenses > 0 && (
+                          <>
+                            <span className="text-slate-500">Business Expenses</span>
+                            <span className="text-right text-red-700">−{peso(r.technicianExpenses)}</span>
+                            <span className="font-semibold text-slate-900">Net (After Expenses)</span>
+                            <span className="text-right font-semibold text-slate-900">{peso(r.technicianShareNet + r.remaining)}</span>
+                          </>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -423,7 +478,9 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
                           <th className="pb-2 pr-3 font-medium">Net Profit</th>
                           <th className="pb-2 pr-3 font-medium">Split</th>
                           <th className="pb-2 pr-3 font-medium">Share (Tech)</th>
-                          <th className="pb-2 font-medium">Remaining (Business)</th>
+                          <th className="pb-2 pr-3 font-medium">Remaining (Business)</th>
+                          <th className="pb-2 pr-3 font-medium">Business Expenses</th>
+                          <th className="pb-2 font-medium">Net (After Expenses)</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -441,7 +498,9 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
                             <td className="py-2 pr-3 font-medium text-slate-800">{peso(t.netProfit)}</td>
                             <td className="py-2 pr-3 text-slate-500">{t.sharePercent}% tech / {100 - t.sharePercent}% biz</td>
                             <td className="py-2 pr-3 text-amber-700">{t.sharePercent >= 100 ? "—" : peso(t.share)}</td>
-                            <td className="py-2 text-blue-300">{peso(t.remaining)}</td>
+                            <td className="py-2 pr-3 text-blue-300">{peso(t.remaining)}</td>
+                            <td className="py-2 pr-3 text-red-700">−{peso(t.techFinalExpense)}</td>
+                            <td className="py-2 font-medium text-slate-900">{peso(t.shareNet + t.remainingNet)}</td>
                           </tr>
                         ))}
                         <tr className="font-semibold text-slate-900">
@@ -452,7 +511,9 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
                           <td className="pt-2 pr-3">{peso(r.netProfit)}</td>
                           <td className="pt-2 pr-3"></td>
                           <td className="pt-2 pr-3 text-amber-700">{peso(r.technicianShare)}</td>
-                          <td className="pt-2 text-blue-300">{peso(r.remaining)}</td>
+                          <td className="pt-2 pr-3 text-blue-300">{peso(r.remaining)}</td>
+                          <td className="pt-2 pr-3 text-red-700">−{peso(r.technicianExpenses)}</td>
+                          <td className="pt-2">{peso(r.technicianShareNet + r.remaining)}</td>
                         </tr>
                       </tbody>
                     </table>
@@ -502,6 +563,18 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
                   <td className="py-2 pr-3 pl-5 text-slate-500">Technician Share (per technician&apos;s own %)</td>
                   <td className="py-2 pr-3 text-right text-amber-700">{peso(grandTechnicianShare)}</td>
                 </tr>
+                {totalTechnicianExpenses > 0 && (
+                  <>
+                    <tr className="border-b border-slate-100">
+                      <td className="py-2 pr-3 pl-5 text-slate-600">− Business Expenses (Technician, all branches)</td>
+                      <td className="py-2 pr-3 text-right text-red-700">−{peso(totalTechnicianExpenses)}</td>
+                    </tr>
+                    <tr className="border-b border-slate-100">
+                      <td className="py-2 pr-3 pl-5 font-semibold text-slate-700">Technician Share (Net)</td>
+                      <td className="py-2 pr-3 text-right font-semibold text-amber-700">{peso(grandTechnicianShareNet)}</td>
+                    </tr>
+                  </>
+                )}
                 <tr className="border-b border-slate-200">
                   <td className="py-2 pr-3 pl-5 font-semibold text-slate-700">Remaining (Business Share)</td>
                   <td className="py-2 pr-3 text-right font-semibold text-blue-300">{peso(grandRemaining)}</td>
