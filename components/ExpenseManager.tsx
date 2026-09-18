@@ -5,6 +5,7 @@ import { createExpense, deleteExpense } from "@/lib/actions";
 import type { ExpenseTarget } from "@/lib/types";
 
 type Branch = { id: string; name: string };
+type TechnicianOption = { name: string };
 type ExpenseRow = {
   id: string;
   description: string;
@@ -24,7 +25,15 @@ const TARGET_LABELS: Record<ExpenseTarget, string> = {
 
 const peso = (n: number) => `₱${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-export default function ExpenseManager({ expenses, branches }: { expenses: ExpenseRow[]; branches: Branch[] }) {
+export default function ExpenseManager({
+  expenses,
+  branches,
+  technicians,
+}: {
+  expenses: ExpenseRow[];
+  branches: Branch[];
+  technicians: TechnicianOption[];
+}) {
   const formRef = useRef<HTMLFormElement>(null);
   const [target, setTarget] = useState<ExpenseTarget>("owner_final_total_sales");
   const branchName = (id: string | null) => branches.find((b) => b.id === id)?.name ?? null;
@@ -73,6 +82,23 @@ export default function ExpenseManager({ expenses, branches }: { expenses: Expen
               <input name="technicianName" required className="input" placeholder="Type technician's name" />
               <p className="text-[11px] text-slate-400">
                 Spell it exactly as it appears on the Sales by Technician report so this expense is matched to the right technician.
+              </p>
+            </div>
+          )}
+          {target === "owner_total_sales" && (
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-slate-500">Technician (optional)</label>
+              <select name="technicianName" defaultValue="" className="input">
+                <option value="">No specific technician — split across everyone at this branch</option>
+                {technicians.map((t) => (
+                  <option key={t.name} value={t.name}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+              <p className="text-[11px] text-slate-400">
+                Pick a technician if this expense should only reduce their own share of Net Profit; leave it blank to spread it
+                proportionally across every technician at the branch instead.
               </p>
             </div>
           )}

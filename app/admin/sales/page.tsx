@@ -169,17 +169,36 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
   const totalBusinessExpenses = remainingExpenseRows.reduce((s, e) => s + e.amount, 0);
 
   // "Net Profit (Before Sharing)" expenses shrink the pool that actually
-  // gets divided — scale the branch's (and each technician's own) Share
-  // and Remaining down proportionally so they still add up to exactly Net
-  // Profit (Before Sharing), same invariant as note 3 above, just against
-  // the post-expense figure. Revenue/Job Cost/Net Profit stay factual and
-  // untouched — only the split itself moves.
+  // gets divided. An expense can optionally be tied to one technician (the
+  // owner picks them when logging it) — that one comes straight out of
+  // that technician's own Net Profit before their share is computed.
+  // Anything left un-tied to a technician is spread proportionally across
+  // every technician at the branch instead, same as before. Either way,
+  // Share and Remaining (branch totals and each technician's own row)
+  // still add back up to exactly Net Profit (Before Sharing) — Revenue/Job
+  // Cost/Net Profit stay factual and untouched, only the split moves.
   const rowsWithExpenses = rows.map((r) => {
-    const netProfitExpenses = amountFor(netProfitExpenseRows, r.branchId);
+    const branchNetProfitExpenseRows = netProfitExpenseRows.filter((e) => e.branchId === null || e.branchId === r.branchId);
+    const techNames = new Set(r.technicians.map((t) => t.name));
+    const targetedExpensesByTech = new Map<string, number>();
+    let unassignedNetProfitExpenses = 0;
+    for (const e of branchNetProfitExpenseRows) {
+      if (e.technicianName && techNames.has(e.technicianName)) {
+        targetedExpensesByTech.set(e.technicianName, (targetedExpensesByTech.get(e.technicianName) ?? 0) + e.amount);
+      } else {
+        unassignedNetProfitExpenses += e.amount;
+      }
+    }
+    const netProfitExpenses = branchNetProfitExpenseRows.reduce((s, e) => s + e.amount, 0);
     const netProfitBeforeSharing = r.netProfit - netProfitExpenses;
-    const scale = r.netProfit !== 0 ? netProfitBeforeSharing / r.netProfit : 1;
-    const technicians = r.technicians.map((t) => ({ ...t, share: t.share * scale, remaining: t.remaining * scale }));
-    const technicianShare = r.technicianShare * scale;
+
+    const technicians = r.technicians.map((t) => {
+      const unassignedShare = r.netProfit !== 0 ? unassignedNetProfitExpenses * (t.netProfit / r.netProfit) : 0;
+      const tNetProfitBeforeSharing = t.netProfit - (targetedExpensesByTech.get(t.name) ?? 0) - unassignedShare;
+      const scale = t.netProfit !== 0 ? tNetProfitBeforeSharing / t.netProfit : 1;
+      return { ...t, share: t.share * scale, remaining: tNetProfitBeforeSharing - t.share * scale };
+    });
+    const technicianShare = technicians.reduce((s, t) => s + t.share, 0);
     const remaining = netProfitBeforeSharing - technicianShare;
     const businessExpenses = amountFor(remainingExpenseRows, r.branchId);
     return {

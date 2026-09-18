@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { getExpenses, getBranches, isBranchHidden } from "@/lib/db";
+import { getExpenses, getBranches, getTechnicians, isBranchHidden } from "@/lib/db";
 import { getCurrentUser, requireRole } from "@/lib/auth";
 import SalesTabs from "@/components/SalesTabs";
 import ExpenseManager from "@/components/ExpenseManager";
@@ -8,8 +8,9 @@ export default async function ExpensesPage() {
   const actor = await requireRole("owner_admin", "branch_admin");
   if (!actor) redirect("/admin/sales");
 
-  const [user, allExpenses, allBranches] = await Promise.all([getCurrentUser(), getExpenses(), getBranches()]);
+  const [user, allExpenses, allBranches, allTechnicians] = await Promise.all([getCurrentUser(), getExpenses(), getBranches(), getTechnicians()]);
   const branches = allBranches.filter((b) => b.active && !isBranchHidden(user, b.id)).map((b) => ({ id: b.id, name: b.name }));
+  const technicians = allTechnicians.filter((t) => t.active).map((t) => ({ name: t.name }));
   const expenses = allExpenses.filter((e) => !isBranchHidden(user, e.branchId));
 
   return (
@@ -24,7 +25,7 @@ export default async function ExpensesPage() {
 
       <SalesTabs />
 
-      <ExpenseManager expenses={expenses} branches={branches} />
+      <ExpenseManager expenses={expenses} branches={branches} technicians={technicians} />
     </div>
   );
 }
