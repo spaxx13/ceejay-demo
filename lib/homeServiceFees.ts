@@ -28,10 +28,32 @@ export const PROVINCE_FEES: Record<string, { base: number; higherTowns?: string[
 // selected.
 export const SUNDAY_ONLY_PROVINCES = new Set(["Pampanga", "Laguna", "Batangas"]);
 
+// Local calendar date (YYYY-MM-DD) for a Date, using its local getters
+// throughout — unlike `d.toISOString().slice(0, 10)`, this can't roll the
+// date backward/forward across midnight for a customer whose local time
+// isn't UTC (e.g. late-evening PH bookings would otherwise land on the
+// wrong day once shifted to UTC).
+function localDateStr(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 export function nextSunday(): string {
   const d = new Date();
   d.setDate(d.getDate() + ((7 - d.getDay()) % 7));
-  return d.toISOString().slice(0, 10);
+  return localDateStr(d);
+}
+
+// Earliest Preferred Date the customer can pick, right now — a booking made
+// at/after 6 PM is too late notice for a same-day visit, so it's bumped to
+// tomorrow instead of leaving today (already half over) selectable.
+const LATE_BOOKING_CUTOFF_HOUR = 18;
+export function minPreferredDateStr(): string {
+  const d = new Date();
+  if (d.getHours() >= LATE_BOOKING_CUTOFF_HOUR) d.setDate(d.getDate() + 1);
+  return localDateStr(d);
 }
 
 // The actual flat fee (in pesos) for a given province/city, or null if the

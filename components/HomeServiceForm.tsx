@@ -3,7 +3,7 @@
 import { Fragment, useActionState, useEffect, useRef, useState } from "react";
 import { submitHomeServiceRequest, sendHomeServiceOtp, verifyHomeServiceOtp } from "@/lib/actions";
 import { OTP_GATE_ENABLED, BOOKING_CONFIRMATION_WINDOW_HOURS } from "@/lib/config";
-import { PROVINCE_FEES, SUNDAY_ONLY_PROVINCES, nextSunday } from "@/lib/homeServiceFees";
+import { PROVINCE_FEES, SUNDAY_ONLY_PROVINCES, nextSunday, minPreferredDateStr } from "@/lib/homeServiceFees";
 import PhotoUpload from "./PhotoUpload";
 import DynamicFormField from "./DynamicFormField";
 import type { RequestFormContent, CustomFormField, HomeServiceQueue } from "@/lib/types";
@@ -494,7 +494,16 @@ export default function HomeServiceForm({
             </div>
           );
         }
-        return renderGenericField(field, "preferredDatetime");
+        // Booking at/after 6 PM is too late notice for a same-day visit —
+        // the earliest selectable date bumps to tomorrow (minPreferredDateStr).
+        return (
+          <div key={field.id} className="space-y-1.5">
+            <label className="text-xs font-medium text-slate-500">
+              {field.label} {asterisk}
+            </label>
+            <input type="date" name="preferredDatetime" required={req} min={minPreferredDateStr()} className="input" />
+          </div>
+        );
       // device_brand, device_model, service_type, issue, and photo are
       // rendered per device by renderDeviceBlockField below instead of
       // here — see the "+ Add Another Device" repeater.
