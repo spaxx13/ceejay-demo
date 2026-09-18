@@ -170,7 +170,12 @@ export default function ExpenseManager({
                 <td className="py-3 pr-3 text-slate-500">{branchName(e.branchId) ?? "All branches"}</td>
                 <td className="py-3 pr-3 text-red-700">−{peso(e.amount)}</td>
                 <td className="py-3">
-                  <form action={deleteExpense}>
+                  <form
+                    action={deleteExpense}
+                    onSubmit={(ev) => {
+                      if (!confirm(`Delete this expense — "${e.description}" (${peso(e.amount)})? This can't be undone.`)) ev.preventDefault();
+                    }}
+                  >
                     <input type="hidden" name="id" value={e.id} />
                     <button type="submit" className="btn-secondary !px-3 !py-1 text-xs !text-red-600">
                       Delete
