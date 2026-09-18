@@ -10,7 +10,7 @@ export default async function ExpensesPage() {
 
   const [user, allExpenses, allBranches, allTechnicians] = await Promise.all([getCurrentUser(), getExpenses(), getBranches(), getTechnicians()]);
   const branches = allBranches.filter((b) => b.active && !isBranchHidden(user, b.id)).map((b) => ({ id: b.id, name: b.name }));
-  const technicians = allTechnicians.filter((t) => t.active).map((t) => ({ name: t.name }));
+  const technicians = allTechnicians.filter((t) => t.active).map((t) => ({ name: t.name, branchIds: t.branchIds }));
   const expenses = allExpenses.filter((e) => !isBranchHidden(user, e.branchId));
 
   return (
