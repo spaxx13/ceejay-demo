@@ -88,6 +88,11 @@ export default async function TechnicianSalesPage({ searchParams }: { searchPara
       // wherever their Net Profit actually lands.
       const shareNet = isFullShare ? shareScaled : shareScaled - businessExpenses;
       const remainingNet = isFullShare ? remainingScaled - businessExpenses : remainingScaled;
+      // What THIS technician actually takes home after their own expenses —
+      // their Share for a normal technician, or their Remaining for a
+      // 100%-share owner-technician (whose Share is always ₱0). Never
+      // Share+Remaining combined — Remaining is the business's money, not theirs.
+      const netAfterExpenses = isFullShare ? remainingNet : shareNet;
       return {
         ...t,
         sharePercent,
@@ -100,6 +105,7 @@ export default async function TechnicianSalesPage({ searchParams }: { searchPara
         netProfitExpenses,
         shareNet,
         remainingNet,
+        netAfterExpenses,
       };
     })
     .sort((a, b) => {
@@ -123,6 +129,7 @@ export default async function TechnicianSalesPage({ searchParams }: { searchPara
       netProfitExpenses: acc.netProfitExpenses + r.netProfitExpenses,
       shareNet: acc.shareNet + r.shareNet,
       remainingNet: acc.remainingNet + r.remainingNet,
+      netAfterExpenses: acc.netAfterExpenses + r.netAfterExpenses,
     }),
     {
       count: 0,
@@ -138,6 +145,7 @@ export default async function TechnicianSalesPage({ searchParams }: { searchPara
       netProfitExpenses: 0,
       shareNet: 0,
       remainingNet: 0,
+      netAfterExpenses: 0,
     }
   );
   const grandMargin = grandTotal.totalSales > 0 ? (grandTotal.netProfit / grandTotal.totalSales) * 100 : 0;
@@ -224,7 +232,7 @@ export default async function TechnicianSalesPage({ searchParams }: { searchPara
                 <td className="py-3 pr-3 font-semibold text-amber-700">{r.sharePercent >= 100 ? "—" : peso(r.share)}</td>
                 <td className="py-3 pr-3 font-semibold text-blue-300">{peso(r.remaining)}</td>
                 <td className="py-3 pr-3 text-red-700">−{peso(r.businessExpenses + r.netProfitExpenses)}</td>
-                <td className="py-3 font-semibold text-blue-300">{peso(r.shareNet + r.remainingNet)}</td>
+                <td className="py-3 font-semibold text-blue-300">{peso(r.netAfterExpenses)}</td>
               </tr>
             ))}
             {rows.length > 0 && (
@@ -242,7 +250,7 @@ export default async function TechnicianSalesPage({ searchParams }: { searchPara
                 <td className="pt-3 pr-3 text-amber-700">{peso(grandTotal.share)}</td>
                 <td className="pt-3 pr-3 text-blue-300">{peso(grandTotal.remaining)}</td>
                 <td className="pt-3 pr-3 text-red-700">−{peso(grandTotal.businessExpenses + grandTotal.netProfitExpenses)}</td>
-                <td className="pt-3 text-blue-300">{peso(grandTotal.shareNet + grandTotal.remainingNet)}</td>
+                <td className="pt-3 text-blue-300">{peso(grandTotal.netAfterExpenses)}</td>
               </tr>
             )}
           </tbody>
