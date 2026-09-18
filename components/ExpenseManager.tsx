@@ -18,7 +18,7 @@ type ExpenseRow = {
 
 const TARGET_LABELS: Record<ExpenseTarget, string> = {
   owner_final_total_sales: "Owner's Final Total Sales",
-  owner_total_sales: "Total Sales of the Owner",
+  owner_total_sales: "Net Profit (Before Sharing)",
   technician_final_total_sales: "Technician's Final Total Sales",
 };
 
@@ -57,7 +57,7 @@ export default function ExpenseManager({ expenses, branches }: { expenses: Expen
               <label className="text-xs font-medium text-slate-500">Deduct From *</label>
               <select name="target" required value={target} onChange={(e) => setTarget(e.target.value as ExpenseTarget)} className="input">
                 <option value="owner_final_total_sales">Owner&apos;s Final Total Sales</option>
-                <option value="owner_total_sales">Total Sales of the Owner</option>
+                <option value="owner_total_sales">Net Profit (Before Sharing)</option>
                 <option value="technician_final_total_sales">Technician&apos;s Final Total Sales</option>
               </select>
             </div>
