@@ -139,7 +139,12 @@ export default async function RequestsPage({
       </div>
 
       <div className="card">
-        <h2 className="text-sm font-semibold text-slate-700">Technician Workload — Today</h2>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold text-slate-700">Technician Workload — Today</h2>
+          <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600">
+            Total Home Service Today: {todaysRequests.length}
+          </span>
+        </div>
         <p className="mt-1 text-xs text-slate-400">Requests assigned per home service technician for today — a count of 0 means they haven&apos;t been assigned anything yet.</p>
         <div className="mt-3 flex flex-wrap gap-2">
           {technicianCounts.map((t) => (
