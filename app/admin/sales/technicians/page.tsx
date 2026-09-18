@@ -33,6 +33,13 @@ export default async function TechnicianSalesPage({ searchParams }: { searchPara
   const technicianExpenses = expenses.filter(
     (e) => e.target === "technician_final_total_sales" && inRange(e.expenseDate) && !isBranchHidden(user, e.branchId)
   );
+  // Net Profit (Before Sharing) expenses only count here when the owner
+  // tied one to a specific technician by name (Sales > Expenses) — an
+  // unassigned one only makes sense split proportionally within a branch,
+  // which is what Branch Sales already does; this report isn't branch-scoped.
+  const netProfitTechExpenses = expenses.filter(
+    (e) => e.target === "owner_total_sales" && e.technicianName && inRange(e.expenseDate) && !isBranchHidden(user, e.branchId)
+  );
 
   type TechTotals = { name: string; count: number; totalSales: number; partsCost: number; laborCost: number; otherExpenses: number };
   const totals = new Map<string, TechTotals>();
@@ -65,13 +72,35 @@ export default async function TechnicianSalesPage({ searchParams }: { searchPara
       const share = isFullShare ? 0 : netProfit * (sharePercent / 100);
       const remaining = netProfit - share;
       const businessExpenses = technicianExpenses.filter((e) => e.technicianName === t.name).reduce((s, e) => s + e.amount, 0);
+      // A Net Profit (Before Sharing) expense targeted at this technician
+      // shrinks their Net Profit before the share split, so Share and
+      // Remaining both move proportionally — same scaling as Branch Sales —
+      // before "technician_final_total_sales" expenses come straight out of
+      // the Share side on top of that.
+      const netProfitExpenses = netProfitTechExpenses.filter((e) => e.technicianName === t.name).reduce((s, e) => s + e.amount, 0);
+      const netProfitBeforeSharing = netProfit - netProfitExpenses;
+      const scale = netProfit !== 0 ? netProfitBeforeSharing / netProfit : 1;
+      const shareScaled = isFullShare ? 0 : share * scale;
+      const remainingScaled = netProfitBeforeSharing - shareScaled;
       // A "technician" business expense against a 100%-share (owner)
       // technician has nothing to deduct from on the Share side (it's
       // always ₱0 for them) — it comes out of their Remaining instead,
       // wherever their Net Profit actually lands.
-      const shareNet = isFullShare ? share : share - businessExpenses;
-      const remainingNet = isFullShare ? remaining - businessExpenses : remaining;
-      return { ...t, sharePercent, totalExpenses, netProfit, profitMargin, share, remaining, businessExpenses, shareNet, remainingNet };
+      const shareNet = isFullShare ? shareScaled : shareScaled - businessExpenses;
+      const remainingNet = isFullShare ? remainingScaled - businessExpenses : remainingScaled;
+      return {
+        ...t,
+        sharePercent,
+        totalExpenses,
+        netProfit,
+        profitMargin,
+        share,
+        remaining,
+        businessExpenses,
+        netProfitExpenses,
+        shareNet,
+        remainingNet,
+      };
     })
     .sort((a, b) => {
       if (a.name === "Unassigned") return 1;
@@ -91,10 +120,25 @@ export default async function TechnicianSalesPage({ searchParams }: { searchPara
       share: acc.share + r.share,
       remaining: acc.remaining + r.remaining,
       businessExpenses: acc.businessExpenses + r.businessExpenses,
+      netProfitExpenses: acc.netProfitExpenses + r.netProfitExpenses,
       shareNet: acc.shareNet + r.shareNet,
       remainingNet: acc.remainingNet + r.remainingNet,
     }),
-    { count: 0, totalSales: 0, partsCost: 0, laborCost: 0, otherExpenses: 0, totalExpenses: 0, netProfit: 0, share: 0, remaining: 0, businessExpenses: 0, shareNet: 0, remainingNet: 0 }
+    {
+      count: 0,
+      totalSales: 0,
+      partsCost: 0,
+      laborCost: 0,
+      otherExpenses: 0,
+      totalExpenses: 0,
+      netProfit: 0,
+      share: 0,
+      remaining: 0,
+      businessExpenses: 0,
+      netProfitExpenses: 0,
+      shareNet: 0,
+      remainingNet: 0,
+    }
   );
   const grandMargin = grandTotal.totalSales > 0 ? (grandTotal.netProfit / grandTotal.totalSales) * 100 : 0;
 
@@ -179,7 +223,7 @@ export default async function TechnicianSalesPage({ searchParams }: { searchPara
                 </td>
                 <td className="py-3 pr-3 font-semibold text-amber-700">{r.sharePercent >= 100 ? "—" : peso(r.share)}</td>
                 <td className="py-3 pr-3 font-semibold text-blue-300">{peso(r.remaining)}</td>
-                <td className="py-3 pr-3 text-red-700">−{peso(r.businessExpenses)}</td>
+                <td className="py-3 pr-3 text-red-700">−{peso(r.businessExpenses + r.netProfitExpenses)}</td>
                 <td className="py-3 font-semibold text-blue-300">{peso(r.shareNet + r.remainingNet)}</td>
               </tr>
             ))}
@@ -197,7 +241,7 @@ export default async function TechnicianSalesPage({ searchParams }: { searchPara
                 <td className="pt-3 pr-3"></td>
                 <td className="pt-3 pr-3 text-amber-700">{peso(grandTotal.share)}</td>
                 <td className="pt-3 pr-3 text-blue-300">{peso(grandTotal.remaining)}</td>
-                <td className="pt-3 pr-3 text-red-700">−{peso(grandTotal.businessExpenses)}</td>
+                <td className="pt-3 pr-3 text-red-700">−{peso(grandTotal.businessExpenses + grandTotal.netProfitExpenses)}</td>
                 <td className="pt-3 text-blue-300">{peso(grandTotal.shareNet + grandTotal.remainingNet)}</td>
               </tr>
             )}

@@ -11,6 +11,7 @@ export default function TechnicianEarningsView({
   sharePercent,
   jobs,
   businessExpenses,
+  netProfitExpenses,
   period,
   from,
   to,
@@ -21,6 +22,7 @@ export default function TechnicianEarningsView({
   sharePercent: number;
   jobs: EarningsJob[];
   businessExpenses: number;
+  netProfitExpenses: number;
   period: EarningsPeriod;
   from: string;
   to: string;
@@ -44,6 +46,13 @@ export default function TechnicianEarningsView({
   // always however much Gross and Net actually differ by, so it's correct
   // for any mix of job sources.
   const deductions = totals.gross - totals.net;
+  // A Net Profit (Before Sharing) expense shrinks Net before the share
+  // split, so it reduces Earnings proportionally (not 1-for-1) — the same
+  // scaling Branch Sales and the By Technician report use.
+  const netProfitBeforeSharing = totals.net - netProfitExpenses;
+  const scale = totals.net !== 0 ? netProfitBeforeSharing / totals.net : 1;
+  const adjustedEarnings = totals.earnings * scale;
+  const finalEarnings = adjustedEarnings - businessExpenses;
 
   return (
     <div className="space-y-4">
@@ -100,15 +109,23 @@ export default function TechnicianEarningsView({
           <span className="text-sm font-semibold text-blue-900">Your Earnings ({sharePct} of Net)</span>
           <span className="text-lg font-bold text-blue-900">{peso(totals.earnings)}</span>
         </div>
-        {businessExpenses > 0 && (
+        {(netProfitExpenses > 0 || businessExpenses > 0) && (
           <>
-            <div className="mt-2 flex items-center justify-between text-sm text-slate-500">
-              <span>Business Expenses</span>
-              <span className="text-red-700">−{peso(businessExpenses)}</span>
-            </div>
+            {netProfitExpenses > 0 && (
+              <div className="mt-2 flex items-center justify-between text-sm text-slate-500">
+                <span>Net Profit Expense (before your share)</span>
+                <span className="text-red-700">−{peso(netProfitExpenses)}</span>
+              </div>
+            )}
+            {businessExpenses > 0 && (
+              <div className="flex items-center justify-between text-sm text-slate-500">
+                <span>Business Expenses</span>
+                <span className="text-red-700">−{peso(businessExpenses)}</span>
+              </div>
+            )}
             <div className="flex items-center justify-between rounded-lg border-2 border-blue-300 bg-blue-50 px-3 py-2">
               <span className="text-sm font-semibold text-blue-900">Final Earnings (Net)</span>
-              <span className="text-lg font-bold text-blue-900">{peso(totals.earnings - businessExpenses)}</span>
+              <span className="text-lg font-bold text-blue-900">{peso(finalEarnings)}</span>
             </div>
           </>
         )}

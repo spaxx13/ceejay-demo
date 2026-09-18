@@ -41,6 +41,9 @@ export default async function TechnicianEarningsDetailPage({
   const businessExpenses = expenses
     .filter((e) => e.target === "technician_final_total_sales" && e.technicianName === technician.name && inRange(e.expenseDate))
     .reduce((s, e) => s + e.amount, 0);
+  const netProfitExpenses = expenses
+    .filter((e) => e.target === "owner_total_sales" && e.technicianName === technician.name && inRange(e.expenseDate))
+    .reduce((s, e) => s + e.amount, 0);
 
   return (
     <div className="space-y-6">
@@ -62,6 +65,7 @@ export default async function TechnicianEarningsDetailPage({
         sharePercent={technician.earningsSharePercent}
         jobs={jobs}
         businessExpenses={businessExpenses}
+        netProfitExpenses={netProfitExpenses}
         period={period}
         from={from}
         to={to}
