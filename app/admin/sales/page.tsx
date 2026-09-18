@@ -147,21 +147,35 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
     { count: 0, revenue: 0, jobCost: 0, netProfit: 0, technicianShare: 0, remaining: 0 }
   );
 
-  // Owner-logged Business Expenses (Sales > Expenses) — whichever target the
-  // admin picked when logging it, both land the same place here: reduced
-  // out of the business's own Remaining share, never a technician's share.
+  // Owner-logged Business Expenses (Sales > Expenses) — two buckets,
+  // deducted at two different waterfall stages, neither ever touching a
+  // technician's own share (see note 4 above):
+  //   - "Net Profit (Before Sharing)" expenses come out of Net Profit
+  //     itself, before the technician-share split even happens.
+  //   - "Owner's Final Total Sales" expenses come out only of the
+  //     business's own Remaining share, after that split.
   // An expense can optionally be tied to one branch (only counts on that
   // branch's card) or left unassigned (counts on every branch's card) —
   // either way it always counts once toward the true combined total below.
-  const inRangeExpenses = expenses.filter((e) => inRange(e.expenseDate) && (e.target === "owner_total_sales" || e.target === "owner_final_total_sales"));
-  const businessExpensesFor = (branchId: string | null) =>
-    inRangeExpenses.filter((e) => e.branchId === null || e.branchId === branchId).reduce((s, e) => s + e.amount, 0);
-  const totalBusinessExpenses = inRangeExpenses.reduce((s, e) => s + e.amount, 0);
+  const netProfitExpenseRows = expenses.filter((e) => inRange(e.expenseDate) && e.target === "owner_total_sales");
+  const remainingExpenseRows = expenses.filter((e) => inRange(e.expenseDate) && e.target === "owner_final_total_sales");
+  const amountFor = (list: typeof expenses, branchId: string | null) =>
+    list.filter((e) => e.branchId === null || e.branchId === branchId).reduce((s, e) => s + e.amount, 0);
+  const totalNetProfitExpenses = netProfitExpenseRows.reduce((s, e) => s + e.amount, 0);
+  const totalBusinessExpenses = remainingExpenseRows.reduce((s, e) => s + e.amount, 0);
 
   const rowsWithExpenses = rows.map((r) => {
-    const businessExpenses = businessExpensesFor(r.branchId);
-    return { ...r, businessExpenses, businessShareNet: r.remaining - businessExpenses };
+    const netProfitExpenses = amountFor(netProfitExpenseRows, r.branchId);
+    const businessExpenses = amountFor(remainingExpenseRows, r.branchId);
+    return {
+      ...r,
+      netProfitExpenses,
+      netProfitBeforeSharing: r.netProfit - netProfitExpenses,
+      businessExpenses,
+      businessShareNet: r.remaining - businessExpenses,
+    };
   });
+  const grandNetProfitBeforeSharing = grandTotal.netProfit - totalNetProfitExpenses;
   const grandBusinessShareNet = grandTotal.remaining - totalBusinessExpenses;
 
   const showAllBranches = canViewAllBranchSales(user);
@@ -262,6 +276,18 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
                     <td className="py-2 pr-3 font-semibold text-slate-800">= Net Profit</td>
                     <td className="py-2 pr-3 text-right font-semibold text-green-700">{peso(r.netProfit)}</td>
                   </tr>
+                  {r.netProfitExpenses > 0 && (
+                    <>
+                      <tr className="border-b border-slate-100">
+                        <td className="py-2 pr-3 text-slate-600">− Business Expenses (Net Profit)</td>
+                        <td className="py-2 pr-3 text-right text-red-700">−{peso(r.netProfitExpenses)}</td>
+                      </tr>
+                      <tr className="border-b border-slate-200">
+                        <td className="py-2 pr-3 font-semibold text-slate-800">= Net Profit (Before Sharing)</td>
+                        <td className="py-2 pr-3 text-right font-semibold text-green-700">{peso(r.netProfitBeforeSharing)}</td>
+                      </tr>
+                    </>
+                  )}
                   <tr className="border-b border-slate-100">
                     <td className="py-2 pr-3 pl-5 text-slate-500">Technician Share (per technician&apos;s own %)</td>
                     <td className="py-2 pr-3 text-right text-amber-700">{peso(r.technicianShare)}</td>
@@ -420,6 +446,18 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
                   <td className="py-2 pr-3 font-semibold text-slate-800">= Net Profit</td>
                   <td className="py-2 pr-3 text-right font-semibold text-green-700">{peso(grandTotal.netProfit)}</td>
                 </tr>
+                {totalNetProfitExpenses > 0 && (
+                  <>
+                    <tr className="border-b border-slate-100">
+                      <td className="py-2 pr-3 text-slate-600">− Business Expenses (Net Profit)</td>
+                      <td className="py-2 pr-3 text-right text-red-700">−{peso(totalNetProfitExpenses)}</td>
+                    </tr>
+                    <tr className="border-b border-slate-200">
+                      <td className="py-2 pr-3 font-semibold text-slate-800">= Net Profit (Before Sharing)</td>
+                      <td className="py-2 pr-3 text-right font-semibold text-green-700">{peso(grandNetProfitBeforeSharing)}</td>
+                    </tr>
+                  </>
+                )}
                 <tr className="border-b border-slate-100">
                   <td className="py-2 pr-3 pl-5 text-slate-500">Technician Share (per technician&apos;s own %)</td>
                   <td className="py-2 pr-3 text-right text-amber-700">{peso(grandTotal.technicianShare)}</td>
