@@ -441,14 +441,12 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
                             </>
                           )}
                         </div>
-                        {t.techFinalExpense > 0 && (
-                          <div className="mt-2 flex items-center justify-between rounded-md border border-amber-300 bg-amber-50 px-2.5 py-1.5">
-                            <span className="text-xs font-semibold text-amber-900">
-                              {t.sharePercent >= 100 ? "Net (After Expenses)" : "Technician Share (Net)"}
-                            </span>
-                            <span className="text-sm font-bold text-amber-900">{peso(t.netAfterExpenses)}</span>
-                          </div>
-                        )}
+                        <div className="mt-2 flex items-center justify-between rounded-lg border-2 border-amber-300 bg-amber-50 px-3 py-2">
+                          <span className="text-sm font-semibold text-amber-900">
+                            {t.sharePercent >= 100 ? "Net (After Expenses)" : "Technician Share (Net)"}
+                          </span>
+                          <span className="text-lg font-bold text-amber-900">{peso(t.netAfterExpenses)}</span>
+                        </div>
                       </div>
                     ))}
                     <div className="rounded-lg border border-slate-300 bg-slate-50 p-3">
@@ -523,13 +521,9 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
                             <td className="py-2 pr-3 text-blue-300">{peso(t.remaining)}</td>
                             <td className="py-2 pr-3 text-red-700">−{peso(t.techFinalExpense)}</td>
                             <td className="py-2 pr-3">
-                              {t.techFinalExpense > 0 ? (
-                                <span className="inline-block rounded-md bg-amber-50 px-2 py-0.5 text-sm font-bold text-amber-900">
-                                  {peso(t.netAfterExpenses)}
-                                </span>
-                              ) : (
-                                <span className="font-medium text-slate-900">{peso(t.netAfterExpenses)}</span>
-                              )}
+                              <span className="inline-block rounded-md border-2 border-amber-300 bg-amber-50 px-2.5 py-1 text-lg font-bold text-amber-900">
+                                {peso(t.netAfterExpenses)}
+                              </span>
                             </td>
                             <td className="py-2 text-slate-400">—</td>
                           </tr>
@@ -545,12 +539,12 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
                           <td className="pt-2 pr-3 text-blue-300">{peso(r.remaining)}</td>
                           <td className="pt-2 pr-3 text-red-700">−{peso(r.technicianExpenses)}</td>
                           <td className="pt-2 pr-3">
-                            <span className="inline-block rounded-md bg-amber-50 px-2 py-1 text-base font-bold text-amber-900">
+                            <span className="inline-block rounded-md border-2 border-amber-300 bg-amber-50 px-2.5 py-1 text-lg font-bold text-amber-900">
                               {peso(r.technicianNetAfterExpenses)}
                             </span>
                           </td>
                           <td className="pt-2">
-                            <span className="inline-block rounded-md bg-blue-50 px-2 py-1 text-base font-bold text-blue-900">
+                            <span className="inline-block rounded-md border-2 border-blue-300 bg-blue-50 px-2.5 py-1 text-lg font-bold text-blue-900">
                               {peso(r.businessShareNet)}
                             </span>
                           </td>
