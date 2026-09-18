@@ -438,7 +438,9 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
                             <>
                               <span className="text-slate-400">Business Expenses</span>
                               <span className="text-right text-red-700">−{peso(t.techFinalExpense)}</span>
-                              <span className="font-medium text-slate-700">Net (After Expenses)</span>
+                              <span className="font-medium text-slate-700">
+                                {t.sharePercent >= 100 ? "Net (After Expenses)" : "Technician Share (Net)"}
+                              </span>
                               <span className="text-right font-medium text-slate-900">{peso(t.netAfterExpenses)}</span>
                             </>
                           )}
