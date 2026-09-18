@@ -467,12 +467,18 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
                           <>
                             <span className="text-slate-500">Business Expenses</span>
                             <span className="text-right text-red-700">−{peso(r.technicianExpenses)}</span>
-                            <span className="font-semibold text-slate-900">Technician Share (Net)</span>
-                            <span className="text-right font-semibold text-slate-900">{peso(r.technicianNetAfterExpenses)}</span>
                           </>
                         )}
-                        <span className="font-semibold text-slate-900">Business Share (Net)</span>
-                        <span className="text-right font-semibold text-slate-900">{peso(r.businessShareNet)}</span>
+                      </div>
+                      <div className="mt-2 space-y-1.5">
+                        <div className="flex items-center justify-between rounded-lg border-2 border-amber-300 bg-amber-50 px-3 py-2">
+                          <span className="text-sm font-semibold text-amber-900">Technician Share (Net)</span>
+                          <span className="text-lg font-bold text-amber-900">{peso(r.technicianNetAfterExpenses)}</span>
+                        </div>
+                        <div className="flex items-center justify-between rounded-lg border-2 border-blue-300 bg-blue-50 px-3 py-2">
+                          <span className="text-sm font-semibold text-blue-900">Business Share (Net)</span>
+                          <span className="text-lg font-bold text-blue-900">{peso(r.businessShareNet)}</span>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -526,8 +532,16 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
                           <td className="pt-2 pr-3 text-amber-700">{peso(r.technicianShare)}</td>
                           <td className="pt-2 pr-3 text-blue-300">{peso(r.remaining)}</td>
                           <td className="pt-2 pr-3 text-red-700">−{peso(r.technicianExpenses)}</td>
-                          <td className="pt-2 pr-3">{peso(r.technicianNetAfterExpenses)}</td>
-                          <td className="pt-2">{peso(r.businessShareNet)}</td>
+                          <td className="pt-2 pr-3">
+                            <span className="inline-block rounded-md bg-amber-50 px-2 py-1 text-base font-bold text-amber-900">
+                              {peso(r.technicianNetAfterExpenses)}
+                            </span>
+                          </td>
+                          <td className="pt-2">
+                            <span className="inline-block rounded-md bg-blue-50 px-2 py-1 text-base font-bold text-blue-900">
+                              {peso(r.businessShareNet)}
+                            </span>
+                          </td>
                         </tr>
                       </tbody>
                     </table>
