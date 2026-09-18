@@ -44,9 +44,13 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
   //   3. A branch's totals are just the sum of its technicians' rows, so
   //      "Technician Share" and "Remaining" always add back up to exactly
   //      "Net Profit" — nothing is computed twice or in a disconnected way.
-  //   4. Owner-logged Business Expenses (Sales > Expenses) always reduce
-  //      the business's own Remaining share, never a technician's share —
-  //      a technician's cut only ever depends on their own jobs.
+  //   4. Owner-logged Business Expenses (Sales > Expenses) reduce one of
+  //      two things depending on which target the owner picked: "Net
+  //      Profit (Before Sharing)" expenses shrink the pool BEFORE it's
+  //      split, so they do proportionally reduce a technician's share too
+  //      (see the scaling step below); "Owner's Final Total Sales"
+  //      expenses only ever reduce the business's own Remaining share,
+  //      after the split, never touching what a technician already earned.
   type TechRow = {
     name: string;
     sharePercent: number;
@@ -164,19 +168,36 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
   const totalNetProfitExpenses = netProfitExpenseRows.reduce((s, e) => s + e.amount, 0);
   const totalBusinessExpenses = remainingExpenseRows.reduce((s, e) => s + e.amount, 0);
 
+  // "Net Profit (Before Sharing)" expenses shrink the pool that actually
+  // gets divided — scale the branch's (and each technician's own) Share
+  // and Remaining down proportionally so they still add up to exactly Net
+  // Profit (Before Sharing), same invariant as note 3 above, just against
+  // the post-expense figure. Revenue/Job Cost/Net Profit stay factual and
+  // untouched — only the split itself moves.
   const rowsWithExpenses = rows.map((r) => {
     const netProfitExpenses = amountFor(netProfitExpenseRows, r.branchId);
+    const netProfitBeforeSharing = r.netProfit - netProfitExpenses;
+    const scale = r.netProfit !== 0 ? netProfitBeforeSharing / r.netProfit : 1;
+    const technicians = r.technicians.map((t) => ({ ...t, share: t.share * scale, remaining: t.remaining * scale }));
+    const technicianShare = r.technicianShare * scale;
+    const remaining = netProfitBeforeSharing - technicianShare;
     const businessExpenses = amountFor(remainingExpenseRows, r.branchId);
     return {
       ...r,
+      technicians,
       netProfitExpenses,
-      netProfitBeforeSharing: r.netProfit - netProfitExpenses,
+      netProfitBeforeSharing,
+      technicianShare,
+      remaining,
       businessExpenses,
-      businessShareNet: r.remaining - businessExpenses,
+      businessShareNet: remaining - businessExpenses,
     };
   });
   const grandNetProfitBeforeSharing = grandTotal.netProfit - totalNetProfitExpenses;
-  const grandBusinessShareNet = grandTotal.remaining - totalBusinessExpenses;
+  const grandScale = grandTotal.netProfit !== 0 ? grandNetProfitBeforeSharing / grandTotal.netProfit : 1;
+  const grandTechnicianShare = grandTotal.technicianShare * grandScale;
+  const grandRemaining = grandNetProfitBeforeSharing - grandTechnicianShare;
+  const grandBusinessShareNet = grandRemaining - totalBusinessExpenses;
 
   const showAllBranches = canViewAllBranchSales(user);
   // The unbranched/backend-only ("Home Service") bucket never gets its own
@@ -231,11 +252,11 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
           </div>
           <div className="card">
             <p className="text-xs text-slate-400">Technician Share</p>
-            <p className="mt-1 text-2xl font-bold text-amber-700">{peso(grandTotal.technicianShare)}</p>
+            <p className="mt-1 text-2xl font-bold text-amber-700">{peso(grandTechnicianShare)}</p>
           </div>
           <div className="card">
             <p className="text-xs text-slate-400">Remaining (Business)</p>
-            <p className="mt-1 text-2xl font-bold text-blue-300">{peso(grandTotal.remaining)}</p>
+            <p className="mt-1 text-2xl font-bold text-blue-300">{peso(grandRemaining)}</p>
           </div>
           <div className="card">
             <p className="text-xs text-slate-400">Total Transactions</p>
@@ -460,11 +481,11 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
                 )}
                 <tr className="border-b border-slate-100">
                   <td className="py-2 pr-3 pl-5 text-slate-500">Technician Share (per technician&apos;s own %)</td>
-                  <td className="py-2 pr-3 text-right text-amber-700">{peso(grandTotal.technicianShare)}</td>
+                  <td className="py-2 pr-3 text-right text-amber-700">{peso(grandTechnicianShare)}</td>
                 </tr>
                 <tr className="border-b border-slate-200">
                   <td className="py-2 pr-3 pl-5 font-semibold text-slate-700">Remaining (Business Share)</td>
-                  <td className="py-2 pr-3 text-right font-semibold text-blue-300">{peso(grandTotal.remaining)}</td>
+                  <td className="py-2 pr-3 text-right font-semibold text-blue-300">{peso(grandRemaining)}</td>
                 </tr>
                 {totalBusinessExpenses > 0 && (
                   <>
