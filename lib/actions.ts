@@ -1649,7 +1649,8 @@ export async function createExpense(formData: FormData) {
   const description = str(formData, "description");
   const amount = Math.max(0, Number(str(formData, "amount")) || 0);
   const target = str(formData, "target") as Expense["target"];
-  const technicianName = target === "technician_final_total_sales" ? str(formData, "technicianName") || null : null;
+  const technicianName =
+    target === "technician_final_total_sales" || target === "owner_total_sales" ? str(formData, "technicianName") || null : null;
   const branchId = str(formData, "branchId") || null;
   const expenseDate = new Date().toISOString().slice(0, 10); // always today — expenses are recorded on the day they happen, never backdated
   if (!description || amount <= 0 || !target || !branchId) return;
