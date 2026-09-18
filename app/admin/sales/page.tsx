@@ -438,13 +438,17 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
                             <>
                               <span className="text-slate-400">Business Expenses</span>
                               <span className="text-right text-red-700">−{peso(t.techFinalExpense)}</span>
-                              <span className="font-medium text-slate-700">
-                                {t.sharePercent >= 100 ? "Net (After Expenses)" : "Technician Share (Net)"}
-                              </span>
-                              <span className="text-right font-medium text-slate-900">{peso(t.netAfterExpenses)}</span>
                             </>
                           )}
                         </div>
+                        {t.techFinalExpense > 0 && (
+                          <div className="mt-2 flex items-center justify-between rounded-md border border-amber-300 bg-amber-50 px-2.5 py-1.5">
+                            <span className="text-xs font-semibold text-amber-900">
+                              {t.sharePercent >= 100 ? "Net (After Expenses)" : "Technician Share (Net)"}
+                            </span>
+                            <span className="text-sm font-bold text-amber-900">{peso(t.netAfterExpenses)}</span>
+                          </div>
+                        )}
                       </div>
                     ))}
                     <div className="rounded-lg border border-slate-300 bg-slate-50 p-3">
@@ -518,7 +522,15 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
                             <td className="py-2 pr-3 text-amber-700">{t.sharePercent >= 100 ? "—" : peso(t.share)}</td>
                             <td className="py-2 pr-3 text-blue-300">{peso(t.remaining)}</td>
                             <td className="py-2 pr-3 text-red-700">−{peso(t.techFinalExpense)}</td>
-                            <td className="py-2 pr-3 font-medium text-slate-900">{peso(t.netAfterExpenses)}</td>
+                            <td className="py-2 pr-3">
+                              {t.techFinalExpense > 0 ? (
+                                <span className="inline-block rounded-md bg-amber-50 px-2 py-0.5 text-sm font-bold text-amber-900">
+                                  {peso(t.netAfterExpenses)}
+                                </span>
+                              ) : (
+                                <span className="font-medium text-slate-900">{peso(t.netAfterExpenses)}</span>
+                              )}
+                            </td>
                             <td className="py-2 text-slate-400">—</td>
                           </tr>
                         ))}
