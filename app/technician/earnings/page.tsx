@@ -31,6 +31,15 @@ export default async function TechnicianEarningsPage({
         .filter((e) => e.target === "technician_final_total_sales" && e.technicianName === technician.name && inRange(e.expenseDate))
         .reduce((s, e) => s + e.amount, 0)
     : 0;
+  // A Net Profit (Before Sharing) expense the owner tied to this technician
+  // by name (Sales > Expenses) — comes out before the share split, so it's
+  // handled separately from businessExpenses above, which comes straight
+  // out of the share itself. See TechnicianEarningsView for the math.
+  const netProfitExpenses = technician
+    ? expenses
+        .filter((e) => e.target === "owner_total_sales" && e.technicianName === technician.name && inRange(e.expenseDate))
+        .reduce((s, e) => s + e.amount, 0)
+    : 0;
 
   return (
     <div className="space-y-4">
@@ -53,6 +62,7 @@ export default async function TechnicianEarningsPage({
           sharePercent={technician.earningsSharePercent}
           jobs={jobs}
           businessExpenses={businessExpenses}
+          netProfitExpenses={netProfitExpenses}
           period={period}
           from={from}
           to={to}
