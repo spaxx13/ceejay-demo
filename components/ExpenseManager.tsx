@@ -5,7 +5,7 @@ import { createExpense, deleteExpense } from "@/lib/actions";
 import type { ExpenseTarget } from "@/lib/types";
 
 type Branch = { id: string; name: string };
-type TechnicianOption = { name: string };
+type TechnicianOption = { name: string; branchIds: string[] };
 type ExpenseRow = {
   id: string;
   description: string;
@@ -36,7 +36,11 @@ export default function ExpenseManager({
 }) {
   const formRef = useRef<HTMLFormElement>(null);
   const [target, setTarget] = useState<ExpenseTarget>("owner_final_total_sales");
+  const [branchId, setBranchId] = useState("");
   const branchName = (id: string | null) => branches.find((b) => b.id === id)?.name ?? null;
+  // Only offered once a branch is picked — a technician can be assigned to
+  // more than one branch, so the same name can't be offered generically.
+  const techniciansForBranch = branchId ? technicians.filter((t) => t.branchIds.includes(branchId)) : [];
 
   return (
     <div className="space-y-6">
@@ -48,6 +52,7 @@ export default function ExpenseManager({
             createExpense(fd);
             formRef.current?.reset();
             setTarget("owner_final_total_sales");
+            setBranchId("");
           }}
           className="space-y-3"
         >
@@ -76,35 +81,9 @@ export default function ExpenseManager({
               <p className="text-[11px] text-slate-400">Expenses are recorded on the day they&apos;re logged.</p>
             </div>
           </div>
-          {target === "technician_final_total_sales" && (
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-slate-500">Technician *</label>
-              <input name="technicianName" required className="input" placeholder="Type technician's name" />
-              <p className="text-[11px] text-slate-400">
-                Spell it exactly as it appears on the Sales by Technician report so this expense is matched to the right technician.
-              </p>
-            </div>
-          )}
-          {target === "owner_total_sales" && (
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-slate-500">Technician (optional)</label>
-              <select name="technicianName" defaultValue="" className="input">
-                <option value="">No specific technician — split across everyone at this branch</option>
-                {technicians.map((t) => (
-                  <option key={t.name} value={t.name}>
-                    {t.name}
-                  </option>
-                ))}
-              </select>
-              <p className="text-[11px] text-slate-400">
-                Pick a technician if this expense should only reduce their own share of Net Profit; leave it blank to spread it
-                proportionally across every technician at the branch instead.
-              </p>
-            </div>
-          )}
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-slate-500">Branch *</label>
-            <select name="branchId" required defaultValue="" className="input">
+            <select name="branchId" required value={branchId} onChange={(e) => setBranchId(e.target.value)} className="input">
               <option value="" disabled>
                 Select branch...
               </option>
@@ -117,6 +96,43 @@ export default function ExpenseManager({
             <p className="text-[11px] text-slate-400">This expense is deducted only from the selected branch&apos;s card.</p>
             {branches.length === 0 && <p className="text-[11px] text-amber-700">No branches available to this account.</p>}
           </div>
+          {target === "technician_final_total_sales" && (
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-slate-500">Technician *</label>
+              <select key={branchId} name="technicianName" required disabled={!branchId} defaultValue="" className="input disabled:opacity-70">
+                <option value="" disabled>
+                  {branchId ? "Select technician..." : "Select a branch first"}
+                </option>
+                {techniciansForBranch.map((t) => (
+                  <option key={t.name} value={t.name}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+              <p className="text-[11px] text-slate-400">Only technicians assigned to the selected branch are listed.</p>
+              {branchId && techniciansForBranch.length === 0 && (
+                <p className="text-[11px] text-amber-700">No technicians are assigned to this branch yet.</p>
+              )}
+            </div>
+          )}
+          {target === "owner_total_sales" && (
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-slate-500">Technician (optional)</label>
+              <select key={branchId} name="technicianName" disabled={!branchId} defaultValue="" className="input disabled:opacity-70">
+                <option value="">No specific technician — split across everyone at this branch</option>
+                {techniciansForBranch.map((t) => (
+                  <option key={t.name} value={t.name}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+              <p className="text-[11px] text-slate-400">
+                {branchId
+                  ? "Pick a technician if this expense should only reduce their own share of Net Profit; leave it blank to spread it proportionally across every technician at the branch instead."
+                  : "Select a branch first to optionally target one of its technicians."}
+              </p>
+            </div>
+          )}
           <button type="submit" className="btn-primary">
             Add Expense
           </button>
