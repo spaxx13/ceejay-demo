@@ -257,8 +257,8 @@ export default async function RequestsPage({
                 {deviceLabelFor(r)}
                 <span className="block text-slate-400">{labelFor(r.serviceTypeId, lookups)}</span>
               </span>
-              <span className="text-slate-400">City</span>
-              <span className="text-right text-slate-600">{r.city || "—"}</span>
+              <span className="text-slate-400">Location</span>
+              <span className="text-right text-slate-600">{[r.city, r.province].filter(Boolean).join(", ") || "—"}</span>
               <span className="text-slate-400">Technician</span>
               <span className={r.assignedTechnicianId ? "text-right text-slate-600" : "text-right text-amber-700"}>
                 {r.assignedTechnicianId ? labelFor(r.assignedTechnicianId, technicians) : "Unassigned"}
@@ -292,7 +292,7 @@ export default async function RequestsPage({
               <th className="pb-2 pr-3">Reference</th>
               <th className="pb-2 pr-3">Customer</th>
               <th className="pb-2 pr-3">Device</th>
-              <th className="pb-2 pr-3">City</th>
+              <th className="pb-2 pr-3">Location</th>
               <th className="pb-2 pr-3">Technician</th>
               <th className="pb-2 pr-3">Preferred</th>
               <th className="pb-2 pr-3">Status</th>
@@ -325,7 +325,7 @@ export default async function RequestsPage({
                   {deviceLabelFor(r)}
                   <span className="block text-xs text-slate-400">{labelFor(r.serviceTypeId, lookups)}</span>
                 </td>
-                <td className="py-3 pr-3 text-slate-500">{r.city || "—"}</td>
+                <td className="py-3 pr-3 text-slate-500">{[r.city, r.province].filter(Boolean).join(", ") || "—"}</td>
                 <td className="py-3 pr-3 text-slate-500">{r.assignedTechnicianId ? labelFor(r.assignedTechnicianId, technicians) : <span className="text-amber-700">Unassigned</span>}</td>
                 <td className="py-3 pr-3 text-slate-500">{formatDate(r.preferredDatetime)}</td>
                 <td className="py-3 pr-3">
