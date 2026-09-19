@@ -40,9 +40,13 @@ function localDateStr(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
+// Strictly the UPCOMING Sunday — even when today already is a Sunday, this
+// still skips ahead a full week rather than returning today. A technician
+// needs lead time to get ready for a visit, so a customer filling out the
+// form on a Sunday shouldn't be able to book a visit for that very day.
 export function nextSunday(): string {
   const d = new Date();
-  d.setDate(d.getDate() + ((7 - d.getDay()) % 7));
+  d.setDate(d.getDate() + (((7 - d.getDay()) % 7) || 7));
   return localDateStr(d);
 }
 
