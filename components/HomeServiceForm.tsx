@@ -106,6 +106,7 @@ export default function HomeServiceForm({
   const [lng, setLng] = useState<number | null>(null);
   const streetRef = useRef<HTMLInputElement>(null);
   const [vlogConsent, setVlogConsent] = useState(false);
+  const [preferredDate, setPreferredDate] = useState("");
 
   // One or more devices per booking — starts with a single blank block;
   // "+ Add Another Device" appends another, sharing the contact/address
@@ -482,15 +483,36 @@ export default function HomeServiceForm({
       }
       case "datetime":
         if (area === "near" && SUNDAY_ONLY_PROVINCES.has(province)) {
+          // step={7} greys out non-Sunday days in the calendar popup on
+          // browsers that support it, anchored at min — kept for that visual
+          // restriction, but not trusted alone: some browsers still let a
+          // weekday be typed/clicked despite step, so the day-of-week is
+          // re-validated explicitly on every change regardless. The server
+          // re-checks this again either way.
+          const pickedWrongDay = preferredDate !== "" && new Date(`${preferredDate}T00:00:00`).getDay() !== 0;
           return (
             <div key={field.id} className="space-y-1.5">
               <label className="text-xs font-medium text-slate-500">
                 {field.label} {asterisk}
               </label>
-              <input type="date" name="preferredDatetime" required={req} min={nextSunday()} step={7} className="input" />
+              <input
+                type="date"
+                name="preferredDatetime"
+                required={req}
+                min={nextSunday()}
+                step={7}
+                value={preferredDate}
+                onChange={(e) => {
+                  setPreferredDate(e.target.value);
+                  const wrongDay = e.target.value !== "" && new Date(`${e.target.value}T00:00:00`).getDay() !== 0;
+                  e.target.setCustomValidity(wrongDay ? "Please pick a Sunday." : "");
+                }}
+                className="input"
+              />
               <FormNotice tone="blue" icon="📅">
                 Home service for {province} is available every Sunday only — please pick a Sunday date.
               </FormNotice>
+              {pickedWrongDay && <p className="text-sm text-red-600">That date isn&apos;t a Sunday — please pick a Sunday instead.</p>}
             </div>
           );
         }
