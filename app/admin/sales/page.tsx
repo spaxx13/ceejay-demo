@@ -436,7 +436,11 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
                   )}
                   <tr className="border-b border-slate-200">
                     <td className="py-2 pr-3 pl-5 font-semibold text-slate-700">Remaining (Business Share)</td>
-                    <td className="py-2 pr-3 text-right font-semibold text-blue-300">{peso(r.remaining)}</td>
+                    <td className="py-2 pr-3 text-right">
+                      <span className="inline-block rounded-md border-2 border-blue-300 bg-blue-50 px-2.5 py-1 text-base font-bold text-blue-900">
+                        {peso(r.remaining)}
+                      </span>
+                    </td>
                   </tr>
                   {r.businessExpenses > 0 && (
                     <>
@@ -828,7 +832,11 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
                 )}
                 <tr className="border-b border-slate-200">
                   <td className="py-2 pr-3 pl-5 font-semibold text-slate-700">Remaining (Business Share)</td>
-                  <td className="py-2 pr-3 text-right font-semibold text-blue-300">{peso(grandRemaining)}</td>
+                  <td className="py-2 pr-3 text-right">
+                    <span className="inline-block rounded-md border-2 border-blue-300 bg-blue-50 px-2.5 py-1 text-base font-bold text-blue-900">
+                      {peso(grandRemaining)}
+                    </span>
+                  </td>
                 </tr>
                 {totalBusinessExpenses > 0 && (
                   <>
