@@ -8,6 +8,8 @@ import {
   getRepairRecords,
   getServiceAgreements,
   getRepairRecordStatus,
+  getExpenses,
+  technicianSharePercent,
   canManageHomeServiceRequests,
   isBranchHidden,
 } from "@/lib/db";
@@ -19,7 +21,7 @@ import { formatDateTime } from "@/lib/format";
 const peso = (n: number) => `₱${Math.round(n).toLocaleString()}`;
 
 export default async function AdminDashboard() {
-  const [user, allRequests, technicians, leads, customers, lookups, repairRecords, agreements] = await Promise.all([
+  const [user, allRequests, technicians, leads, customers, lookups, repairRecords, agreements, expenses] = await Promise.all([
     getCurrentUser(),
     getRequests(),
     getTechnicians(),
@@ -28,6 +30,7 @@ export default async function AdminDashboard() {
     getLookups(),
     getRepairRecords(),
     getServiceAgreements(),
+    getExpenses(),
   ]);
   // Same queue scoping as Admin > Requests — a branch admin assigned to only
   // one queue's backend branch never sees the other queue's totals here.
@@ -47,6 +50,34 @@ export default async function AdminDashboard() {
   const todayRecords = repairRecords.filter((r) => r.serviceDate === today);
   const todayTotal = todayRecords.filter((r) => !r.cancelled).reduce((sum, r) => sum + r.cost, 0);
   const pendingTickets = repairRecords.filter((r) => getRepairRecordStatus(r, agreements) === "pending").length;
+
+  // Business Share (Net), today, all branches combined — same waterfall
+  // (and same "spread every Net Profit expense across the pool via one
+  // blended scale factor" approximation for a combined total) as Branch
+  // Sales' own "All Branches — Combined" card, just pre-filtered to today
+  // instead of a date range, so this can never disagree with that page.
+  const todayExpenses = expenses.filter((e) => e.expenseDate === today);
+  const netProfitExpenseTotal = todayExpenses.filter((e) => e.target === "owner_total_sales").reduce((s, e) => s + e.amount, 0);
+  const businessExpenseTotal = todayExpenses.filter((e) => e.target === "owner_final_total_sales").reduce((s, e) => s + e.amount, 0);
+  const todayTechTotals = new Map<string, { revenue: number; jobCost: number; sharePercent: number }>();
+  for (const r of todayRecords.filter((r) => !r.cancelled)) {
+    const name = r.technicianName.trim() || "Unassigned";
+    if (!todayTechTotals.has(name)) todayTechTotals.set(name, { revenue: 0, jobCost: 0, sharePercent: technicianSharePercent(name, technicians) });
+    const t = todayTechTotals.get(name)!;
+    t.revenue += r.cost;
+    t.jobCost += r.partsCost + r.laborCost + r.otherExpenses;
+  }
+  let todayNetProfit = 0;
+  let todayTechnicianShare = 0;
+  for (const t of todayTechTotals.values()) {
+    const netProfit = t.revenue - t.jobCost;
+    todayNetProfit += netProfit;
+    todayTechnicianShare += t.sharePercent >= 100 ? 0 : netProfit * (t.sharePercent / 100);
+  }
+  const todayNetProfitBeforeSharing = todayNetProfit - netProfitExpenseTotal;
+  const todayScale = todayNetProfit !== 0 ? todayNetProfitBeforeSharing / todayNetProfit : 1;
+  const todayRemaining = todayNetProfitBeforeSharing - todayTechnicianShare * todayScale;
+  const businessShareNetToday = todayRemaining - businessExpenseTotal;
 
   const recent = [...requests].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)).slice(0, 6);
   const requestsAccess = canManageHomeServiceRequests(user);
@@ -83,6 +114,7 @@ export default async function AdminDashboard() {
   const stats = [
     { label: "Today's Repairs", value: todayRecords.length, href: "/admin/pos" },
     { label: "Today's Total", value: `₱${todayTotal.toLocaleString()}`, href: "/admin/pos" },
+    { label: "Business Share (Net)", value: peso(businessShareNetToday), href: "/admin/sales", positive: true },
     { label: "Pending Tickets", value: pendingTickets, href: "/admin/pos?status=pending", warn: pendingTickets > 0 },
     { label: "Home Service Requests", value: totalRequests, href: "/admin/requests", requestsGated: true },
     { label: "Unassigned Queue", value: unassigned.length, href: "/admin/requests?unassigned=1", warn: unassigned.length > 0, requestsGated: true },
@@ -108,7 +140,7 @@ export default async function AdminDashboard() {
           ) : (
             <Link key={s.label} href={s.href} className="card block hover:border-blue-300">
               <p className="text-xs text-slate-400">{s.label}</p>
-              <p className={`mt-1 text-2xl font-bold ${s.warn ? "text-amber-700" : "text-slate-900"}`}>{s.value}</p>
+              <p className={`mt-1 text-2xl font-bold ${s.warn ? "text-amber-700" : s.positive ? "text-green-700" : "text-slate-900"}`}>{s.value}</p>
             </Link>
           )
         )}
