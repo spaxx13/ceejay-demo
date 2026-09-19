@@ -10,7 +10,10 @@ import {
   getRepairRecordStatus,
   getExpenses,
   technicianSharePercent,
+  homeServiceSalesByTechnician,
+  sumHomeServiceSales,
   canManageHomeServiceRequests,
+  canViewAllBranchSales,
   isBranchHidden,
 } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
@@ -77,7 +80,15 @@ export default async function AdminDashboard() {
   const todayNetProfitBeforeSharing = todayNetProfit - netProfitExpenseTotal;
   const todayScale = todayNetProfit !== 0 ? todayNetProfitBeforeSharing / todayNetProfit : 1;
   const todayRemaining = todayNetProfitBeforeSharing - todayTechnicianShare * todayScale;
-  const businessShareNetToday = todayRemaining - businessExpenseTotal;
+  const posBusinessShareNetToday = todayRemaining - businessExpenseTotal;
+
+  // Home Service's own 30/70 split (fixed, not per-technician like POS
+  // above) — same shared helpers as the Requests page's "Home Service
+  // Sales — Today" card and Sales > Home Service, so this figure can't
+  // drift from either of those. Business expenses aren't wired to Home
+  // Service anywhere else in the app, so none are deducted here either.
+  const todayHomeServiceSales = sumHomeServiceSales(homeServiceSalesByTechnician(agreements, (date) => date === today));
+  const businessShareNetToday = posBusinessShareNetToday + todayHomeServiceSales.companyShare;
 
   const recent = [...requests].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)).slice(0, 6);
   const requestsAccess = canManageHomeServiceRequests(user);
@@ -114,14 +125,14 @@ export default async function AdminDashboard() {
   const stats = [
     { label: "Today's Repairs", value: todayRecords.length, href: "/admin/pos" },
     { label: "Today's Total", value: `₱${todayTotal.toLocaleString()}`, href: "/admin/pos" },
-    { label: "Business Share (Net)", value: peso(businessShareNetToday), href: "/admin/sales", positive: true },
+    { label: "Business Share (Net)", value: peso(businessShareNetToday), href: "/admin/sales", positive: true, businessShareGated: true },
     { label: "Pending Tickets", value: pendingTickets, href: "/admin/pos?status=pending", warn: pendingTickets > 0 },
     { label: "Home Service Requests", value: totalRequests, href: "/admin/requests", requestsGated: true },
     { label: "Unassigned Queue", value: unassigned.length, href: "/admin/requests?unassigned=1", warn: unassigned.length > 0, requestsGated: true },
     { label: "Active Technicians", value: activeTechs, href: "/admin/technicians", ownerOnly: true },
     { label: "Leads", value: totalLeads, href: "/admin/crm" },
     { label: "Customers", value: totalCustomers, href: "/admin/crm" },
-  ].filter((s) => !s.requestsGated || requestsAccess);
+  ].filter((s) => (!s.requestsGated || requestsAccess) && (!s.businessShareGated || canViewAllBranchSales(user)));
 
   return (
     <div className="space-y-6">
