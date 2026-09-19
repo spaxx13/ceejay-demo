@@ -483,12 +483,12 @@ export default function HomeServiceForm({
       }
       case "datetime":
         if (area === "near" && SUNDAY_ONLY_PROVINCES.has(province)) {
-          // Native <input type="date"> "step" support for restricting which
-          // days of the week are pickable is inconsistent across browsers —
-          // some calendar popups anchor it wrong and skip straight to the
-          // following Sunday even when today itself is a Sunday and should
-          // be selectable. Validated explicitly here instead, so it behaves
-          // the same everywhere; the server re-checks this regardless.
+          // step={7} greys out non-Sunday days in the calendar popup on
+          // browsers that support it, anchored at min — kept for that visual
+          // restriction, but not trusted alone: some browsers still let a
+          // weekday be typed/clicked despite step, so the day-of-week is
+          // re-validated explicitly on every change regardless. The server
+          // re-checks this again either way.
           const pickedWrongDay = preferredDate !== "" && new Date(`${preferredDate}T00:00:00`).getDay() !== 0;
           return (
             <div key={field.id} className="space-y-1.5">
@@ -500,6 +500,7 @@ export default function HomeServiceForm({
                 name="preferredDatetime"
                 required={req}
                 min={nextSunday()}
+                step={7}
                 value={preferredDate}
                 onChange={(e) => {
                   setPreferredDate(e.target.value);
