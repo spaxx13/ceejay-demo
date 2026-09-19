@@ -331,7 +331,12 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
           return (
             <div key={r.name} className="card space-y-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <h3 className="text-sm font-semibold text-slate-800">{r.name}</h3>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="text-sm font-semibold text-slate-800">{r.name}</h3>
+                  <span className="rounded-full border border-slate-300 bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-700">
+                    {r.count} job{r.count === 1 ? "" : "s"} completed
+                  </span>
+                </div>
                 <p className="text-base font-bold text-green-700">{peso(r.netProfit)} net profit</p>
               </div>
 
@@ -417,7 +422,9 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
                               <span className="ml-1.5 badge border border-amber-200 bg-amber-50 text-amber-700">100% — owner</span>
                             )}
                           </p>
-                          <p className="shrink-0 text-xs text-slate-400">{t.count} job{t.count === 1 ? "" : "s"}</p>
+                          <span className="shrink-0 rounded-full border border-slate-300 bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-700">
+                            {t.count} completed
+                          </span>
                         </div>
                         <div className="grid grid-cols-2 gap-y-1 text-xs">
                           <span className="text-slate-400">Revenue</span>
@@ -512,7 +519,11 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
                                 <span className="ml-1.5 badge border border-amber-200 bg-amber-50 text-amber-700">100% — owner</span>
                               )}
                             </td>
-                            <td className="py-2 pr-3 text-slate-500">{t.count}</td>
+                            <td className="py-2 pr-3">
+                              <span className="rounded-full border border-slate-300 bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-700">
+                                {t.count} completed
+                              </span>
+                            </td>
                             <td className="py-2 pr-3 text-slate-800">{peso(t.revenue)}</td>
                             <td className="py-2 pr-3 text-red-700">−{peso(t.jobCost)}</td>
                             <td className="py-2 pr-3 font-medium text-slate-800">{peso(t.netProfit)}</td>
