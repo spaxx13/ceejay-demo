@@ -1,5 +1,16 @@
 import Link from "next/link";
-import { getBranches, getRepairRecords, getExpenses, getTechnicians, isBranchHidden, canViewAllBranchSales, technicianSharePercent } from "@/lib/db";
+import {
+  getBranches,
+  getRepairRecords,
+  getExpenses,
+  getTechnicians,
+  getServiceAgreements,
+  homeServiceSalesByTechnician,
+  sumHomeServiceSales,
+  isBranchHidden,
+  canViewAllBranchSales,
+  technicianSharePercent,
+} from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import SalesTabs from "@/components/SalesTabs";
 import BarBreakdownChart from "@/components/BarBreakdownChart";
@@ -8,12 +19,13 @@ const peso = (n: number) => `₱${n.toLocaleString(undefined, { minimumFractionD
 
 export default async function BranchSalesPage({ searchParams }: { searchParams: Promise<{ from?: string; to?: string }> }) {
   const sp = await searchParams;
-  const [user, allBranches, repairRecords, expenses, technicians] = await Promise.all([
+  const [user, allBranches, repairRecords, expenses, technicians, agreements] = await Promise.all([
     getCurrentUser(),
     getBranches(),
     getRepairRecords(),
     getExpenses(),
     getTechnicians(),
+    getServiceAgreements(),
   ]);
   // Backend-only branches (no address, e.g. "Home Service") exist purely for
   // sales/expense attribution — they don't get their own card here since
@@ -28,10 +40,15 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
   const to = hasFilter ? sp.to : today;
   const inRange = (date: string) => (!from || date >= from) && (!to || date <= to);
 
-  // This page is walk-in/POS repair records only — completed home service
-  // jobs are tracked entirely on the dedicated Sales > Home Service tab, so
-  // that revenue is never mixed into these branch totals.
+  // Walk-in/POS revenue is the main figure this page is built around (the
+  // top stat cards and per-technician Net Profit/Share/Remaining waterfall
+  // below are POS-only, unchanged) — each branch card additionally gets its
+  // own "Home Service" section further down, using the same shared
+  // homeServiceSalesByTechnician/sumHomeServiceSales helpers the Requests
+  // page and Sales > Home Service already use, so that figure can't drift
+  // from either of those.
   const posSales = repairRecords.filter((r) => !r.cancelled && inRange(r.serviceDate) && !isBranchHidden(user, r.branchId));
+  const visibleAgreements = agreements.filter((a) => !isBranchHidden(user, a.branchId));
 
   // Every figure on this page is built the same way, bottom-up:
   //   1. Each technician's own Net Profit = their revenue minus their own
@@ -226,6 +243,16 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
     const technicianNetAfterExpenses = technicians.reduce((s, t) => s + t.netAfterExpenses, 0);
     const remaining = technicians.reduce((s, t) => s + t.remainingNet, 0);
     const businessExpenses = amountFor(remainingExpenseRows, r.branchId);
+
+    // Home Service for this branch — grouped/summed with the exact same
+    // helpers as the Requests page's "Home Service Sales — Today" card, so
+    // this can't disagree with that figure or with Sales > Home Service.
+    const homeServiceTechnicians = homeServiceSalesByTechnician(
+      visibleAgreements.filter((a) => a.branchId === r.branchId),
+      inRange
+    );
+    const homeService = sumHomeServiceSales(homeServiceTechnicians);
+
     return {
       ...r,
       technicians,
@@ -238,6 +265,8 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
       remaining,
       businessExpenses,
       businessShareNet: remaining - businessExpenses,
+      homeServiceTechnicians,
+      homeService,
     };
   });
   const grandNetProfitBeforeSharing = grandTotal.netProfit - totalNetProfitExpenses;
@@ -260,6 +289,27 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
 
   const revenueByBranch = visibleRows.map((r) => ({ label: r.name, value: r.revenue })).sort((a, b) => b.value - a.value);
 
+  // The true grand total, independent of branch attribution below — most
+  // home-service-only technicians (see homeServiceQueueBranches) never get
+  // assigned a real (addressed) branch at all, so summing only what each
+  // real branch's card captures would silently drop most of this revenue.
+  const grandHomeService = sumHomeServiceSales(homeServiceSalesByTechnician(visibleAgreements, inRange));
+
+  // Home Service technicians are usually tied only to the backend "Home
+  // Service" queue branch(es) (near/far), not a real addressed branch — so
+  // their revenue needs its own card(s) here too, same shape as a real
+  // branch's Home Service section above, or it would only ever show up
+  // under the rare technician who also has a real branch (e.g. an
+  // owner-technician covering both).
+  const homeServiceQueueBranches = allBranches.filter((b) => !isBranchHidden(user, b.id) && !b.address && b.active);
+  const queueHomeServiceCards = homeServiceQueueBranches.map((b) => {
+    const homeServiceTechnicians = homeServiceSalesByTechnician(
+      visibleAgreements.filter((a) => a.branchId === b.id),
+      inRange
+    );
+    return { branch: b, homeServiceTechnicians, homeService: sumHomeServiceSales(homeServiceTechnicians) };
+  });
+
   return (
     <div className="space-y-6">
       <div>
@@ -269,7 +319,8 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
           <Link href="/admin/technicians" className="underline">
             Settings &gt; Technicians
           </Link>
-          ) — the rest is the business&apos;s Remaining share. Home service earnings are tracked separately — see the Home Service tab.
+          ) — the rest is the business&apos;s Remaining share. Each branch card below also shows that branch&apos;s Home Service sales
+          (fixed 30/70 split) — see the Home Service tab for the full cross-branch breakdown.
         </p>
       </div>
 
@@ -566,14 +617,169 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
                 </div>
               )}
 
-              {branchEntry && (
-                <Link href={`/admin/pos?branch=${branchEntry.id}`} className="btn-secondary inline-block !px-3 !py-1 text-xs">
-                  View POS Records
-                </Link>
-              )}
+              <div className="space-y-2 border-t border-slate-200 pt-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h4 className="text-sm font-semibold text-slate-800">Home Service</h4>
+                  <span className="rounded-full border border-slate-300 bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-700">
+                    {r.homeService.count} job{r.homeService.count === 1 ? "" : "s"} completed
+                  </span>
+                </div>
+                {r.homeService.count === 0 ? (
+                  <p className="text-sm text-slate-400">No home service jobs completed in this range.</p>
+                ) : (
+                  <>
+                    <table className="w-full text-left text-sm">
+                      <tbody>
+                        <tr className="border-b border-slate-100">
+                          <td className="py-2 pr-3 text-slate-600">Total Amount</td>
+                          <td className="py-2 pr-3 text-right text-slate-800">{peso(r.homeService.totalAmount)}</td>
+                        </tr>
+                        <tr className="border-b border-slate-100">
+                          <td className="py-2 pr-3 text-slate-600">− Parts/Material Cost</td>
+                          <td className="py-2 pr-3 text-right text-red-700">−{peso(r.homeService.partsCost)}</td>
+                        </tr>
+                        <tr className="border-b border-slate-200">
+                          <td className="py-2 pr-3 font-semibold text-slate-800">= Net Amount</td>
+                          <td className="py-2 pr-3 text-right font-semibold text-green-700">{peso(r.homeService.netAmount)}</td>
+                        </tr>
+                        <tr className="border-b border-slate-100">
+                          <td className="py-2 pr-3 pl-5 text-slate-500">Technician Share (70%)</td>
+                          <td className="py-2 pr-3 text-right text-amber-700">{peso(r.homeService.technicianShare)}</td>
+                        </tr>
+                        <tr>
+                          <td className="py-2 pr-3 pl-5 font-semibold text-slate-700">Company Share (30%)</td>
+                          <td className="py-2 pr-3 text-right">
+                            <span className="inline-block rounded-md border-2 border-green-300 bg-green-50 px-2.5 py-1 text-base font-bold text-green-900">
+                              {peso(r.homeService.companyShare)}
+                            </span>
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+
+                    {r.homeServiceTechnicians.length > 0 && (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-xs">
+                          <thead>
+                            <tr className="border-b border-slate-200 uppercase tracking-wide text-slate-400">
+                              <th className="pb-1.5 pr-3 font-medium">Technician</th>
+                              <th className="pb-1.5 pr-3 font-medium">Jobs</th>
+                              <th className="pb-1.5 pr-3 font-medium">Total Amount</th>
+                              <th className="pb-1.5 pr-3 font-medium">Technician Share</th>
+                              <th className="pb-1.5 font-medium">Company Share</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {r.homeServiceTechnicians.map((t) => (
+                              <tr key={t.name} className={`border-b border-slate-100 last:border-0 ${t.name === "Unassigned" ? "opacity-60" : ""}`}>
+                                <td className="py-1.5 pr-3 text-slate-700">{t.name}</td>
+                                <td className="py-1.5 pr-3 text-slate-500">{t.count}</td>
+                                <td className="py-1.5 pr-3 text-slate-800">{peso(t.totalAmount)}</td>
+                                <td className="py-1.5 pr-3 text-amber-700">{peso(t.technicianShare)}</td>
+                                <td className="py-1.5 text-green-700">{peso(t.companyShare)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                {branchEntry && (
+                  <Link href={`/admin/pos?branch=${branchEntry.id}`} className="btn-secondary inline-block !px-3 !py-1 text-xs">
+                    View POS Records
+                  </Link>
+                )}
+                {r.homeService.count > 0 && (
+                  <Link href="/admin/sales/home-service" className="btn-secondary inline-block !px-3 !py-1 text-xs">
+                    View Home Service Records
+                  </Link>
+                )}
+              </div>
             </div>
           );
         })}
+
+        {queueHomeServiceCards.map(({ branch, homeServiceTechnicians, homeService }) => (
+          <div key={branch.id} className="card space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="text-sm font-semibold text-slate-800">{branch.name}</h3>
+                <span className="rounded-full border border-slate-300 bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-700">
+                  {homeService.count} job{homeService.count === 1 ? "" : "s"} completed
+                </span>
+              </div>
+              <p className="text-base font-bold text-green-700">{peso(homeService.companyShare)} company share</p>
+            </div>
+
+            {homeService.count === 0 ? (
+              <p className="text-sm text-slate-400">No home service jobs completed in this range.</p>
+            ) : (
+              <>
+                <table className="w-full text-left text-sm">
+                  <tbody>
+                    <tr className="border-b border-slate-100">
+                      <td className="py-2 pr-3 text-slate-600">Total Amount</td>
+                      <td className="py-2 pr-3 text-right text-slate-800">{peso(homeService.totalAmount)}</td>
+                    </tr>
+                    <tr className="border-b border-slate-100">
+                      <td className="py-2 pr-3 text-slate-600">− Parts/Material Cost</td>
+                      <td className="py-2 pr-3 text-right text-red-700">−{peso(homeService.partsCost)}</td>
+                    </tr>
+                    <tr className="border-b border-slate-200">
+                      <td className="py-2 pr-3 font-semibold text-slate-800">= Net Amount</td>
+                      <td className="py-2 pr-3 text-right font-semibold text-green-700">{peso(homeService.netAmount)}</td>
+                    </tr>
+                    <tr className="border-b border-slate-100">
+                      <td className="py-2 pr-3 pl-5 text-slate-500">Technician Share (70%)</td>
+                      <td className="py-2 pr-3 text-right text-amber-700">{peso(homeService.technicianShare)}</td>
+                    </tr>
+                    <tr>
+                      <td className="py-2 pr-3 pl-5 font-semibold text-slate-700">Company Share (30%)</td>
+                      <td className="py-2 pr-3 text-right">
+                        <span className="inline-block rounded-md border-2 border-green-300 bg-green-50 px-2.5 py-1 text-base font-bold text-green-900">
+                          {peso(homeService.companyShare)}
+                        </span>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead>
+                      <tr className="border-b border-slate-200 uppercase tracking-wide text-slate-400">
+                        <th className="pb-1.5 pr-3 font-medium">Technician</th>
+                        <th className="pb-1.5 pr-3 font-medium">Jobs</th>
+                        <th className="pb-1.5 pr-3 font-medium">Total Amount</th>
+                        <th className="pb-1.5 pr-3 font-medium">Technician Share</th>
+                        <th className="pb-1.5 font-medium">Company Share</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {homeServiceTechnicians.map((t) => (
+                        <tr key={t.name} className={`border-b border-slate-100 last:border-0 ${t.name === "Unassigned" ? "opacity-60" : ""}`}>
+                          <td className="py-1.5 pr-3 text-slate-700">{t.name}</td>
+                          <td className="py-1.5 pr-3 text-slate-500">{t.count}</td>
+                          <td className="py-1.5 pr-3 text-slate-800">{peso(t.totalAmount)}</td>
+                          <td className="py-1.5 pr-3 text-amber-700">{peso(t.technicianShare)}</td>
+                          <td className="py-1.5 text-green-700">{peso(t.companyShare)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <Link href="/admin/sales/home-service" className="btn-secondary inline-block !px-3 !py-1 text-xs">
+                  View Home Service Records
+                </Link>
+              </>
+            )}
+          </div>
+        ))}
 
         {showAllBranches && (
           <div className="card space-y-3">
@@ -638,6 +844,40 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
                 )}
               </tbody>
             </table>
+
+            {grandHomeService.count > 0 && (
+              <>
+                <h4 className="pt-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Home Service — All Branches Combined</h4>
+                <table className="w-full text-left text-sm">
+                  <tbody>
+                    <tr className="border-b border-slate-100">
+                      <td className="py-2 pr-3 text-slate-600">Total Amount ({grandHomeService.count} jobs)</td>
+                      <td className="py-2 pr-3 text-right text-slate-800">{peso(grandHomeService.totalAmount)}</td>
+                    </tr>
+                    <tr className="border-b border-slate-100">
+                      <td className="py-2 pr-3 text-slate-600">− Parts/Material Cost</td>
+                      <td className="py-2 pr-3 text-right text-red-700">−{peso(grandHomeService.partsCost)}</td>
+                    </tr>
+                    <tr className="border-b border-slate-200">
+                      <td className="py-2 pr-3 font-semibold text-slate-800">= Net Amount</td>
+                      <td className="py-2 pr-3 text-right font-semibold text-green-700">{peso(grandHomeService.netAmount)}</td>
+                    </tr>
+                    <tr className="border-b border-slate-100">
+                      <td className="py-2 pr-3 pl-5 text-slate-500">Technician Share (70%)</td>
+                      <td className="py-2 pr-3 text-right text-amber-700">{peso(grandHomeService.technicianShare)}</td>
+                    </tr>
+                    <tr>
+                      <td className="pt-2 pr-3 pl-5 font-semibold text-slate-900">Company Share (30%)</td>
+                      <td className="pt-2 pr-3 text-right">
+                        <span className="inline-block rounded-md border-2 border-green-300 bg-green-50 px-2.5 py-1 text-base font-bold text-green-900">
+                          {peso(grandHomeService.companyShare)}
+                        </span>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </>
+            )}
           </div>
         )}
       </div>
