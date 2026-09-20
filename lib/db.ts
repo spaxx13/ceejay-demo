@@ -9,6 +9,7 @@ import type {
   DeviceModel,
   ServicePrice,
   Lead,
+  WalkInRequest,
   HomeServiceRequest,
   ActivityLog,
   Sale,
@@ -421,6 +422,32 @@ export async function getLeadById(id: string) {
   const row = await queryOne<LeadRow>("select * from leads where id = $1", [id]);
   return row ? mapLead(row) : null;
 }
+
+type WalkInRequestRow = {
+  id: string; reference: string; customer_id: string | null; name: string; phone: string; email: string; branch_id: string | null;
+  device_brand_id: string | null; device_model_id: string | null; device_other: string; service_type_id: string | null;
+  issue_description: string; photo_data_url: string | null; preferred_date: Date | string | null; status_id: string;
+  deleted_at: Date | null; created_at: Date;
+};
+function mapWalkInRequest(r: WalkInRequestRow): WalkInRequest {
+  return {
+    id: r.id, reference: r.reference, customerId: r.customer_id, name: r.name, phone: r.phone, email: r.email, branchId: r.branch_id,
+    deviceBrandId: r.device_brand_id, deviceModelId: r.device_model_id, deviceOther: r.device_other, serviceTypeId: r.service_type_id,
+    issueDescription: r.issue_description, photoDataUrl: r.photo_data_url, preferredDate: r.preferred_date ? toDateStr(r.preferred_date) : null,
+    statusId: r.status_id, deletedAt: toIsoOrNull(r.deleted_at), createdAt: toIso(r.created_at),
+  };
+}
+export async function getWalkInRequests() {
+  return (await query<WalkInRequestRow>("select * from walkin_requests where deleted_at is null order by created_at desc")).map(mapWalkInRequest);
+}
+export async function getDeletedWalkInRequests() {
+  return (await query<WalkInRequestRow>("select * from walkin_requests where deleted_at is not null order by deleted_at desc")).map(mapWalkInRequest);
+}
+export async function getWalkInRequestById(id: string) {
+  const row = await queryOne<WalkInRequestRow>("select * from walkin_requests where id = $1", [id]);
+  return row ? mapWalkInRequest(row) : null;
+}
+
 export async function getRequests() {
   return (await query<RequestRow>("select * from home_service_requests where deleted_at is null order by created_at desc")).map(mapRequest);
 }

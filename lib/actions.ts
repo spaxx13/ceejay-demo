@@ -1441,6 +1441,141 @@ export async function submitContactInquiry(_prev: ContactResult | undefined, for
   return { ok: true };
 }
 
+export type WalkInResult = { ok: true; reference: string } | { ok: false; error: string };
+
+// A lighter-weight cousin of submitHomeServiceRequest — a customer planning
+// to bring their device into a branch in person, not booking a technician
+// visit. No address/schedule/OTP/quotation-email machinery, just enough for
+// the branch to know who's coming and what to expect. Lands in its own
+// walkin_requests table (own reference number, own status pipeline) rather
+// than as a Lead, so it's immediately visible to branch staff the same way
+// Home Service Requests is, instead of being buried in the general CRM list.
+export async function submitWalkInRequest(_prev: WalkInResult | undefined, formData: FormData): Promise<WalkInResult> {
+  const name = str(formData, "name");
+  const phone = str(formData, "phone");
+  const email = str(formData, "email");
+  const branchId = str(formData, "branchId") || null;
+  const rawDeviceBrandId = str(formData, "deviceBrandId");
+  const rawDeviceModelId = str(formData, "deviceModelId");
+  const deviceOtherInput = str(formData, "deviceOther");
+  const serviceTypeId = str(formData, "serviceTypeId") || null;
+  const issue = str(formData, "issue");
+  const preferredDate = str(formData, "preferredDate") || null;
+  const photoDataUrlRaw = str(formData, "photoDataUrl");
+  const photoDataUrl = photoDataUrlRaw.startsWith("data:image/") ? photoDataUrlRaw : null;
+
+  if (!name || !phone) {
+    return { ok: false, error: "Please share your name and mobile number." };
+  }
+  if (!isValidPhone(phone)) {
+    return { ok: false, error: "Please enter a valid PH mobile number, e.g. 0917 123 4567." };
+  }
+  if (!branchId) {
+    return { ok: false, error: "Please select which branch you plan to visit." };
+  }
+  if (!rawDeviceBrandId) {
+    return { ok: false, error: "Please select your device brand." };
+  }
+  if (!issue) {
+    return { ok: false, error: "Please briefly describe the issue." };
+  }
+
+  const [lookups, branches] = await Promise.all([getLookups(), getBranches()]);
+  const walkInStatuses = lookups.filter((l) => l.kind === "walkin_status").sort((a, b) => a.order - b.order);
+  const branch = branches.find((b) => b.id === branchId);
+  if (!branch) {
+    return { ok: false, error: "Something went wrong with your submission. Please try again." };
+  }
+  // "Other — please specify" isn't a real lookup row — its <option value>
+  // is the literal string "other" — so falls back to the free-typed
+  // deviceOther text instead of failing the device_brand_id FK insert below.
+  const validDeviceBrandId = UUID_RE.test(rawDeviceBrandId) ? rawDeviceBrandId : null;
+  const deviceBrandId = validDeviceBrandId;
+  const deviceModelId = validDeviceBrandId && UUID_RE.test(rawDeviceModelId) ? rawDeviceModelId : null;
+  const deviceOther = deviceOtherInput;
+
+  // Same max-based + retry-on-collision pattern used for repair_records and
+  // home_service_requests — a plain count(*) undercounts once any row has
+  // ever been deleted, causing every later insert to collide on the same
+  // reference (the exact bug that once took down HSR submissions live).
+  const year = new Date().getFullYear();
+  let reference = "";
+  let created: { id: string } | null = null;
+  for (let attempt = 1; attempt <= 5; attempt++) {
+    const max = await queryOne<{ n: number }>(
+      "select coalesce(max(split_part(reference, '-', 3)::int), 0)::int as n from walkin_requests where reference like $1",
+      [`WI-${year}-%`]
+    );
+    reference = `WI-${year}-${String((max?.n ?? 0) + 1).padStart(4, "0")}`;
+    try {
+      created = await queryOne<{ id: string }>(
+        `insert into walkin_requests
+           (reference, name, phone, email, branch_id, device_brand_id, device_model_id, device_other, service_type_id, issue_description, photo_data_url, preferred_date, status_id)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) returning id`,
+        [reference, name, phone, email, branchId, deviceBrandId, deviceModelId, deviceOther, serviceTypeId, issue, photoDataUrl, preferredDate, walkInStatuses[0]?.id ?? null]
+      );
+      break;
+    } catch (err) {
+      const code = (err as { code?: string }).code;
+      if (code === "23505" && attempt < 5) continue;
+      throw err;
+    }
+  }
+
+  await logActivity("walkin_request", created!.id, `Walk-in pre-registration ${reference} submitted via website for ${branch.name}`, "System");
+  revalidatePath("/admin/walk-ins");
+  revalidatePath("/admin");
+  return { ok: true, reference };
+}
+
+// ---------- Admin: Walk-In Registrations ----------
+
+export async function updateWalkInStatus(formData: FormData) {
+  const user = await getCurrentUser();
+  if (!canManageHomeServiceRequests(user)) return;
+  const id = str(formData, "id");
+  const statusId = str(formData, "statusId");
+  const lookups = await getLookups();
+  const status = lookups.find((l) => l.id === statusId);
+  if (!status) return;
+  await query("update walkin_requests set status_id=$1 where id=$2", [statusId, id]);
+  await logActivity("walkin_request", id, `Status changed to "${status.label}" by ${user?.name ?? "Admin"}`, user?.name ?? "Admin");
+  revalidatePath("/admin/walk-ins");
+  revalidatePath(`/admin/walk-ins/${id}`);
+}
+
+// Soft delete — moves it to Trash rather than permanently deleting it,
+// consistent with Home Service Requests and POS records.
+export async function deleteWalkInRequest(formData: FormData) {
+  const user = await getCurrentUser();
+  if (!canDeleteHomeServiceRequests(user)) return;
+  const id = str(formData, "id");
+  await query("update walkin_requests set deleted_at=now() where id=$1", [id]);
+  await logActivity("walkin_request", id, `Moved to Trash by ${user?.name ?? "Admin"}`, user?.name ?? "Admin");
+  revalidatePath("/admin/walk-ins");
+  revalidatePath("/admin/trash");
+  revalidatePath("/admin");
+}
+
+export async function restoreWalkInRequest(formData: FormData) {
+  const user = await getCurrentUser();
+  if (!canDeleteHomeServiceRequests(user)) return;
+  const id = str(formData, "id");
+  await query("update walkin_requests set deleted_at=null where id=$1", [id]);
+  await logActivity("walkin_request", id, `Restored from Trash by ${user?.name ?? "Admin"}`, user?.name ?? "Admin");
+  revalidatePath("/admin/walk-ins");
+  revalidatePath("/admin/trash");
+  revalidatePath("/admin");
+}
+
+export async function permanentlyDeleteWalkInRequest(formData: FormData) {
+  const user = await getCurrentUser();
+  if (!canDeleteHomeServiceRequests(user)) return;
+  const id = str(formData, "id");
+  await query("delete from walkin_requests where id=$1 and deleted_at is not null", [id]);
+  revalidatePath("/admin/trash");
+}
+
 // ---------- Admin: Home Service Requests ----------
 
 // Statuses a sibling request must NOT be in to get swept into a cascaded

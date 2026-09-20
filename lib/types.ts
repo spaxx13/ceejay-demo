@@ -181,6 +181,7 @@ export type Customer = {
 export type LookupKind =
   | "lead_status"
   | "request_status"
+  | "walkin_status"
   | "service_type"
   | "customer_source"
   | "device_brand"
@@ -231,6 +232,31 @@ export type Lead = {
   followUpDate: string | null;
   notes: string;
   branchId: string | null; // which branch the inquiry is about (set on website contact-form leads; branch_admin scoping) — null means visible to every branch admin
+  createdAt: string;
+};
+
+// A customer who pre-registered online that they're bringing their device
+// into a branch in person — its own module (own reference number, own
+// status pipeline) rather than a Lead, since it needs to be immediately
+// visible to branch staff the way Home Service Requests is, not mixed into
+// the general inquiry pipeline.
+export type WalkInRequest = {
+  id: string;
+  reference: string; // WI-<year>-<seq>
+  customerId: string | null;
+  name: string;
+  phone: string;
+  email: string;
+  branchId: string | null; // which branch the customer plans to visit
+  deviceBrandId: string | null;
+  deviceModelId: string | null;
+  deviceOther: string;
+  serviceTypeId: string | null;
+  issueDescription: string;
+  photoDataUrl: string | null;
+  preferredDate: string | null;
+  statusId: string; // LookupItem id (walkin_status)
+  deletedAt: string | null;
   createdAt: string;
 };
 
@@ -335,7 +361,7 @@ export type RepairRecord = {
 
 export type ActivityLog = {
   id: string;
-  entityType: "customer" | "lead" | "home_service_request";
+  entityType: "customer" | "lead" | "home_service_request" | "walkin_request";
   entityId: string;
   message: string;
   actor: string; // user name or "System"

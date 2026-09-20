@@ -49,9 +49,14 @@ export default async function HomePage() {
               <p className="mt-1.5 text-sm text-slate-400">
                 Walk in for a free diagnostic and same-day repair at any of our branches — no appointment needed.
               </p>
-              <Link href="/branches" className="mt-4 inline-block text-sm text-blue-500 hover:underline">
-                Find a branch →
-              </Link>
+              <div className="mt-4 flex flex-wrap gap-x-4 gap-y-1">
+                <Link href="/branches" className="text-sm text-blue-500 hover:underline">
+                  Find a branch →
+                </Link>
+                <Link href="/walk-in" className="text-sm text-blue-500 hover:underline">
+                  Pre-register your visit →
+                </Link>
+              </div>
             </div>
           </div>
           <div className="card overflow-hidden !p-0">
@@ -110,7 +115,16 @@ export default async function HomePage() {
         </div>
       </section>
 
-      <section className="px-4 pb-20 sm:px-6">
+      <section className="space-y-4 px-4 pb-20 sm:px-6">
+        <div className="card mx-auto flex max-w-4xl flex-col items-center gap-4 text-center sm:flex-row sm:justify-between sm:text-left">
+          <div>
+            <p className="text-lg font-semibold text-slate-800">Bringing your device in?</p>
+            <p className="mt-1 text-sm text-slate-400">Pre-register your walk-in so the branch can be ready when you arrive.</p>
+          </div>
+          <Link href="/walk-in" className="btn-primary shrink-0">
+            Pre-Register Visit
+          </Link>
+        </div>
         <div className="card mx-auto flex max-w-4xl flex-col items-center gap-4 text-center sm:flex-row sm:justify-between sm:text-left">
           <div>
             <p className="text-lg font-semibold text-slate-800">{sc.ctaBannerTitle}</p>

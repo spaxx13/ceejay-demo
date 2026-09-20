@@ -9,6 +9,7 @@ import {
   getServiceAgreements,
   getRepairRecordStatus,
   getExpenses,
+  getWalkInRequests,
   technicianSharePercent,
   homeServiceSalesByTechnician,
   sumHomeServiceSales,
@@ -24,7 +25,7 @@ import { formatDateTime } from "@/lib/format";
 const peso = (n: number) => `₱${Math.round(n).toLocaleString()}`;
 
 export default async function AdminDashboard() {
-  const [user, allRequests, technicians, leads, customers, lookups, repairRecords, agreements, expenses] = await Promise.all([
+  const [user, allRequests, technicians, leads, customers, lookups, repairRecords, agreements, expenses, allWalkIns] = await Promise.all([
     getCurrentUser(),
     getRequests(),
     getTechnicians(),
@@ -34,6 +35,7 @@ export default async function AdminDashboard() {
     getRepairRecords(),
     getServiceAgreements(),
     getExpenses(),
+    getWalkInRequests(),
   ]);
   // Same queue scoping as Admin > Requests — a branch admin assigned to only
   // one queue's backend branch never sees the other queue's totals here.
@@ -48,6 +50,12 @@ export default async function AdminDashboard() {
   const activeTechs = technicians.filter((t) => t.active).length;
   const totalLeads = leads.length;
   const totalCustomers = customers.length;
+
+  // Same branch scoping as Admin > Walk-In Registrations.
+  const walkIns = allWalkIns.filter((r) => !isBranchHidden(user, r.branchId));
+  const walkInStatuses = lookups.filter((l) => l.kind === "walkin_status");
+  const pendingVisitStatusId = walkInStatuses.find((s) => s.label === "Pending Visit")?.id;
+  const pendingWalkIns = walkIns.filter((r) => r.statusId === pendingVisitStatusId);
 
   const today = new Date().toISOString().slice(0, 10);
   const todayRecords = repairRecords.filter((r) => r.serviceDate === today);
@@ -129,6 +137,8 @@ export default async function AdminDashboard() {
     { label: "Pending Tickets", value: pendingTickets, href: "/admin/pos?status=pending", warn: pendingTickets > 0 },
     { label: "Home Service Requests", value: totalRequests, href: "/admin/requests", requestsGated: true },
     { label: "Unassigned Queue", value: unassigned.length, href: "/admin/requests?unassigned=1", warn: unassigned.length > 0, requestsGated: true },
+    { label: "Walk-In Registrations", value: walkIns.length, href: "/admin/walk-ins", requestsGated: true },
+    { label: "Pending Visits", value: pendingWalkIns.length, href: "/admin/walk-ins", warn: pendingWalkIns.length > 0, requestsGated: true },
     { label: "Active Technicians", value: activeTechs, href: "/admin/technicians", ownerOnly: true },
     { label: "Leads", value: totalLeads, href: "/admin/crm" },
     { label: "Customers", value: totalCustomers, href: "/admin/crm" },
