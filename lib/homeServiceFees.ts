@@ -21,6 +21,11 @@ export const PROVINCE_FEES: Record<string, { base: number; higherTowns?: string[
   Pampanga: { base: 1000 },
   Laguna: { base: 1000 },
   Batangas: { base: 1000 },
+  Rizal: {
+    base: 500,
+    higherTowns: ["Tanay", "Baras", "Cardona", "Pililla", "Morong"],
+    higherFee: 800,
+  },
 };
 
 // These provinces only get a home service visit once a week — the
