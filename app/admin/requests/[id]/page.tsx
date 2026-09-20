@@ -220,6 +220,14 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
             <p className="text-slate-500">Service Fee (one visit)</p>
             <span className="text-slate-800">{quotedServiceFee !== null ? peso(quotedServiceFee) : "—"}</span>
           </div>
+          {req.downpaymentRequired && (
+            <div className="flex items-center justify-between gap-3 text-sm">
+              <p className="text-slate-500">Down Payment (QR Ph)</p>
+              <span className={req.downpaymentStatus === "paid" ? "font-semibold text-green-700" : "font-semibold text-amber-600"}>
+                {peso(req.downpaymentAmount ?? 0)} — {req.downpaymentStatus === "paid" ? "Paid" : "Unpaid"}
+              </span>
+            </div>
+          )}
           {quotedServiceFee !== null && quotationDevices.every((d) => d.repairCost !== null) && (
             <div className="flex items-center justify-between gap-3 border-t border-slate-200 pt-2 text-sm font-semibold">
               <p className="text-slate-700">Total</p>

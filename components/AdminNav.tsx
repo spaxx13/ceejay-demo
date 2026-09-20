@@ -21,7 +21,14 @@ const NAV_GROUPS: {
     ],
   },
   { label: "Customers", links: [{ href: "/admin/crm", label: "CRM", crmGated: true }] },
-  { label: "Tools", links: [{ href: "/admin/tools/panic-log", label: "Panic Log Checker" }, { href: "/admin/trash", label: "Trash" }] },
+  {
+    label: "Tools",
+    links: [
+      { href: "/admin/tools/panic-log", label: "Panic Log Checker" },
+      { href: "/admin/tools/icloud-checks", label: "iCloud Status Checks" },
+      { href: "/admin/trash", label: "Trash" },
+    ],
+  },
   { label: null, links: [{ href: "/admin/notifications", label: "Notifications" }] },
 ];
 

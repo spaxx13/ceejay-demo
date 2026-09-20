@@ -318,6 +318,13 @@ export type HomeServiceRequest = {
   confirmationExpiresAt: string | null; // 2 hours after submission — the void-unconfirmed-requests cron cancels the request once this passes with confirmedAt still null
   confirmedAt: string | null; // set when the customer clicks the confirm link in their quotation email
   bookingGroupId: string | null; // shared by every device from the same "+ Add Another Device" submission — one technician assignment cascades to the whole group, since it's one visit to one address
+  downpaymentRequired: boolean; // true for DOWNPAYMENT_PROVINCES (lib/homeServiceFees.ts) — the booking can't be confirmed until downpaymentStatus is "paid"
+  downpaymentAmount: number | null; // pesos, snapshotted at submission time — equal to the service fee for the booking's province/city
+  downpaymentStatus: "not_required" | "pending" | "paid";
+  paymongoCheckoutSessionId: string | null;
+  paymongoCheckoutUrl: string | null;
+  paymongoPaymentId: string | null;
+  downpaymentPaidAt: string | null;
   deletedAt: string | null; // set when moved to Trash — null again once restored
   serviceFeeWaived: boolean; // set by a staff account with canWaiveServiceFee — treats the province-computed visit fee (lib/homeServiceFees.ts) as ₱0 wherever it's quoted/displayed, without changing the underlying province fee table
 };
@@ -508,4 +515,35 @@ export type CrmBroadcast = {
   createdBy: string; // user name
   createdAt: string;
   sentAt: string | null;
+};
+
+// Public, paid "iCloud ON/OFF" (Find My iPhone) lookup — a customer pays
+// online (PayMongo) for a one-off SICKW.com check on an IMEI/serial. One
+// row per attempt; status is a strict forward state machine (see
+// supabase/migrations/0048_icloud_checks.sql):
+//   created -> payment_pending -> paid -> checked | check_failed -> refund_needed
+// "paid" is only ever reached through claimIcloudCheckAsPaid's conditional
+// UPDATE (lib/db.ts) — the single idempotency guard that keeps a webhook
+// redelivery or a refreshed result page from spending a second SICKW
+// credit on the same payment.
+export type IcloudCheckStatus = "created" | "payment_pending" | "paid" | "checked" | "check_failed" | "refund_needed";
+export type IcloudCheck = {
+  id: string;
+  imei: string;
+  status: IcloudCheckStatus;
+  amount: number; // pesos — this app's money fields are always plain peso numbers; centavo conversion is isolated inside lib/paymongo.ts
+  paymongoCheckoutSessionId: string | null;
+  paymongoPaymentId: string | null; // set once paid, from the webhook payload
+  paymongoCheckoutUrl: string | null; // kept so the result page can offer a "resume payment" link while still payment_pending
+  paidAt: string | null;
+  sickwRawResponse: unknown | null; // always stored, even on a parse failure, so a bad lib/sickw.ts parse can be diagnosed without re-spending a credit
+  icloudStatus: "ON" | "OFF" | "UNKNOWN" | null;
+  resultSummary: string | null; // plain-language line shown to the customer
+  failureReason: string | null;
+  sickwAttemptCount: number; // bumped by Admin > Tools' Retry Check action
+  adminNote: string | null; // set when an admin marks refund_needed
+  checkedAt: string | null;
+  customerIp: string | null; // best-effort abuse signal, not enforced
+  createdAt: string;
+  updatedAt: string;
 };

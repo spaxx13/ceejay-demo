@@ -14,3 +14,7 @@ export const BOOKING_CONFIRMATION_WINDOW_HOURS = 2;
 // Cap on how many times a technician can self-correct the Repair Price /
 // Labor-Service Cost on their own completed Post-Repair checklist.
 export const MAX_PRICE_EDITS = 3;
+
+// Price (pesos) charged for the public iCloud ON/OFF checker (lib/paymongo.ts,
+// lib/sickw.ts) — see app/(site)/check-icloud.
+export const ICLOUD_CHECK_PRICE_PESOS = 10;

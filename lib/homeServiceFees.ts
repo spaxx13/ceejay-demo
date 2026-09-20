@@ -28,6 +28,15 @@ export const PROVINCE_FEES: Record<string, { base: number; higherTowns?: string[
 // selected.
 export const SUNDAY_ONLY_PROVINCES = new Set(["Pampanga", "Laguna", "Batangas"]);
 
+// These provinces require a QR Ph down payment (via PayMongo), equal to
+// the service fee, before the booking can be confirmed — see
+// startHomeServiceDownpayment/processHomeServiceDownpayment in
+// lib/actions.ts. Currently the same three provinces as
+// SUNDAY_ONLY_PROVINCES above, but kept as its own set since the two rules
+// (weekly visit scheduling vs. down payment policy) are separate business
+// decisions that only happen to share the same provinces today.
+export const DOWNPAYMENT_PROVINCES = new Set(["Laguna", "Batangas", "Pampanga"]);
+
 // Local calendar date (YYYY-MM-DD) for a Date, using its local getters
 // throughout — unlike `d.toISOString().slice(0, 10)`, this can't roll the
 // date backward/forward across midnight for a customer whose local time

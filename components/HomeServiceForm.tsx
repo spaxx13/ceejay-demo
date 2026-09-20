@@ -301,6 +301,19 @@ export default function HomeServiceForm({
           <span className="font-mono text-base font-semibold text-blue-300">{state.references.join(", ")}</span>
         </p>
         <p className="text-sm text-slate-400">{content.successBody}</p>
+        {state.downpaymentRequired && state.confirmationUrl && (
+          <FormNotice tone="amber" icon="💳">
+            <p className="font-semibold">Down payment required to confirm your booking</p>
+            <p className="mt-1">
+              Home Service bookings in your area require a ₱{(state.downpaymentAmount ?? 0).toLocaleString()}.00 down payment via QR Ph
+              before we can confirm your booking. Please pay within {BOOKING_CONFIRMATION_WINDOW_HOURS} hours, or your request will be
+              automatically cancelled.
+            </p>
+            <a href={state.confirmationUrl} className="btn-primary mt-3 inline-block">
+              Pay Down Payment Now
+            </a>
+          </FormNotice>
+        )}
         {sentEmail && (
           <FormNotice tone="blue" icon="📧">
             <p className="font-semibold">Check your email to confirm your booking</p>

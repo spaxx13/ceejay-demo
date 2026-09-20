@@ -28,6 +28,8 @@ import type {
   ConversationMessage,
   CrmBroadcast,
   CrmBroadcastStatus,
+  IcloudCheck,
+  IcloudCheckStatus,
 } from "./types";
 import { sendPushToUsers } from "./push";
 import { sendSms, smsConfigured } from "./sms";
@@ -259,6 +261,8 @@ type RequestRow = {
   vlog_consent: boolean; vlog_blur_preference: HomeServiceRequest["vlogBlurPreference"]; screen_quality: HomeServiceRequest["screenQuality"]; back_housing_color: string; reminder_sent_at: Date | null;
   confirmation_token: string | null; confirmation_expires_at: Date | null; confirmed_at: Date | null; booking_group_id: string | null;
   deleted_at: Date | null; service_fee_waived: boolean;
+  downpayment_required: boolean; downpayment_amount: string | number | null; downpayment_status: HomeServiceRequest["downpaymentStatus"];
+  paymongo_checkout_session_id: string | null; paymongo_checkout_url: string | null; paymongo_payment_id: string | null; downpayment_paid_at: Date | null;
 };
 function mapRequest(r: RequestRow): HomeServiceRequest {
   return {
@@ -272,6 +276,9 @@ function mapRequest(r: RequestRow): HomeServiceRequest {
     reminderSentAt: toIsoOrNull(r.reminder_sent_at),
     confirmationToken: r.confirmation_token, confirmationExpiresAt: toIsoOrNull(r.confirmation_expires_at), confirmedAt: toIsoOrNull(r.confirmed_at),
     bookingGroupId: r.booking_group_id, deletedAt: toIsoOrNull(r.deleted_at), serviceFeeWaived: r.service_fee_waived,
+    downpaymentRequired: r.downpayment_required, downpaymentAmount: r.downpayment_amount === null ? null : Number(r.downpayment_amount),
+    downpaymentStatus: r.downpayment_status, paymongoCheckoutSessionId: r.paymongo_checkout_session_id, paymongoCheckoutUrl: r.paymongo_checkout_url,
+    paymongoPaymentId: r.paymongo_payment_id, downpaymentPaidAt: toIsoOrNull(r.downpayment_paid_at),
   };
 }
 
@@ -508,6 +515,30 @@ export async function getRequestById(id: string) {
 // this returns every row in that group, not just the first match.
 export async function getRequestsByConfirmationToken(token: string) {
   return (await query<RequestRow>("select * from home_service_requests where confirmation_token = $1", [token])).map(mapRequest);
+}
+// Marks every row in a booking (keyed by its shared confirmation_token) as
+// awaiting the PayMongo QR Ph checkout for its down payment — mirrors
+// markIcloudCheckPaymentPending, but scoped to the whole booking group
+// since the down payment is for one visit, not per device.
+export async function markHomeServiceDownpaymentPending(token: string, sessionId: string, checkoutUrl: string) {
+  await query(
+    "update home_service_requests set paymongo_checkout_session_id=$2, paymongo_checkout_url=$3 where confirmation_token=$1",
+    [token, sessionId, checkoutUrl]
+  );
+}
+// Conditional UPDATE, same shape (and same reason) as claimIcloudCheckAsPaid:
+// only the first caller to see downpayment_status='pending' actually claims
+// it, so the PayMongo webhook and the confirm-booking page's own fallback
+// re-verification can race safely — whichever loses the race gets back no
+// rows and does nothing further. Returns the whole booking group, updated.
+export async function claimHomeServiceDownpaymentAsPaid(token: string, paymongoPaymentId: string) {
+  return (
+    await query<RequestRow>(
+      `update home_service_requests set downpayment_status='paid', paymongo_payment_id=$2, downpayment_paid_at=now()
+       where confirmation_token=$1 and downpayment_status='pending' returning *`,
+      [token, paymongoPaymentId]
+    )
+  ).map(mapRequest);
 }
 // Every device from the same "+ Add Another Device" submission shares a
 // booking_group_id — used to cascade a technician assignment across the
@@ -759,6 +790,119 @@ export async function markCrmBroadcastSent(id: string, status: "sent" | "failed"
 // Only a still-pending (not yet sent) scheduled broadcast can be cancelled.
 export async function cancelCrmBroadcast(id: string) {
   await query("update crm_broadcasts set status='cancelled' where id=$1 and status='pending'", [id]);
+}
+
+// ---------- Public paid iCloud ON/OFF checker ----------
+// See lib/types.ts's IcloudCheck doc comment for the full status state
+// machine. claimIcloudCheckAsPaid below is the one function every caller
+// MUST go through before ever calling the SICKW API — see its own comment.
+
+type IcloudCheckRow = {
+  id: string;
+  imei: string;
+  status: IcloudCheckStatus;
+  amount: string;
+  paymongo_checkout_session_id: string | null;
+  paymongo_payment_id: string | null;
+  paymongo_checkout_url: string | null;
+  paid_at: Date | null;
+  sickw_raw_response: unknown | null;
+  icloud_status: IcloudCheck["icloudStatus"];
+  result_summary: string | null;
+  failure_reason: string | null;
+  sickw_attempt_count: number;
+  admin_note: string | null;
+  checked_at: Date | null;
+  customer_ip: string | null;
+  created_at: Date;
+  updated_at: Date;
+};
+function mapIcloudCheck(r: IcloudCheckRow): IcloudCheck {
+  return {
+    id: r.id,
+    imei: r.imei,
+    status: r.status,
+    amount: Number(r.amount),
+    paymongoCheckoutSessionId: r.paymongo_checkout_session_id,
+    paymongoPaymentId: r.paymongo_payment_id,
+    paymongoCheckoutUrl: r.paymongo_checkout_url,
+    paidAt: toIsoOrNull(r.paid_at),
+    sickwRawResponse: r.sickw_raw_response,
+    icloudStatus: r.icloud_status,
+    resultSummary: r.result_summary,
+    failureReason: r.failure_reason,
+    sickwAttemptCount: r.sickw_attempt_count,
+    adminNote: r.admin_note,
+    checkedAt: toIsoOrNull(r.checked_at),
+    customerIp: r.customer_ip,
+    createdAt: toIso(r.created_at),
+    updatedAt: toIso(r.updated_at),
+  };
+}
+
+export async function getIcloudCheckById(id: string) {
+  const row = await queryOne<IcloudCheckRow>("select * from icloud_checks where id = $1", [id]);
+  return row ? mapIcloudCheck(row) : null;
+}
+
+// Admin > Tools > iCloud Status Checks list — every attempt, newest first.
+export async function getIcloudChecksForAdmin() {
+  return (await query<IcloudCheckRow>("select * from icloud_checks order by created_at desc limit 200")).map(mapIcloudCheck);
+}
+
+export async function createIcloudCheck(imei: string, customerIp: string | null) {
+  const row = await queryOne<IcloudCheckRow>(
+    "insert into icloud_checks (imei, customer_ip) values ($1,$2) returning *",
+    [imei, customerIp]
+  );
+  return row ? mapIcloudCheck(row) : null;
+}
+
+export async function markIcloudCheckPaymentPending(id: string, sessionId: string, checkoutUrl: string) {
+  await query(
+    "update icloud_checks set status='payment_pending', paymongo_checkout_session_id=$2, paymongo_checkout_url=$3, updated_at=now() where id=$1",
+    [id, sessionId, checkoutUrl]
+  );
+}
+
+// The idempotency choke point for the whole feature. Only succeeds (and
+// returns the updated row) the FIRST time it's called for a given check —
+// a conditional UPDATE that only matches a row still sitting in
+// 'payment_pending'. Returns null on every call after the first, which is
+// the signal callers (the webhook route and the result page's fallback
+// re-verification) must treat as "someone already claimed this — do NOT
+// call the SICKW API again." This is what keeps a redelivered PayMongo
+// webhook, or a customer refreshing the result page, from spending a
+// second SICKW credit on the same payment.
+export async function claimIcloudCheckAsPaid(id: string, paymongoPaymentId: string) {
+  const row = await queryOne<IcloudCheckRow>(
+    "update icloud_checks set status='paid', paid_at=now(), paymongo_payment_id=$2, updated_at=now() where id=$1 and status='payment_pending' returning *",
+    [id, paymongoPaymentId]
+  );
+  return row ? mapIcloudCheck(row) : null;
+}
+
+export async function markIcloudCheckChecked(id: string, icloudStatus: IcloudCheck["icloudStatus"], summary: string, rawResponse: unknown) {
+  await query(
+    "update icloud_checks set status='checked', icloud_status=$2, result_summary=$3, sickw_raw_response=$4, sickw_attempt_count=sickw_attempt_count+1, checked_at=now(), updated_at=now() where id=$1",
+    [id, icloudStatus, summary, JSON.stringify(rawResponse)]
+  );
+}
+
+export async function markIcloudCheckFailed(id: string, reason: string, rawResponse: unknown) {
+  await query(
+    "update icloud_checks set status='check_failed', failure_reason=$2, sickw_raw_response=$3, sickw_attempt_count=sickw_attempt_count+1, updated_at=now() where id=$1",
+    [id, reason, rawResponse === null ? null : JSON.stringify(rawResponse)]
+  );
+}
+
+// Admin > Tools > iCloud Status Checks — bookkeeping only; the actual
+// refund still happens by hand in the PayMongo dashboard.
+export async function markIcloudCheckRefundNeeded(id: string, adminNote: string) {
+  await query(
+    "update icloud_checks set status='refund_needed', admin_note=$2, updated_at=now() where id=$1 and status='check_failed'",
+    [id, adminNote]
+  );
 }
 
 export async function getUserById(id: string) {

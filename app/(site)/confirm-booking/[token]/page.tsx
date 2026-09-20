@@ -1,8 +1,11 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { getRequestsByConfirmationToken } from "@/lib/db";
-import { confirmBooking } from "@/lib/actions";
+import { confirmBooking, startHomeServiceDownpayment, processHomeServiceDownpayment } from "@/lib/actions";
+import { retrieveCheckoutSession } from "@/lib/paymongo";
 import { formatDate } from "@/lib/format";
+
+const peso = (n: number) => `₱${n.toLocaleString()}.00`;
 
 function isExpired(expiresAt: string | null): boolean {
   if (!expiresAt) return true;
@@ -21,7 +24,27 @@ export default async function ConfirmBookingPage({
 
   // A multi-device booking shares one token across every device's row, so
   // this is every request confirming together from the one email link.
-  const reqs = await getRequestsByConfirmationToken(token);
+  let reqs = await getRequestsByConfirmationToken(token);
+
+  // Fallback re-verification for the down payment, same reasoning as
+  // check-icloud/result/[id]/page.tsx: PayMongo's webhook is the source of
+  // truth, but if it hasn't landed yet by the time the customer's browser
+  // returns from PayMongo, ask PayMongo directly instead of leaving them
+  // stuck looking unpaid. processHomeServiceDownpayment is safe to call
+  // even if the webhook races it (see claimHomeServiceDownpaymentAsPaid).
+  const pendingDownpayment = reqs[0]?.downpaymentRequired && reqs[0].downpaymentStatus === "pending" ? reqs[0] : null;
+  if (pendingDownpayment?.paymongoCheckoutSessionId) {
+    try {
+      const session = await retrieveCheckoutSession(pendingDownpayment.paymongoCheckoutSessionId);
+      if (session.paid && session.paymentId) {
+        reqs = await processHomeServiceDownpayment(token, session.paymentId);
+      }
+    } catch {
+      // PayMongo lookup failed — fall through and show the still-pending
+      // state below; the webhook may still land, or the customer can retry.
+    }
+  }
+
   const referenceList = reqs.map((r) => r.reference).join(", ");
 
   if (result === "expired") {
@@ -55,6 +78,14 @@ export default async function ConfirmBookingPage({
     redirect(`/confirm-booking/${token}?result=${res.ok ? "confirmed" : res.error}`);
   }
 
+  async function payDownpayment() {
+    "use server";
+    const res = await startHomeServiceDownpayment(token);
+    if (!res.ok) redirect(`/confirm-booking/${token}?result=${encodeURIComponent(res.error)}`);
+  }
+
+  const downpaymentDue = reqs[0].downpaymentRequired && reqs[0].downpaymentStatus !== "paid";
+
   return (
     <main className="grid-bg px-4 py-10 sm:px-6">
       <div className="mx-auto max-w-md space-y-6">
@@ -70,16 +101,48 @@ export default async function ConfirmBookingPage({
               <span className="text-slate-400">Preferred Date:</span>{" "}
               {reqs[0].preferredDatetime ? formatDate(reqs[0].preferredDatetime) : "To be confirmed"}
             </p>
+            {reqs[0].downpaymentAmount !== null && (
+              <p>
+                <span className="text-slate-400">Down Payment:</span>{" "}
+                <span className="font-semibold">{peso(reqs[0].downpaymentAmount)}</span>{" "}
+                {reqs[0].downpaymentStatus === "paid" ? <span className="text-green-700">(Paid)</span> : <span className="text-amber-600">(Unpaid)</span>}
+              </p>
+            )}
           </div>
-          <p className="text-sm text-slate-400">
-            Confirm below so we can assign a technician to your request{reqs.length > 1 ? "s" : ""}. Unconfirmed bookings are
-            automatically cancelled after the confirmation window.
-          </p>
-          <form action={confirm}>
-            <button type="submit" className="btn-primary w-full">
-              Confirm My Booking
-            </button>
-          </form>
+
+          {downpaymentDue ? (
+            <>
+              <p className="text-sm text-slate-400">
+                Home Service bookings in your area require a {peso(reqs[0].downpaymentAmount ?? 0)} down payment via QR Ph before we can
+                confirm your booking{reqs.length > 1 ? "s" : ""}. Unconfirmed bookings are automatically cancelled after the confirmation
+                window.
+              </p>
+              {reqs[0].paymongoCheckoutUrl ? (
+                <a href={reqs[0].paymongoCheckoutUrl} className="btn-primary block w-full">
+                  Resume Down Payment ({peso(reqs[0].downpaymentAmount ?? 0)})
+                </a>
+              ) : (
+                <form action={payDownpayment}>
+                  <button type="submit" className="btn-primary w-full">
+                    Pay Down Payment via QR Ph ({peso(reqs[0].downpaymentAmount ?? 0)})
+                  </button>
+                </form>
+              )}
+              {result && result !== "confirmed" && result !== "expired" && <p className="text-sm text-red-600">{decodeURIComponent(result)}</p>}
+            </>
+          ) : (
+            <>
+              <p className="text-sm text-slate-400">
+                Confirm below so we can assign a technician to your request{reqs.length > 1 ? "s" : ""}. Unconfirmed bookings are
+                automatically cancelled after the confirmation window.
+              </p>
+              <form action={confirm}>
+                <button type="submit" className="btn-primary w-full">
+                  Confirm My Booking
+                </button>
+              </form>
+            </>
+          )}
         </div>
       </div>
     </main>

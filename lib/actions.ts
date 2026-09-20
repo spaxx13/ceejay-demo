@@ -2,8 +2,9 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
 import bcrypt from "bcryptjs";
-import { OTP_GATE_ENABLED, MAX_PRICE_EDITS, SITE_URL, BOOKING_CONFIRMATION_WINDOW_HOURS } from "@/lib/config";
+import { OTP_GATE_ENABLED, MAX_PRICE_EDITS, SITE_URL, BOOKING_CONFIRMATION_WINDOW_HOURS, ICLOUD_CHECK_PRICE_PESOS } from "@/lib/config";
 import { CHECKLIST_TEMPLATE } from "./checklist";
 import {
   query,
@@ -35,13 +36,24 @@ import {
   canAccessCrm,
   canManageWalkIns,
   canWaiveServiceFee,
+  getIcloudCheckById,
+  createIcloudCheck,
+  markIcloudCheckPaymentPending,
+  claimIcloudCheckAsPaid,
+  markIcloudCheckChecked,
+  markIcloudCheckFailed,
+  markIcloudCheckRefundNeeded,
+  markHomeServiceDownpaymentPending,
+  claimHomeServiceDownpaymentAsPaid,
 } from "./db";
 import { getCurrentUser, setSession, clearSession, requireRole } from "./auth";
 import { sendRepairReceiptEmail, sendCancellationEmail, sendQuotationEmail, sendLeadReplyEmail, sendBroadcastEmail, sendWalkInOtpEmail, emailConfigured } from "./email";
 import { sendSms, sendOtpSms, smsConfigured, normalizePhone, getAccountStatus, type SmsAccountStatus } from "./sms";
-import { SUNDAY_ONLY_PROVINCES, serviceFeeAmount } from "./homeServiceFees";
+import { SUNDAY_ONLY_PROVINCES, DOWNPAYMENT_PROVINCES, serviceFeeAmount } from "./homeServiceFees";
 import { getRepairQuote } from "./servicePricing";
 import { formatDate } from "./format";
+import { createCheckoutSession as createPaymongoCheckoutSession, paymongoConfigured } from "./paymongo";
+import { checkIcloudStatus } from "./sickw";
 import type {
   Role,
   LookupKind,
@@ -991,7 +1003,9 @@ export async function verifyHomeServiceOtp(phoneInput: string, codeInput: string
 
 // ---------- Public Home Service Request ----------
 
-export type SubmitResult = { ok: true; references: string[] } | { ok: false; error: string };
+export type SubmitResult =
+  | { ok: true; references: string[]; downpaymentRequired: boolean; downpaymentAmount: number | null; confirmationUrl: string | null }
+  | { ok: false; error: string };
 
 // System fields carry fixed input names (independent of the admin's chosen
 // display order) so this reads the same regardless of how fields are
@@ -1086,14 +1100,23 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
   // the link in their quotation email (or the 2-hour window lapses and
   // the void-unconfirmed-requests cron cancels it) — only then is it truly
   // "Pending" and ready to assign. No email means no way to send that link,
-  // so it skips straight to Pending as before. Whether confirmation is
-  // needed at all depends only on the shared email field, so it's the same
-  // for every device in this booking — only each device's own
-  // confirmation_token (below) needs to be distinct.
+  // so it skips straight to Pending as before. Laguna/Batangas/Pampanga
+  // (DOWNPAYMENT_PROVINCES) always need confirmation regardless of email,
+  // since those bookings can't be confirmed until their QR Ph down payment
+  // clears — the pay link is shown on the success screen either way (see
+  // HomeServiceForm), not only emailed. Whether confirmation is needed at
+  // all is the same for every device in this booking — only each device's
+  // own confirmation_token (below) needs to be distinct.
   const pendingStatus = requestStatuses.find((s) => s.label === "Pending") ?? requestStatuses[0];
   const pendingConfirmationStatus = requestStatuses.find((s) => s.label === "Pending Confirmation");
-  const initialStatus = email && pendingConfirmationStatus ? pendingConfirmationStatus : pendingStatus;
+  const requiresDownpayment = DOWNPAYMENT_PROVINCES.has(province);
+  const initialStatus = (email || requiresDownpayment) && pendingConfirmationStatus ? pendingConfirmationStatus : pendingStatus;
   const needsConfirmation = initialStatus.id === pendingConfirmationStatus?.id;
+  // Only actually enforceable when needsConfirmation held true above (i.e.
+  // a "Pending Confirmation" status exists) — otherwise there's no gate to
+  // attach a down payment requirement to at all.
+  const downpaymentActive = requiresDownpayment && needsConfirmation;
+  const downpaymentAmount = downpaymentActive ? serviceFeeAmount(province, city) : null;
   const cancelledStatus = requestStatuses.find((s) => s.label === "Cancelled");
 
   // A customer can book several devices in one submission (the "+ Add
@@ -1259,8 +1282,9 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
             reference, customer_id, customer_name, phone, email, device_brand_id, device_model_id, device_other, service_type_id,
             issue_description, photo_data_url, street, landmark, province, city, barangay, lat, lng, preferred_datetime,
             status_id, status_history, custom_fields, vlog_consent, vlog_blur_preference, screen_quality, back_housing_color,
-            assigned_technician_id, auto_assigned, branch_id, queue_branch_id, confirmation_token, confirmation_expires_at, booking_group_id
-          ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33)
+            assigned_technician_id, auto_assigned, branch_id, queue_branch_id, confirmation_token, confirmation_expires_at, booking_group_id,
+            downpayment_required, downpayment_amount, downpayment_status
+          ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36)
           returning id`,
           [
             reference,
@@ -1296,6 +1320,9 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
             confirmationToken,
             confirmationExpiresAt,
             bookingGroupId,
+            downpaymentActive,
+            downpaymentAmount,
+            downpaymentActive ? "pending" : "not_required",
           ]
         );
         break;
@@ -1390,29 +1417,27 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
 
   revalidatePath("/admin/requests");
   revalidatePath("/admin");
-  return { ok: true, references: createdRequests.map((r) => r.reference) };
+  return {
+    ok: true,
+    references: createdRequests.map((r) => r.reference),
+    downpaymentRequired: downpaymentActive,
+    downpaymentAmount,
+    confirmationUrl: confirmationToken ? `${SITE_URL}/confirm-booking/${confirmationToken}` : null,
+  };
 }
 
 export type ConfirmBookingResult =
   | { ok: true; references: string[]; alreadyConfirmed: boolean }
-  | { ok: false; error: "not_found" | "expired" };
+  | { ok: false; error: "not_found" | "expired" | "downpayment_required" };
 
-// Called from the public confirm-booking page when the customer clicks the
-// link in their quotation email. A multi-device booking shares one
-// confirmation_token across every device's row (one email, one link), so
-// this confirms every row in that group together — moving each from
-// "Pending Confirmation" to "Pending" (ready for an admin to assign).
-// Idempotent, since email clients/scanners sometimes pre-fetch links, and
-// a customer might click the link twice.
-export async function confirmBooking(token: string): Promise<ConfirmBookingResult> {
-  const reqs = await getRequestsByConfirmationToken(token);
-  if (reqs.length === 0) return { ok: false, error: "not_found" };
-  if (reqs.every((r) => r.confirmedAt)) return { ok: true, references: reqs.map((r) => r.reference), alreadyConfirmed: true };
-  const first = reqs[0];
-  if (!first.confirmationExpiresAt || new Date(first.confirmationExpiresAt).getTime() < Date.now()) {
-    return { ok: false, error: "expired" };
-  }
-
+// Shared by confirmBooking (the customer clicking "Confirm My Booking")
+// and processHomeServiceDownpayment (the down payment clearing, which IS
+// the confirmation step for DOWNPAYMENT_PROVINCES bookings) — moves every
+// row in the group from "Pending Confirmation" to "Pending" (ready for an
+// admin to assign). Idempotent: skips any row already confirmed, since
+// email clients/scanners sometimes pre-fetch links and a customer might
+// click twice, or the webhook and a fallback re-verification might race.
+async function confirmBookingRows(reqs: HomeServiceRequest[]): Promise<ConfirmBookingResult> {
   const lookups = await getLookups();
   const pendingStatus = lookups.find((l) => l.kind === "request_status" && l.label === "Pending");
   const now = new Date().toISOString();
@@ -1431,6 +1456,114 @@ export async function confirmBooking(token: string): Promise<ConfirmBookingResul
   revalidatePath("/admin/requests");
   revalidatePath("/admin");
   return { ok: true, references: reqs.map((r) => r.reference), alreadyConfirmed: false };
+}
+
+// Called from the public confirm-booking page when the customer clicks the
+// link in their quotation email (or, for a booking with no email, the link
+// shown on the submission success screen). A multi-device booking shares
+// one confirmation_token across every device's row (one link confirms all
+// of them together).
+export async function confirmBooking(token: string): Promise<ConfirmBookingResult> {
+  const reqs = await getRequestsByConfirmationToken(token);
+  if (reqs.length === 0) return { ok: false, error: "not_found" };
+  if (reqs.every((r) => r.confirmedAt)) return { ok: true, references: reqs.map((r) => r.reference), alreadyConfirmed: true };
+  const first = reqs[0];
+  if (!first.confirmationExpiresAt || new Date(first.confirmationExpiresAt).getTime() < Date.now()) {
+    return { ok: false, error: "expired" };
+  }
+  // Laguna/Batangas/Pampanga bookings can't be confirmed by clicking alone
+  // — the QR Ph down payment has to clear first (see
+  // startHomeServiceDownpayment/processHomeServiceDownpayment below), and
+  // clearing it performs the confirmation itself. The confirm-booking page
+  // never shows this button until the down payment is paid, but this
+  // guards the server action too in case of a stale page or a direct call.
+  if (first.downpaymentRequired && first.downpaymentStatus !== "paid") {
+    return { ok: false, error: "downpayment_required" };
+  }
+
+  return confirmBookingRows(reqs);
+}
+
+export type StartHomeServiceDownpaymentResult = { ok: false; error: string };
+
+// Sends the customer to PayMongo's QR Ph checkout for a
+// DOWNPAYMENT_PROVINCES booking's down payment — called from the
+// confirm-booking page's "Pay Down Payment" button. Mirrors
+// startIcloudCheck's shape: creates the session, stashes it, and redirects.
+export async function startHomeServiceDownpayment(token: string): Promise<StartHomeServiceDownpaymentResult> {
+  const reqs = await getRequestsByConfirmationToken(token);
+  if (reqs.length === 0) return { ok: false, error: "We couldn't find this booking — the link may be invalid." };
+  const first = reqs[0];
+  if (!first.downpaymentRequired || first.downpaymentStatus === "paid") {
+    return { ok: false, error: "No down payment is due for this booking." };
+  }
+  if (!first.confirmationExpiresAt || new Date(first.confirmationExpiresAt).getTime() < Date.now()) {
+    return { ok: false, error: "This booking's confirmation window has expired." };
+  }
+  if (!first.downpaymentAmount) {
+    return { ok: false, error: "This booking has no down payment amount on file — please contact us." };
+  }
+  if (!paymongoConfigured()) {
+    return { ok: false, error: "Online payment isn't available right now — please try again later." };
+  }
+
+  let session: Awaited<ReturnType<typeof createPaymongoCheckoutSession>>;
+  try {
+    session = await createPaymongoCheckoutSession({
+      metadata: { kind: "home_service_downpayment", token },
+      amountPesos: first.downpaymentAmount,
+      description: `Home Service down payment — ${reqs.map((r) => r.reference).join(", ")}`,
+      lineItemName: "Home Service Down Payment",
+      paymentMethodTypes: ["qrph"],
+      // Both point back to the same confirm-booking page — it always
+      // re-derives payment status from the DB (with a fallback
+      // re-verification against PayMongo directly), never trusting the
+      // URL the browser happened to land on.
+      successUrl: `${SITE_URL}/confirm-booking/${token}`,
+      cancelUrl: `${SITE_URL}/confirm-booking/${token}`,
+    });
+  } catch {
+    return { ok: false, error: "Couldn't start the payment — please try again in a moment." };
+  }
+
+  await markHomeServiceDownpaymentPending(token, session.id, session.checkoutUrl);
+  redirect(session.checkoutUrl);
+}
+
+// The only place a Home Service down payment is ever marked paid — see
+// claimHomeServiceDownpaymentAsPaid's comment (lib/db.ts) for why. Called
+// from both the PayMongo webhook (app/api/webhooks/paymongo/route.ts) and
+// the confirm-booking page's own fallback re-verification, so either one
+// racing ahead of the other is safe.
+export async function processHomeServiceDownpayment(token: string, paymongoPaymentId: string) {
+  const claimed = await claimHomeServiceDownpaymentAsPaid(token, paymongoPaymentId);
+  if (claimed.length === 0) {
+    // Already claimed (duplicate webhook delivery, or the other caller won
+    // the race) — do NOT confirm again, just report current state.
+    return getRequestsByConfirmationToken(token);
+  }
+
+  // Edge case: the 2-hour confirmation window lapsed and the
+  // void-unconfirmed-requests cron already auto-cancelled this booking
+  // between the customer starting checkout and PayMongo confirming
+  // payment. Record the payment (already done above) but don't revive a
+  // cancelled booking — flag it for a human to sort out (refund or manual
+  // re-confirm) instead.
+  if (claimed.some((r) => r.deletedAt)) {
+    for (const r of claimed) {
+      await logActivity(
+        "home_service_request",
+        r.id,
+        `Down payment received for ${r.reference} after the booking was already auto-cancelled — needs manual review (refund or re-confirm).`,
+        "System"
+      );
+      await notifyAdmins("new_request", r.id, `Down payment received for ${r.reference} after auto-cancellation — needs manual review.`);
+    }
+    return claimed;
+  }
+
+  await confirmBookingRows(claimed);
+  return getRequestsByConfirmationToken(token);
 }
 
 // ---------- Public Contact Form ----------
@@ -1689,6 +1822,111 @@ export async function permanentlyDeleteWalkInRequest(formData: FormData) {
   const id = str(formData, "id");
   await query("delete from walkin_requests where id=$1 and deleted_at is not null", [id]);
   revalidatePath("/admin/trash");
+}
+
+// ---------- Public: iCloud ON/OFF Checker ----------
+// Public, paid (PayMongo) SICKW.com "iCloud ON/OFF" lookup — see the
+// IcloudCheck doc comment in lib/types.ts for the full status state
+// machine. startIcloudCheck below only ever creates the row and sends the
+// customer to PayMongo; nothing here ever calls SICKW directly — that
+// only happens inside processIcloudCheckPayment, which is only ever
+// reached once claimIcloudCheckAsPaid's conditional UPDATE has actually
+// confirmed payment (see that function's own comment in lib/db.ts).
+
+const IMEI_RE = /^\d{14,16}$/;
+const SERIAL_RE = /^[A-Z0-9]{8,12}$/;
+
+export type StartIcloudCheckResult = { ok: false; error: string };
+
+export async function startIcloudCheck(_prev: StartIcloudCheckResult | undefined, formData: FormData): Promise<StartIcloudCheckResult> {
+  const imei = str(formData, "imei").toUpperCase();
+  if (!IMEI_RE.test(imei) && !SERIAL_RE.test(imei)) {
+    return { ok: false, error: "Enter a valid 14–16 digit IMEI, or an 8–12 character serial number." };
+  }
+  if (!paymongoConfigured()) {
+    return { ok: false, error: "Online payment isn't available right now — please try again later." };
+  }
+
+  const hdrs = await headers();
+  const customerIp = hdrs.get("x-forwarded-for")?.split(",")[0]?.trim() || null;
+  const check = await createIcloudCheck(imei, customerIp);
+  if (!check) return { ok: false, error: "Something went wrong — please try again." };
+
+  let session: Awaited<ReturnType<typeof createPaymongoCheckoutSession>>;
+  try {
+    session = await createPaymongoCheckoutSession({
+      metadata: { kind: "icloud_check", checkId: check.id },
+      amountPesos: ICLOUD_CHECK_PRICE_PESOS,
+      description: `iCloud ON/OFF check — ${imei}`,
+      lineItemName: "iCloud Status Check",
+      // Deliberately carries only the opaque check id, no payment/status
+      // flag — landing on the result page proves nothing by itself, it
+      // always re-derives status from the DB (see the result page).
+      successUrl: `${SITE_URL}/check-icloud/result/${check.id}`,
+      cancelUrl: `${SITE_URL}/check-icloud`,
+    });
+  } catch {
+    return { ok: false, error: "Couldn't start the payment — please try again in a moment." };
+  }
+
+  await markIcloudCheckPaymentPending(check.id, session.id, session.checkoutUrl);
+  redirect(session.checkoutUrl);
+}
+
+// The only place SICKW is ever called for a given payment — see
+// claimIcloudCheckAsPaid's comment (lib/db.ts) for why. Called from both
+// the PayMongo webhook (app/api/webhooks/paymongo/route.ts) and the
+// result page's own fallback re-verification, so either one racing ahead
+// of the other is safe.
+export async function processIcloudCheckPayment(checkId: string, paymongoPaymentId: string) {
+  const claimed = await claimIcloudCheckAsPaid(checkId, paymongoPaymentId);
+  if (!claimed) {
+    // Already claimed (duplicate webhook delivery, or the other caller
+    // won the race) — do NOT call SICKW again, just report current state.
+    return getIcloudCheckById(checkId);
+  }
+
+  const result = await checkIcloudStatus(claimed.imei);
+  if (result.ok) {
+    await markIcloudCheckChecked(claimed.id, result.icloudStatus, result.summary, result.rawResponse);
+  } else {
+    await markIcloudCheckFailed(claimed.id, result.error, result.rawResponse);
+  }
+  revalidatePath("/admin/tools/icloud-checks");
+  return getIcloudCheckById(checkId);
+}
+
+// ---------- Admin: iCloud Status Checks (Tools) ----------
+
+// Re-runs the SICKW call for a paid check that came back check_failed —
+// never touches payment state or re-charges the customer, since they
+// already paid; this is purely "the API call failed, try again."
+export async function retryIcloudCheck(formData: FormData) {
+  const user = await getCurrentUser();
+  if (!user) return;
+  const id = str(formData, "id");
+  const check = await getIcloudCheckById(id);
+  if (!check || check.status !== "check_failed") return;
+
+  const result = await checkIcloudStatus(check.imei);
+  if (result.ok) {
+    await markIcloudCheckChecked(check.id, result.icloudStatus, result.summary, result.rawResponse);
+  } else {
+    await markIcloudCheckFailed(check.id, result.error, result.rawResponse);
+  }
+  revalidatePath("/admin/tools/icloud-checks");
+}
+
+// Bookkeeping only — this app has no automated refund flow, so the actual
+// refund still happens by hand in the PayMongo dashboard. This just marks
+// the row so it stops showing up as an unresolved check_failed.
+export async function markIcloudRefundNeeded(formData: FormData) {
+  const user = await getCurrentUser();
+  if (!user) return;
+  const id = str(formData, "id");
+  const adminNote = str(formData, "adminNote");
+  await markIcloudCheckRefundNeeded(id, adminNote);
+  revalidatePath("/admin/tools/icloud-checks");
 }
 
 // ---------- Admin: Home Service Requests ----------
