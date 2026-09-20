@@ -1,7 +1,7 @@
 import "server-only";
 import { Resend } from "resend";
 import type { ChecklistItem } from "./types";
-import { generateRepairReceiptPdf, generateQuotationPdf } from "./receiptPdf";
+import { generateRepairReceiptPdf, generateQuotationPdf, generatePublicQuotationPdf, type PublicQuotationLineItem } from "./receiptPdf";
 
 const FROM = "Ceejay Cellphone Repair Shop <noreply@ceejayrepair.com>";
 
@@ -151,6 +151,70 @@ export async function sendQuotationEmail(
     subject: `Your repair quotation — ${opts.referenceList}`,
     html,
     attachments: [{ filename: `quotation-${opts.devices[0]?.reference ?? "request"}.pdf`, content: Buffer.from(pdfBytes) }],
+  });
+  if (error) throw new Error(error.message);
+}
+
+// The public "Get a Quote" feature's email (lib/actions.ts's
+// submitPublicQuotation) — a standalone price estimate the customer built
+// themselves, not tied to a Home Service booking (no confirmation link).
+export async function sendPublicQuotationEmail(
+  to: string,
+  opts: {
+    customerName: string;
+    reference: string;
+    requestDate: string;
+    deliveryMethod: "home_service" | "walk_in";
+    branchLabel: string;
+    address: string;
+    lineItems: PublicQuotationLineItem[];
+    serviceFee: number | null;
+    subtotal: number;
+    total: number | null;
+  }
+) {
+  const client = getClient();
+  const peso = (n: number) => `₱${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const pdfBytes = await generatePublicQuotationPdf(opts);
+
+  const itemLines = opts.lineItems
+    .map(
+      (item) => `
+        <li style="margin-bottom: 6px;">
+          <strong>${item.deviceLabel || "Device"}</strong> — ${item.serviceType}
+          <br/><span style="color: #64748b;">${item.price !== null ? peso(item.price) : "Cost confirmed upon inspection"}</span>
+        </li>
+      `
+    )
+    .join("");
+
+  const totalLine =
+    opts.total !== null
+      ? `an estimated total of <strong>${peso(opts.total)}</strong>`
+      : "an estimate — one or more items will need our technician's inspection to confirm the exact cost";
+
+  const html = `
+    <div style="font-family: -apple-system, sans-serif; max-width: 480px; margin: 0 auto; color: #1e293b;">
+      <p style="font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8;">Ceejay Cellphone Repair Shop</p>
+      <h2 style="margin: 4px 0 16px;">Your quotation is ready</h2>
+      <p style="font-size: 14px; line-height: 1.5;">
+        Hi ${opts.customerName}, thanks for requesting a quotation with us. Your quotation
+        <strong>${opts.reference}</strong> is attached as a PDF — ${totalLine}.
+      </p>
+      <ul style="font-size: 13px; padding-left: 18px; margin: 12px 0;">${itemLines}</ul>
+      <p style="font-size: 13px; color: #64748b;">
+        This is an estimate based on our standard price list. Final pricing will be confirmed by our technician before any repair work
+        begins.
+      </p>
+    </div>
+  `;
+
+  const { error } = await client.emails.send({
+    from: FROM,
+    to,
+    subject: `Your quotation — ${opts.reference}`,
+    html,
+    attachments: [{ filename: `quotation-${opts.reference}.pdf`, content: Buffer.from(pdfBytes) }],
   });
   if (error) throw new Error(error.message);
 }

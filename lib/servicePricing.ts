@@ -1,4 +1,6 @@
-import "server-only";
+// Pure functions, no server-only APIs — imported both server-side (Home
+// Service booking, admin request detail) and client-side (the public Get a
+// Quote form's live price preview), so this deliberately isn't "server-only".
 import type { PriceCategory, ServicePrice } from "./types";
 
 // Which of the four price categories a given service_type label draws

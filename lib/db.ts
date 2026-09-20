@@ -26,6 +26,8 @@ import type {
   ConversationMessage,
   CrmBroadcast,
   CrmBroadcastStatus,
+  Quotation,
+  QuotationLineItem,
 } from "./types";
 import { sendPushToUsers } from "./push";
 import { sendSms, smsConfigured } from "./sms";
@@ -250,6 +252,21 @@ function mapRequest(r: RequestRow): HomeServiceRequest {
   };
 }
 
+type QuotationRow = {
+  id: string; reference: string; customer_name: string; phone: string; email: string;
+  delivery_method: Quotation["deliveryMethod"]; branch_id: string | null; province: string; city: string;
+  service_fee: string | number; line_items: QuotationLineItem[]; subtotal: string | number; total: string | number | null;
+  emailed_at: Date | null; created_at: Date;
+};
+function mapQuotation(r: QuotationRow): Quotation {
+  return {
+    id: r.id, reference: r.reference, customerName: r.customer_name, phone: r.phone, email: r.email,
+    deliveryMethod: r.delivery_method, branchId: r.branch_id, province: r.province, city: r.city,
+    serviceFee: Number(r.service_fee), lineItems: r.line_items ?? [], subtotal: Number(r.subtotal),
+    total: r.total === null ? null : Number(r.total), emailedAt: toIsoOrNull(r.emailed_at), createdAt: toIso(r.created_at),
+  };
+}
+
 type ActivityRow = { id: string; entity_type: ActivityLog["entityType"]; entity_id: string; message: string; actor: string; at: Date };
 function mapActivity(r: ActivityRow): ActivityLog {
   return { id: r.id, entityType: r.entity_type, entityId: r.entity_id, message: r.message, actor: r.actor, at: toIso(r.at) };
@@ -420,6 +437,13 @@ export async function getLeads() {
 export async function getLeadById(id: string) {
   const row = await queryOne<LeadRow>("select * from leads where id = $1", [id]);
   return row ? mapLead(row) : null;
+}
+export async function getQuotations() {
+  return (await query<QuotationRow>("select * from quotations order by created_at desc")).map(mapQuotation);
+}
+export async function getQuotationById(id: string) {
+  const row = await queryOne<QuotationRow>("select * from quotations where id = $1", [id]);
+  return row ? mapQuotation(row) : null;
 }
 export async function getRequests() {
   return (await query<RequestRow>("select * from home_service_requests where deleted_at is null order by created_at desc")).map(mapRequest);

@@ -202,6 +202,22 @@ class Writer {
     this.y = boxY - 8;
   }
 
+  // Standalone version of costBreakdown's highlighted total row, for
+  // documents whose breakdown isn't a fixed Repair Cost + Service Fee shape
+  // (e.g. the public quotation's variable list of line items).
+  totalBox(label: string, valueText: string) {
+    const boxHeight = 26;
+    this.ensureSpace(boxHeight + 8);
+    const boxTop = this.y;
+    const boxY = boxTop - boxHeight;
+    this.page.drawRectangle({ x: MARGIN, y: boxY, width: CONTENT_W, height: boxHeight, color: HIGHLIGHT_BG, borderColor: HIGHLIGHT_BORDER, borderWidth: 1.25 });
+    this.page.drawText(label, { x: MARGIN + 12, y: boxY + boxHeight / 2 - 4, size: 11, font: this.bold, color: HIGHLIGHT_TEXT });
+    const valueSize = 14;
+    const valueWidth = this.bold.widthOfTextAtSize(valueText, valueSize);
+    this.page.drawText(valueText, { x: MARGIN + CONTENT_W - 12 - valueWidth, y: boxY + boxHeight / 2 - 5, size: valueSize, font: this.bold, color: HIGHLIGHT_TEXT });
+    this.y = boxY - 8;
+  }
+
   paragraph(text: string, size = 10) {
     const lines = wrapText(this.font, text, size, CONTENT_W);
     const lineHeight = size + 4;
@@ -461,6 +477,63 @@ export async function generateQuotationPdf(opts: {
   );
 
   w.stampAllPages(opts.referenceList);
+
+  return w.save();
+}
+
+export type PublicQuotationLineItem = { deviceLabel: string; serviceType: string; price: number | null };
+
+// The public "Get a Quote" feature's PDF (lib/actions.ts's submitPublicQuotation) —
+// unlike generateQuotationPdf above, this isn't tied to a Home Service
+// booking: no address/preferred-date fields, and delivery method can be
+// Walk-in (no service fee at all) as well as Home Service.
+export async function generatePublicQuotationPdf(opts: {
+  reference: string;
+  customerName: string;
+  requestDate: string;
+  deliveryMethod: "home_service" | "walk_in";
+  branchLabel: string;
+  address: string;
+  lineItems: PublicQuotationLineItem[];
+  serviceFee: number | null;
+  subtotal: number;
+  total: number | null;
+}): Promise<Uint8Array> {
+  const w = await Writer.create();
+  const peso = (n: number) => `PHP ${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+  w.header(opts.reference, "Quotation");
+
+  w.heading("Quotation Details");
+  w.row("Customer Name", opts.customerName, { boldValue: true });
+  w.row("Date Requested", opts.requestDate);
+  w.row("Delivery Method", opts.deliveryMethod === "home_service" ? "Home Service" : "Walk-in / Branch Visit");
+  if (opts.deliveryMethod === "home_service") w.row("Service Area", opts.address || "Not specified");
+  else if (opts.branchLabel) w.row("Preferred Branch", opts.branchLabel);
+
+  w.heading(opts.lineItems.length > 1 ? "Devices / Services" : "Device / Service");
+  opts.lineItems.forEach((item, i) => {
+    if (opts.lineItems.length > 1) w.row(`Item ${i + 1}`, item.deviceLabel, { boldValue: true });
+    else w.row("Device", item.deviceLabel);
+    w.row("  Service Type", item.serviceType);
+    w.row("  Estimated Cost", item.price !== null ? peso(item.price) : "Confirmed upon inspection");
+  });
+
+  w.heading("Estimated Total");
+  w.row("Items Subtotal", peso(opts.subtotal));
+  if (opts.serviceFee !== null) w.row("Service Fee (one visit)", peso(opts.serviceFee));
+  if (opts.total !== null) {
+    w.totalBox("Estimated Total", peso(opts.total));
+  } else {
+    w.paragraph("One or more items above have no price on file yet — our technician will confirm the exact cost upon inspection.");
+  }
+
+  w.paragraph(
+    "This is an estimate based on our standard price list and may change depending on the technician's actual assessment upon inspection. Final pricing will be confirmed before any repair work begins.",
+    9
+  );
+
+  w.stampAllPages(opts.reference);
 
   return w.save();
 }

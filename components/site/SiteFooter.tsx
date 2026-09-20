@@ -34,6 +34,7 @@ export default async function SiteFooter() {
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Quick Links</p>
           <ul className="space-y-1.5 text-sm text-slate-400">
             <li><Link href="/services" className="hover:text-slate-700">Services</Link></li>
+            <li><Link href="/quote" className="hover:text-slate-700">Get a Quote</Link></li>
             <li><Link href="/branches" className="hover:text-slate-700">Branch Locations</Link></li>
             <li><Link href="/request" className="hover:text-slate-700">Book Home Service</Link></li>
             <li><Link href="/contact" className="hover:text-slate-700">Contact Us</Link></li>
