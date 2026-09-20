@@ -95,7 +95,7 @@ export default async function AdminDashboard() {
   // Sales — Today" card and Sales > Home Service, so this figure can't
   // drift from either of those. Business expenses aren't wired to Home
   // Service anywhere else in the app, so none are deducted here either.
-  const todayHomeServiceSales = sumHomeServiceSales(homeServiceSalesByTechnician(agreements, (date) => date === today));
+  const todayHomeServiceSales = sumHomeServiceSales(homeServiceSalesByTechnician(agreements, (date) => date === today, allRequests));
   const businessShareNetToday = posBusinessShareNetToday + todayHomeServiceSales.companyShare;
 
   const recent = [...requests].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)).slice(0, 6);

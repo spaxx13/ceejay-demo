@@ -5,6 +5,7 @@ import {
   getExpenses,
   getTechnicians,
   getServiceAgreements,
+  getRequests,
   homeServiceSalesByTechnician,
   sumHomeServiceSales,
   isBranchHidden,
@@ -19,13 +20,14 @@ const peso = (n: number) => `₱${n.toLocaleString(undefined, { minimumFractionD
 
 export default async function BranchSalesPage({ searchParams }: { searchParams: Promise<{ from?: string; to?: string }> }) {
   const sp = await searchParams;
-  const [user, allBranches, repairRecords, expenses, technicians, agreements] = await Promise.all([
+  const [user, allBranches, repairRecords, expenses, technicians, agreements, requests] = await Promise.all([
     getCurrentUser(),
     getBranches(),
     getRepairRecords(),
     getExpenses(),
     getTechnicians(),
     getServiceAgreements(),
+    getRequests(),
   ]);
   // Backend-only branches (no address, e.g. "Home Service") exist purely for
   // sales/expense attribution — they don't get their own card here since
@@ -249,7 +251,8 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
     // this can't disagree with that figure or with Sales > Home Service.
     const homeServiceTechnicians = homeServiceSalesByTechnician(
       visibleAgreements.filter((a) => a.branchId === r.branchId),
-      inRange
+      inRange,
+      requests
     );
     const homeService = sumHomeServiceSales(homeServiceTechnicians);
 
@@ -293,7 +296,7 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
   // home-service-only technicians (see homeServiceQueueBranches) never get
   // assigned a real (addressed) branch at all, so summing only what each
   // real branch's card captures would silently drop most of this revenue.
-  const grandHomeService = sumHomeServiceSales(homeServiceSalesByTechnician(visibleAgreements, inRange));
+  const grandHomeService = sumHomeServiceSales(homeServiceSalesByTechnician(visibleAgreements, inRange, requests));
 
   // Home Service technicians are usually tied only to the backend "Home
   // Service" queue branch(es) (near/far), not a real addressed branch — so
@@ -305,7 +308,8 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
   const queueHomeServiceCards = homeServiceQueueBranches.map((b) => {
     const homeServiceTechnicians = homeServiceSalesByTechnician(
       visibleAgreements.filter((a) => a.branchId === b.id),
-      inRange
+      inRange,
+      requests
     );
     return { branch: b, homeServiceTechnicians, homeService: sumHomeServiceSales(homeServiceTechnicians) };
   });

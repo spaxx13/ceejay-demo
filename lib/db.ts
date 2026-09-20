@@ -31,6 +31,7 @@ import type {
 } from "./types";
 import { sendPushToUsers } from "./push";
 import { sendSms, smsConfigured } from "./sms";
+import { serviceFeeAmount } from "./homeServiceFees";
 
 // Single pooled connection, reused across invocations within the same
 // serverless instance (and across all of local dev). Uses the pooled
@@ -582,8 +583,19 @@ export type HomeServiceSalesRow = {
 // Shared by Sales > Home Service and the Home Service Requests dashboard
 // summary — same "Total Amount = Repair Price + Labor/Service Cost" and
 // 30/70 Net Amount split computed in exactly one place, so the two pages
-// can never disagree on a figure.
-export function homeServiceSalesByTechnician(agreements: ServiceAgreement[], inRange: (date: string) => boolean): HomeServiceSalesRow[] {
+// can never disagree on a figure. `requests` (optional — defaults to none)
+// is only used to look up which jobs' visit fee is currently waived, so
+// that amount can be subtracted here too; a waived fee moving to Trash (or
+// coming back via Restore) is reflected in Sales immediately since this is
+// recomputed from source data every time, never stored separately.
+export function homeServiceSalesByTechnician(
+  agreements: ServiceAgreement[],
+  inRange: (date: string) => boolean,
+  requests: Pick<HomeServiceRequest, "id" | "serviceFeeWaived" | "province" | "city">[] = []
+): HomeServiceSalesRow[] {
+  const waivedFeeByRequestId = new Map(
+    requests.filter((r) => r.serviceFeeWaived).map((r) => [r.id, serviceFeeAmount(r.province, r.city) ?? 0])
+  );
   const homeServiceJobs = agreements.filter((a) => a.phase === "post_repair" && a.requestId && inRange(a.completedAt.slice(0, 10)));
 
   type TechTotals = { name: string; count: number; totalAmount: number; partsCost: number; jobs: { deviceLabel: string; amount: number }[] };
@@ -596,7 +608,8 @@ export function homeServiceSalesByTechnician(agreements: ServiceAgreement[], inR
 
   for (const a of homeServiceJobs) {
     const bucket = ensure(a.technicianName);
-    const amount = a.cost + a.laborCost;
+    const waivedFee = a.requestId ? waivedFeeByRequestId.get(a.requestId) ?? 0 : 0;
+    const amount = Math.max(0, a.cost + a.laborCost - waivedFee);
     bucket.count += 1;
     bucket.totalAmount += amount;
     bucket.partsCost += a.partsCost;

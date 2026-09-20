@@ -1,12 +1,12 @@
 import Link from "next/link";
-import { getServiceAgreements, homeServiceSalesByTechnician, sumHomeServiceSales } from "@/lib/db";
+import { getServiceAgreements, getRequests, homeServiceSalesByTechnician, sumHomeServiceSales } from "@/lib/db";
 import SalesTabs from "@/components/SalesTabs";
 
 const peso = (n: number) => `₱${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 export default async function HomeServiceSalesPage({ searchParams }: { searchParams: Promise<{ from?: string; to?: string }> }) {
   const sp = await searchParams;
-  const agreements = await getServiceAgreements();
+  const [agreements, requests] = await Promise.all([getServiceAgreements(), getRequests()]);
 
   // Default to today so the page always opens on the most current sales —
   // an explicit From/To filter (even a partial one) overrides this.
@@ -20,7 +20,11 @@ export default async function HomeServiceSalesPage({ searchParams }: { searchPar
   // checklist is completed. Repair Price + Labor/Service Cost together are
   // the Total Amount charged to the customer (the same figure shown to the
   // customer on the checklist/receipt — Parts/Material Cost never appears
-  // there). For the 30/70 split, Parts/Material Cost is deducted from that
+  // there), minus that job's visit fee if it's currently waived (Admin >
+  // Requests > Waive Service Fee) — reflected here immediately, and
+  // reversed immediately if the waiver is later restored from Trash, since
+  // this whole report is recomputed from source data on every load. For
+  // the 30/70 split, Parts/Material Cost is deducted from that
   // Total Amount to get a Net Amount — an internal-records-only figure,
   // never shown to the customer. Distinct from the Net Profit / 50% split
   // used on the combined By Branch and By Technician reports. Not
@@ -28,7 +32,7 @@ export default async function HomeServiceSalesPage({ searchParams }: { searchPar
   // branch tag is incidental (whichever branch the technician was
   // dispatched from), not a meaningful visibility boundary — every account
   // that can open Sales sees all of it.
-  const rows = homeServiceSalesByTechnician(agreements, inRange);
+  const rows = homeServiceSalesByTechnician(agreements, inRange, requests);
   const grandTotal = sumHomeServiceSales(rows);
 
   return (
