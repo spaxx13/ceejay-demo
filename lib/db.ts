@@ -391,9 +391,25 @@ function mapRepairProgress(r: RepairProgressRow): RepairProgress {
   };
 }
 
-type NotificationRow = { id: string; type: Notification["type"]; request_id: string; message: string; created_at: Date; read_at: Date | null };
+type NotificationRow = {
+  id: string;
+  type: Notification["type"];
+  request_id: string | null;
+  walkin_request_id: string | null;
+  message: string;
+  created_at: Date;
+  read_at: Date | null;
+};
 function mapNotification(r: NotificationRow): Notification {
-  return { id: r.id, type: r.type, requestId: r.request_id, message: r.message, createdAt: toIso(r.created_at), readAt: toIsoOrNull(r.read_at) };
+  return {
+    id: r.id,
+    type: r.type,
+    requestId: r.request_id,
+    walkinRequestId: r.walkin_request_id,
+    message: r.message,
+    createdAt: toIso(r.created_at),
+    readAt: toIsoOrNull(r.read_at),
+  };
 }
 
 type ExpenseRow = {
@@ -971,17 +987,17 @@ export async function getPushSubscriptions() {
   return (await query<PushSubscriptionRow>("select * from push_subscriptions")).map(mapPushSubscription);
 }
 
-// Writes the in-app notification (the one thing every admin always sees on
-// /admin/notifications) and best-effort fans it out to web push + SMS —
-// neither channel is guaranteed configured/subscribed, so failures there
-// are swallowed rather than failing the request/checklist/lead action that
-// triggered this.
-export async function notifyAdmins(type: Notification["type"], requestId: string, message: string) {
-  await query("insert into notifications (type, request_id, message) values ($1,$2,$3)", [type, requestId, message]);
+// Shared by notifyAdmins/notifyAdminsAboutWalkIn — writes the in-app
+// notification row (the caller already built the right INSERT for whichever
+// target column it points at) and best-effort fans it out to web push + SMS.
+// Neither channel is guaranteed configured/subscribed, so failures there are
+// swallowed rather than failing the request/checklist/lead/walk-in action
+// that triggered this.
+async function notifyAdminsCore(insertSql: string, insertParams: unknown[], url: string, message: string) {
+  await query(insertSql, insertParams);
 
   try {
     const admins = (await getUsers()).filter((u) => u.active && (u.role === "owner_admin" || u.role === "branch_admin"));
-    const url = `/admin/requests/${requestId}`;
 
     const subs = await getPushSubscriptions();
     const adminIds = new Set(admins.map((a) => a.id));
@@ -1006,6 +1022,28 @@ export async function notifyAdmins(type: Notification["type"], requestId: string
     // notification above, which already succeeded — never let a delivery
     // failure here surface as a failure of the action that called this.
   }
+}
+
+export async function notifyAdmins(type: Notification["type"], requestId: string, message: string) {
+  await notifyAdminsCore(
+    "insert into notifications (type, request_id, message) values ($1,$2,$3)",
+    [type, requestId, message],
+    `/admin/requests/${requestId}`,
+    message
+  );
+}
+
+// Same delivery mechanics as notifyAdmins, pointed at a walkin_requests row
+// instead of a home_service_requests one — Walk-In Registrations gets its
+// own notification type/link so it shows up on /admin/notifications and the
+// PWA push the same way a new Home Service Request already does.
+export async function notifyAdminsAboutWalkIn(walkinRequestId: string, message: string) {
+  await notifyAdminsCore(
+    "insert into notifications (type, walkin_request_id, message) values ('new_walkin',$1,$2)",
+    [walkinRequestId, message],
+    `/admin/walk-ins/${walkinRequestId}`,
+    message
+  );
 }
 
 // How many jobs are assigned to this technician but not yet started —

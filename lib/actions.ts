@@ -30,6 +30,7 @@ import {
   cancelCrmBroadcast,
   logActivity,
   notifyAdmins,
+  notifyAdminsAboutWalkIn,
   notifyTechnician,
   canManageHomeServiceRequests,
   canDeleteHomeServiceRequests,
@@ -1923,6 +1924,7 @@ export async function submitWalkInRequest(_prev: WalkInResult | undefined, formD
   }
 
   await logActivity("walkin_request", created!.id, `Walk-in pre-registration ${reference} submitted via website for ${branch.name}`, "System");
+  await notifyAdminsAboutWalkIn(created!.id, `${name || "A customer"} pre-registered for a walk-in visit ${reference} at ${branch.name}.`);
   // Same convention as Home Service's phone OTP cleanup — a submitted,
   // verified code has done its job and shouldn't linger for reuse.
   await query("delete from email_otp_codes where email=$1", [email.trim().toLowerCase()]);

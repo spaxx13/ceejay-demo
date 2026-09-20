@@ -1,12 +1,12 @@
 import Link from "next/link";
-import { getNotifications, getRequests } from "@/lib/db";
+import { getNotifications, getRequests, getWalkInRequests } from "@/lib/db";
 import { markNotificationRead, markAllNotificationsRead } from "@/lib/actions";
 import { formatDateTime } from "@/lib/format";
 
-const ICON: Record<string, string> = { new_request: "📥", request_in_progress: "🔧", checklist_completed: "✅" };
+const ICON: Record<string, string> = { new_request: "📥", request_in_progress: "🔧", checklist_completed: "✅", new_walkin: "🚶" };
 
 export default async function AdminNotificationsPage() {
-  const [allNotifications, requests] = await Promise.all([getNotifications(), getRequests()]);
+  const [allNotifications, requests, walkIns] = await Promise.all([getNotifications(), getRequests(), getWalkInRequests()]);
   const notifications = [...allNotifications].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
   const unreadCount = notifications.filter((n) => !n.readAt).length;
 
@@ -31,7 +31,8 @@ export default async function AdminNotificationsPage() {
       ) : (
         <div className="space-y-2">
           {notifications.map((n) => {
-            const req = requests.find((r) => r.id === n.requestId);
+            const req = n.requestId ? requests.find((r) => r.id === n.requestId) : undefined;
+            const walkIn = n.walkinRequestId ? walkIns.find((w) => w.id === n.walkinRequestId) : undefined;
             return (
               <div
                 key={n.id}
@@ -48,6 +49,14 @@ export default async function AdminNotificationsPage() {
                           {" · "}
                           <Link href={`/admin/requests/${req.id}`} className="text-blue-500 hover:underline">
                             View request
+                          </Link>
+                        </>
+                      )}
+                      {walkIn && (
+                        <>
+                          {" · "}
+                          <Link href={`/admin/walk-ins/${walkIn.id}`} className="text-blue-500 hover:underline">
+                            View registration
                           </Link>
                         </>
                       )}
