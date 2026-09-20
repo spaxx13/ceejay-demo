@@ -2,7 +2,7 @@
 
 import { useActionState, useEffect, useState } from "react";
 import { checkQuoteAvailability, submitPublicQuote } from "@/lib/actions";
-import { PROVINCE_FEES } from "@/lib/homeServiceFees";
+import { PROVINCE_FEES, EXCLUDED_FROM_HOME_SERVICE } from "@/lib/homeServiceFees";
 
 type Brand = { id: string; label: string };
 type Model = { id: string; brandId: string; name: string };
@@ -42,14 +42,21 @@ export default function QuoteForm({
 
   const [brandId, setBrandId] = useState("");
   const [modelId, setModelId] = useState("");
+  const [serviceMode, setServiceMode] = useState<"" | "walk_in" | "home_service">("");
   const [serviceTypeId, setServiceTypeId] = useState("");
   const [screenQuality, setScreenQuality] = useState("");
   const [matchState, setMatchState] = useState<MatchState>("idle");
-  const [serviceMode, setServiceMode] = useState<"" | "walk_in" | "home_service">("");
 
   const modelsForBrand = models.filter((m) => m.brandId === brandId);
   const otherBrandSelected = brandId === "other";
   const brandHasNoModels = brandId !== "" && !otherBrandSelected && modelsForBrand.length === 0;
+
+  // Home Service only covers repairs a technician can do in the field —
+  // same exclusion list the real Home Service booking form (/request)
+  // uses, so the two can never disagree about what's bookable at home.
+  const availableServiceTypes =
+    serviceMode === "home_service" ? serviceTypes.filter((s) => !EXCLUDED_FROM_HOME_SERVICE.has(s.label)) : serviceTypes;
+
   const selectedServiceType = serviceTypes.find((s) => s.id === serviceTypeId);
   const isScreenRepair = selectedServiceType?.label === "Screen Repair";
   const repairSelectionComplete = Boolean(modelId && serviceTypeId && (!isScreenRepair || screenQuality));
@@ -76,20 +83,24 @@ export default function QuoteForm({
   function onBrandChange(value: string) {
     setBrandId(value);
     setModelId("");
+    setServiceMode("");
     setServiceTypeId("");
     setScreenQuality("");
-    setServiceMode("");
   }
   function onModelChange(value: string) {
     setModelId(value);
+    setServiceMode("");
     setServiceTypeId("");
     setScreenQuality("");
-    setServiceMode("");
+  }
+  function onServiceModeChange(value: "walk_in" | "home_service") {
+    setServiceMode(value);
+    setServiceTypeId("");
+    setScreenQuality("");
   }
   function onServiceTypeChange(value: string) {
     setServiceTypeId(value);
     setScreenQuality("");
-    setServiceMode("");
   }
 
   if (state?.ok) {
@@ -140,14 +151,38 @@ export default function QuoteForm({
           </div>
         </div>
 
-        {modelId && (
+        {modelId && !otherBrandSelected && !brandHasNoModels && (
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-slate-500">
+              Service Type <span className="text-red-600">*</span>
+            </label>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => onServiceModeChange("walk_in")}
+                className={serviceMode === "walk_in" ? "btn-primary" : "btn-secondary"}
+              >
+                Walk-in
+              </button>
+              <button
+                type="button"
+                onClick={() => onServiceModeChange("home_service")}
+                className={serviceMode === "home_service" ? "btn-primary" : "btn-secondary"}
+              >
+                Home Service
+              </button>
+            </div>
+          </div>
+        )}
+
+        {serviceMode && (
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-slate-500">
               Repair Type <span className="text-red-600">*</span>
             </label>
             <select value={serviceTypeId} onChange={(e) => onServiceTypeChange(e.target.value)} className="input">
               <option value="">Select repair type...</option>
-              {serviceTypes.map((s) => (
+              {availableServiceTypes.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.label}
                 </option>
@@ -185,112 +220,90 @@ export default function QuoteForm({
           <input type="hidden" name="deviceModelId" value={modelId} />
           <input type="hidden" name="serviceTypeId" value={serviceTypeId} />
           <input type="hidden" name="screenQuality" value={screenQuality} />
+          <input type="hidden" name="serviceMode" value={serviceMode} />
 
-          <div className="card space-y-3">
-            <h3 className="text-sm font-semibold text-slate-800">Service Type</h3>
-            <div className="grid grid-cols-2 gap-3">
-              <button
-                type="button"
-                onClick={() => setServiceMode("walk_in")}
-                className={serviceMode === "walk_in" ? "btn-primary" : "btn-secondary"}
-              >
-                Walk-in
-              </button>
-              <button
-                type="button"
-                onClick={() => setServiceMode("home_service")}
-                className={serviceMode === "home_service" ? "btn-primary" : "btn-secondary"}
-              >
-                Home Service
-              </button>
+          {serviceMode === "walk_in" && (
+            <div className="card space-y-1.5">
+              <label className="text-xs font-medium text-slate-500">
+                Preferred Branch <span className="text-red-600">*</span>
+              </label>
+              <select name="branchId" required defaultValue="" className="input">
+                <option value="" disabled>
+                  Select a branch
+                </option>
+                {branches.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name}
+                  </option>
+                ))}
+              </select>
             </div>
-            <input type="hidden" name="serviceMode" value={serviceMode} />
+          )}
 
-            {serviceMode === "walk_in" && (
+          {serviceMode === "home_service" && (
+            <div className="card space-y-3">
+              <p className="text-xs text-slate-400">A home service fee applies on top of the repair cost, based on your area.</p>
               <div className="space-y-1.5">
                 <label className="text-xs font-medium text-slate-500">
-                  Preferred Branch <span className="text-red-600">*</span>
+                  Street Address <span className="text-red-600">*</span>
                 </label>
-                <select name="branchId" required defaultValue="" className="input">
+                <input name="street" required className="input" placeholder="House/Unit No., Street" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-slate-500">Barangay</label>
+                  <input name="barangay" className="input" placeholder="Barangay" />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-slate-500">
+                    City/Municipality <span className="text-red-600">*</span>
+                  </label>
+                  <input name="city" required className="input" placeholder="City/Municipality" />
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-slate-500">
+                  Province <span className="text-red-600">*</span>
+                </label>
+                <select name="province" required defaultValue="" className="input">
                   <option value="" disabled>
-                    Select a branch
+                    Select a province
                   </option>
-                  {branches.map((b) => (
-                    <option key={b.id} value={b.id}>
-                      {b.name}
+                  {PROVINCES.map((p) => (
+                    <option key={p} value={p}>
+                      {p}
                     </option>
                   ))}
                 </select>
               </div>
-            )}
-
-            {serviceMode === "home_service" && (
-              <div className="space-y-3">
-                <p className="text-xs text-slate-400">A home service fee applies on top of the repair cost, based on your area.</p>
-                <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-slate-500">
-                    Street Address <span className="text-red-600">*</span>
-                  </label>
-                  <input name="street" required className="input" placeholder="House/Unit No., Street" />
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-slate-500">Barangay</label>
-                    <input name="barangay" className="input" placeholder="Barangay" />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-slate-500">
-                      City/Municipality <span className="text-red-600">*</span>
-                    </label>
-                    <input name="city" required className="input" placeholder="City/Municipality" />
-                  </div>
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-slate-500">
-                    Province <span className="text-red-600">*</span>
-                  </label>
-                  <select name="province" required defaultValue="" className="input">
-                    <option value="" disabled>
-                      Select a province
-                    </option>
-                    {PROVINCES.map((p) => (
-                      <option key={p} value={p}>
-                        {p}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {serviceMode && (
-            <div className="card space-y-3">
-              <h3 className="text-sm font-semibold text-slate-800">Your Contact Details</h3>
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-slate-500">Full Name</label>
-                <input name="name" className="input" placeholder="Juan Dela Cruz" />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-slate-500">
-                    Email <span className="text-red-600">*</span>
-                  </label>
-                  <input name="email" type="email" required className="input" placeholder="juan@email.com" />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-slate-500">
-                    Mobile Number <span className="text-red-600">*</span>
-                  </label>
-                  <input name="phone" required className="input" placeholder="0917 123 4567" />
-                </div>
-              </div>
-              {state && !state.ok && <p className="text-sm text-red-600">{state.error}</p>}
-              <button type="submit" disabled={pending} className="btn-primary w-full">
-                {pending ? "Sending..." : "Email Me This Quote"}
-              </button>
             </div>
           )}
+
+          <div className="card space-y-3">
+            <h3 className="text-sm font-semibold text-slate-800">Your Contact Details</h3>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-slate-500">Full Name</label>
+              <input name="name" className="input" placeholder="Juan Dela Cruz" />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-slate-500">
+                  Email <span className="text-red-600">*</span>
+                </label>
+                <input name="email" type="email" required className="input" placeholder="juan@email.com" />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-slate-500">
+                  Mobile Number <span className="text-red-600">*</span>
+                </label>
+                <input name="phone" required className="input" placeholder="0917 123 4567" />
+              </div>
+            </div>
+            {state && !state.ok && <p className="text-sm text-red-600">{state.error}</p>}
+            <button type="submit" disabled={pending} className="btn-primary w-full">
+              {pending ? "Sending..." : "Email Me This Quote"}
+            </button>
+          </div>
         </form>
       )}
     </div>

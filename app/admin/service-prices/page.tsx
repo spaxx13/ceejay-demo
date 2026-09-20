@@ -8,6 +8,8 @@ const COLUMNS = [
   { field: "battery", label: "Battery" },
   { field: "backhousing", label: "Backhousing" },
   { field: "back_camera", label: "Back Camera" },
+  { field: "front_camera", label: "Front Camera" },
+  { field: "camera_lens", label: "Camera Lens" },
   { field: "screen_hq", label: "Screen (High Quality)" },
   { field: "screen_orig", label: "Screen (Original)" },
 ] as const;
@@ -26,6 +28,8 @@ export default async function ServicePricesPage() {
     if (field === "battery") return priceFor(modelId, "battery", "");
     if (field === "backhousing") return priceFor(modelId, "backhousing", "");
     if (field === "back_camera") return priceFor(modelId, "back_camera", "");
+    if (field === "front_camera") return priceFor(modelId, "front_camera", "");
+    if (field === "camera_lens") return priceFor(modelId, "camera_lens", "");
     if (field === "screen_hq") return priceFor(modelId, "screen", "high_quality");
     return priceFor(modelId, "screen", "original");
   };

@@ -13,6 +13,8 @@ export function priceCategoryForServiceType(serviceTypeLabel: string): PriceCate
     return "backhousing";
   }
   if (serviceTypeLabel === "Camera" || serviceTypeLabel === "Back camera replacement") return "back_camera";
+  if (serviceTypeLabel === "Front Camera") return "front_camera";
+  if (serviceTypeLabel === "Camera Lens") return "camera_lens";
   if (serviceTypeLabel === "Screen Repair") return "screen";
   return null;
 }

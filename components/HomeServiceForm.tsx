@@ -3,7 +3,7 @@
 import { Fragment, useActionState, useEffect, useRef, useState } from "react";
 import { submitHomeServiceRequest, sendHomeServiceOtp, verifyHomeServiceOtp } from "@/lib/actions";
 import { OTP_GATE_ENABLED, BOOKING_CONFIRMATION_WINDOW_HOURS } from "@/lib/config";
-import { PROVINCE_FEES, SUNDAY_ONLY_PROVINCES, nextSunday, minPreferredDateStr } from "@/lib/homeServiceFees";
+import { PROVINCE_FEES, SUNDAY_ONLY_PROVINCES, EXCLUDED_FROM_HOME_SERVICE, nextSunday, minPreferredDateStr } from "@/lib/homeServiceFees";
 import PhotoUpload from "./PhotoUpload";
 import DynamicFormField from "./DynamicFormField";
 import type { RequestFormContent, CustomFormField, HomeServiceQueue } from "@/lib/types";
@@ -61,13 +61,6 @@ type PhProvince = { key: string; label: string; cities: PhCity[] };
 // added/removed.
 type DeviceState = { key: number; brandId: string; showOther: boolean; serviceTypeId: string; agreedToServiceNotice: boolean };
 const DEVICE_FIELD_KEYS = new Set(["device_brand", "device_model", "service_type", "issue", "photo"]);
-
-// Matches the notice shown right above this dropdown — these require
-// in-branch equipment/parts we don't bring on a home visit, so they're kept
-// out of the options a customer can actually pick here (they're still
-// listed on the public Services page and the in-branch POS/checklist flow,
-// just not bookable as a home service).
-const EXCLUDED_FROM_HOME_SERVICE = new Set(["Camera", "Backhousing(Whole shell including backglass)", "Logic board problem", "Charging Port"]);
 
 // A customer must tick "I Agree" after reading this before they can submit —
 // set-expectation notices for parts Apple serializes/verifies, so a

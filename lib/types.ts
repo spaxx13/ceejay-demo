@@ -210,9 +210,10 @@ export type DeviceModel = {
 // emailed after a Home Service Request is submitted (lib/servicePricing.ts).
 // `category` groups the fixed set of repairs this applies to — Battery
 // Replacement, Backhousing (both duplicate labels), Back Camera (both
-// duplicate labels), and Screen Repair. `quality` is only meaningful for
-// category "screen" ("high_quality" | "original"); empty string otherwise.
-export type PriceCategory = "battery" | "backhousing" | "back_camera" | "screen";
+// duplicate labels), Front Camera, Camera Lens, and Screen Repair.
+// `quality` is only meaningful for category "screen" ("high_quality" |
+// "original"); empty string otherwise.
+export type PriceCategory = "battery" | "backhousing" | "back_camera" | "front_camera" | "camera_lens" | "screen";
 export type ServicePrice = {
   id: string;
   category: PriceCategory;

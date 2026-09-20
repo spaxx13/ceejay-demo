@@ -28,6 +28,20 @@ export const PROVINCE_FEES: Record<string, { base: number; higherTowns?: string[
 // selected.
 export const SUNDAY_ONLY_PROVINCES = new Set(["Pampanga", "Laguna", "Batangas"]);
 
+// Repair types that require in-branch equipment/parts we don't bring on a
+// home visit — kept out of the options a customer can pick for a home
+// service booking (real /request form) or a Home Service quote (/quote).
+// They're still listed on the public Services page and the in-branch
+// POS/checklist flow, just not bookable/quotable as a home service.
+export const EXCLUDED_FROM_HOME_SERVICE = new Set([
+  "Camera",
+  "Backhousing(Whole shell including backglass)",
+  "Logic board problem",
+  "Charging Port",
+  "Front Camera",
+  "Camera Lens",
+]);
+
 // These provinces require a QR Ph down payment (via PayMongo), equal to
 // the service fee, before the booking can be confirmed — see
 // startHomeServiceDownpayment/processHomeServiceDownpayment in
