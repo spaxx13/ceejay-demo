@@ -92,6 +92,8 @@ export async function sendQuotationEmail(
     serviceFee: number | null;
     confirmationUrl: string | null;
     confirmationWindowHours: number;
+    downpaymentRequired: boolean;
+    downpaymentAmount: number | null;
   }
 ) {
   const client = getClient();
@@ -133,6 +135,24 @@ export async function sendQuotationEmail(
     `
     : "";
 
+  const downpaymentBlock =
+    opts.downpaymentRequired && opts.downpaymentAmount !== null
+      ? `
+      <div style="margin: 16px 0; padding: 16px; border: 2px solid #f59e0b; border-radius: 8px; background: #fffbeb;">
+        <p style="font-size: 14px; font-weight: 700; color: #92400e; margin: 0 0 6px;">💳 Down payment required to secure your slot</p>
+        <p style="font-size: 13px; color: #78350f; margin: 0 0 8px; line-height: 1.5;">
+          We require a ${peso(opts.downpaymentAmount)} down payment — equivalent to the service fee — to secure your slot on your
+          preferred date. This will be deducted from your final bill on the day of service.
+        </p>
+        <p style="font-size: 13px; color: #78350f; margin: 0; line-height: 1.5;">
+          If you cancel on the day of service for any reason, the down payment is non-refundable since your slot has already been
+          secured. If you need to reschedule instead, you may still use your down payment — please contact us at least 2 days before
+          your scheduled date.
+        </p>
+      </div>
+    `
+      : "";
+
   const html = `
     <div style="font-family: -apple-system, sans-serif; max-width: 480px; margin: 0 auto; color: #1e293b;">
       <p style="font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8;">Ceejay Cellphone Repair Shop</p>
@@ -142,6 +162,7 @@ export async function sendQuotationEmail(
         <strong>${opts.referenceList}</strong> is attached as a PDF — ${totalLine}.
       </p>
       <ul style="font-size: 13px; padding-left: 18px; margin: 12px 0;">${deviceLines}</ul>
+      ${downpaymentBlock}
       ${confirmationBlock}
       <p style="font-size: 13px; color: #64748b;">
         This is an estimate based on our standard price list. Final pricing will be confirmed by our technician before any repair work

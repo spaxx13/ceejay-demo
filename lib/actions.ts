@@ -1452,6 +1452,8 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
         serviceFee,
         confirmationUrl: confirmationToken ? `${SITE_URL}/confirm-booking/${confirmationToken}` : null,
         confirmationWindowHours: BOOKING_CONFIRMATION_WINDOW_HOURS,
+        downpaymentRequired: downpaymentActive,
+        downpaymentAmount,
       });
       quoteNote = " — quotation emailed";
     } catch (err) {
