@@ -1,25 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyWebhookSignature } from "@/lib/paymongo";
-import { processIcloudCheckPayment, processHomeServiceDownpayment } from "@/lib/actions";
+import { processIcloudCheckPayment, processHomeServiceDownpayment, processRepairRecordQrPayment } from "@/lib/actions";
 
 // PayMongo's server-to-server callback once a Checkout Session is paid —
 // the ONLY source of truth for "this customer actually paid" (alongside
 // each feature's own fallback re-verification against PayMongo directly —
 // see app/(site)/check-icloud/result/[id]/page.tsx and
 // app/(site)/confirm-booking/[token]/page.tsx). Never release a SICKW
-// result, or confirm a Home Service booking, based on the customer's
-// browser landing back on the success_url alone; that URL carries no
-// payment/status flag.
+// result, confirm a Home Service booking, or mark a repair paid, based on
+// the customer's browser landing back on the success_url alone; that URL
+// carries no payment/status flag.
 //
-// One webhook endpoint handles both checkout flows this app creates
+// One webhook endpoint handles every checkout flow this app creates
 // (lib/paymongo.ts createCheckoutSession) — `metadata.kind` (set when the
-// checkout session was created) says which.
-//
-// NOTE(pre-launch): the exact shape of `data.attributes.data.attributes`
-// below (metadata location, payment id location) is built from PayMongo's
-// public docs for a `checkout_session.payment.paid` event, not verified
-// against a real delivered payload yet — confirm once real PayMongo
-// webhook deliveries are visible in their dashboard's event log.
+// checkout session was created) says which. The payload shape below
+// (metadata location, payment id location) is confirmed against a real
+// delivered live-mode event, not just PayMongo's docs.
 export async function POST(req: NextRequest) {
   const rawBody = await req.text();
   const signature = req.headers.get("paymongo-signature");
@@ -56,6 +52,11 @@ export async function POST(req: NextRequest) {
 
   if (metadata.kind === "home_service_downpayment" && metadata.token) {
     await processHomeServiceDownpayment(metadata.token, paymongoPaymentId);
+    return NextResponse.json({ received: true });
+  }
+
+  if (metadata.kind === "repair_record_payment" && metadata.repairRecordId) {
+    await processRepairRecordQrPayment(metadata.repairRecordId, paymongoPaymentId);
     return NextResponse.json({ received: true });
   }
 

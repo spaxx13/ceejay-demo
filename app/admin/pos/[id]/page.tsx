@@ -7,15 +7,34 @@ import PrintReceiptButton from "@/components/PrintReceiptButton";
 import PopupLink from "@/components/PopupLink";
 import ResendReceiptButton from "@/components/ResendReceiptButton";
 import DeleteButton from "@/components/DeleteButton";
-import { cancelRepairRecord, updateRepairRecordDetails, deleteRepairRecord } from "@/lib/actions";
+import { cancelRepairRecord, updateRepairRecordDetails, deleteRepairRecord, startRepairRecordQrPayment, processRepairRecordQrPayment } from "@/lib/actions";
+import { retrieveCheckoutSession, paymongoConfigured } from "@/lib/paymongo";
 
 const peso = (n: number) => `₱${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const RESULT_LABEL: Record<string, string> = { pass: "Pass", fail: "Fail", na: "N/A" };
 
 export default async function RepairRecordDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const record = await getRepairRecordById(id);
+  let record = await getRepairRecordById(id);
   if (!record) notFound();
+
+  // Fallback re-verification for the QR Ph payment, same reasoning as
+  // check-icloud/result/[id]/page.tsx and confirm-booking/[token]/page.tsx:
+  // the webhook is the source of truth, but if it hasn't landed yet by the
+  // time staff reload this page, ask PayMongo directly instead of leaving
+  // it looking unpaid. processRepairRecordQrPayment is safe to call even if
+  // the webhook races it (see claimRepairRecordQrPaymentAsPaid).
+  if (record.qrPaymentStatus === "pending" && record.paymongoCheckoutSessionId) {
+    try {
+      const session = await retrieveCheckoutSession(record.paymongoCheckoutSessionId);
+      if (session.paid && session.paymentId) {
+        record = (await processRepairRecordQrPayment(record.id, session.paymentId)) ?? record;
+      }
+    } catch {
+      // PayMongo lookup failed — fall through and show the still-pending
+      // state below; the webhook may still land, or staff can reload again.
+    }
+  }
 
   const [user, agreements, allBranches] = await Promise.all([getCurrentUser(), getServiceAgreements(), getBranches()]);
   if (isBranchHidden(user, record.branchId)) notFound();
@@ -163,6 +182,39 @@ export default async function RepairRecordDetailPage({ params }: { params: Promi
           <ResendReceiptButton target={{ type: "repairRecord", id: record.id }} email={record.email} />
         </div>
       )}
+
+      {!record.cancelled &&
+        record.cost > 0 &&
+        (user?.role === "owner_admin" || user?.role === "branch_admin") &&
+        (paymongoConfigured() ? (
+          <div className="card space-y-2 print:hidden">
+            <h3 className="text-sm font-semibold text-slate-800">Pay Online via QR Ph</h3>
+            {record.qrPaymentStatus === "paid" ? (
+              <p className="text-sm font-semibold text-green-700">
+                ✅ Paid online — {peso(record.qrPaymentAmount ?? 0)}
+                {record.qrPaidAt ? ` on ${formatDateTime(record.qrPaidAt)}` : ""}
+              </p>
+            ) : (
+              <>
+                <p className="text-xs text-slate-500">
+                  Generate a PayMongo QR Ph checkout for {peso(record.cost)} — show it to the customer to scan and pay online instead of
+                  in person.
+                </p>
+                {record.qrPaymentStatus === "pending" && record.paymongoCheckoutUrl && (
+                  <a href={record.paymongoCheckoutUrl} target="_blank" rel="noreferrer" className="btn-primary block w-full text-center">
+                    Open Payment QR Page ({peso(record.qrPaymentAmount ?? record.cost)})
+                  </a>
+                )}
+                <form action={startRepairRecordQrPayment}>
+                  <input type="hidden" name="id" value={record.id} />
+                  <button type="submit" className="btn-secondary w-full text-sm">
+                    {record.qrPaymentStatus === "pending" ? "Regenerate QR (new amount / expired)" : "Generate QR Ph Payment"}
+                  </button>
+                </form>
+              </>
+            )}
+          </div>
+        ) : null)}
 
       {(pre || post) && (
         <div className="hidden space-y-4 print:block">

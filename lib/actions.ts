@@ -45,6 +45,8 @@ import {
   markIcloudCheckRefundNeeded,
   markHomeServiceDownpaymentPending,
   claimHomeServiceDownpaymentAsPaid,
+  markRepairRecordQrPaymentPending,
+  claimRepairRecordQrPaymentAsPaid,
 } from "./db";
 import { getCurrentUser, setSession, clearSession, requireRole } from "./auth";
 import { sendRepairReceiptEmail, sendCancellationEmail, sendQuotationEmail, sendLeadReplyEmail, sendBroadcastEmail, sendWalkInOtpEmail, emailConfigured } from "./email";
@@ -834,6 +836,61 @@ export async function cancelRepairRecord(formData: FormData) {
   revalidatePath("/admin/pos");
   revalidatePath(`/admin/pos/${recordId}`);
   revalidatePath("/admin");
+}
+
+// Staff-triggered: generates a PayMongo QR Ph checkout for this record's
+// Cost, for a customer who'd rather pay online than in person. Unlike the
+// public-facing startIcloudCheck/startHomeServiceDownpayment, this never
+// redirects the caller (an admin, not the paying customer) — it just saves
+// the checkout URL so the detail page can show it for staff to display or
+// share. Re-generating while a session is already pending creates a fresh
+// one (e.g. if the customer's QR expired), always priced off the record's
+// current cost at the moment of generation.
+export async function startRepairRecordQrPayment(formData: FormData) {
+  const user = await getCurrentUser();
+  if (!user || (user.role !== "owner_admin" && user.role !== "branch_admin")) return;
+
+  const recordId = str(formData, "id");
+  const record = await getRepairRecordById(recordId);
+  if (!record || record.cancelled || record.qrPaymentStatus === "paid") return;
+  if (!record.cost || !paymongoConfigured()) return;
+
+  let session: Awaited<ReturnType<typeof createPaymongoCheckoutSession>>;
+  try {
+    session = await createPaymongoCheckoutSession({
+      metadata: { kind: "repair_record_payment", repairRecordId: recordId },
+      amountPesos: record.cost,
+      description: `Repair payment — ${record.reference}`,
+      lineItemName: "Repair Payment",
+      paymentMethodTypes: ["qrph"],
+      // Not used to drive any UI state (this page always re-derives status
+      // from the DB, with a fallback re-verification against PayMongo
+      // directly) — just needs to be a valid URL for PayMongo's checkout.
+      successUrl: `${SITE_URL}/admin/pos/${recordId}`,
+      cancelUrl: `${SITE_URL}/admin/pos/${recordId}`,
+    });
+  } catch {
+    return;
+  }
+
+  await markRepairRecordQrPaymentPending(recordId, session.id, session.checkoutUrl, record.cost);
+  revalidatePath(`/admin/pos/${recordId}`);
+}
+
+// The only place a repair record's QR Ph payment is ever marked paid — see
+// claimRepairRecordQrPaymentAsPaid's comment (lib/db.ts) for why. Called
+// from both the PayMongo webhook and the POS detail page's own fallback
+// re-verification, so either one racing ahead of the other is safe.
+export async function processRepairRecordQrPayment(recordId: string, paymongoPaymentId: string) {
+  const claimed = await claimRepairRecordQrPaymentAsPaid(recordId, paymongoPaymentId);
+  if (claimed) {
+    if (claimed.customerId) {
+      await logActivity("customer", claimed.customerId, `Repair ${claimed.reference} paid online via QR Ph (₱${claimed.qrPaymentAmount})`, "System");
+    }
+    revalidatePath(`/admin/pos/${recordId}`);
+    revalidatePath("/admin/pos");
+  }
+  return getRepairRecordById(recordId);
 }
 
 // Moves a repair record to Trash — unlike cancelling (which keeps the

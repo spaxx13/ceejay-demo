@@ -384,6 +384,12 @@ export type RepairRecord = {
   cancellationReason: string;
   cancelledAt: string | null;
   deletedAt: string | null; // set when moved to Trash — null again once restored
+  qrPaymentStatus: "none" | "pending" | "paid"; // "none" until staff generates a QR Ph checkout for this record's Cost
+  qrPaymentAmount: number | null; // pesos, snapshotted at checkout creation — normally equals cost, but stays fixed even if cost is edited afterward
+  paymongoCheckoutSessionId: string | null;
+  paymongoCheckoutUrl: string | null;
+  paymongoPaymentId: string | null;
+  qrPaidAt: string | null;
 };
 
 export type ActivityLog = {

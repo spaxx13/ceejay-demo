@@ -308,6 +308,8 @@ type RepairRecordRow = {
   service_date: Date | string; notes: string; logged_by: string; created_at: Date;
   cancelled: boolean; cancellation_reason: string; cancelled_at: Date | null;
   deleted_at: Date | null;
+  qr_payment_status: RepairRecord["qrPaymentStatus"]; qr_payment_amount: string | number | null;
+  paymongo_checkout_session_id: string | null; paymongo_checkout_url: string | null; paymongo_payment_id: string | null; qr_paid_at: Date | null;
 };
 function mapRepairRecord(r: RepairRecordRow): RepairRecord {
   return {
@@ -318,6 +320,9 @@ function mapRepairRecord(r: RepairRecordRow): RepairRecord {
     loggedBy: r.logged_by, createdAt: toIso(r.created_at),
     cancelled: r.cancelled, cancellationReason: r.cancellation_reason, cancelledAt: toIsoOrNull(r.cancelled_at),
     deletedAt: toIsoOrNull(r.deleted_at),
+    qrPaymentStatus: r.qr_payment_status, qrPaymentAmount: r.qr_payment_amount === null ? null : Number(r.qr_payment_amount),
+    paymongoCheckoutSessionId: r.paymongo_checkout_session_id, paymongoCheckoutUrl: r.paymongo_checkout_url,
+    paymongoPaymentId: r.paymongo_payment_id, qrPaidAt: toIsoOrNull(r.qr_paid_at),
   };
 }
 
@@ -578,6 +583,28 @@ export async function getDeletedRepairRecords() {
 }
 export async function getRepairRecordById(id: string) {
   const row = await queryOne<RepairRecordRow>("select * from repair_records where id = $1", [id]);
+  return row ? mapRepairRecord(row) : null;
+}
+// Marks a repair record as awaiting its PayMongo QR Ph checkout — mirrors
+// markIcloudCheckPaymentPending/markHomeServiceDownpaymentPending. Amount is
+// snapshotted here (not re-read from cost later) so an edit to cost after
+// the QR is generated doesn't retroactively change what a pending checkout
+// actually charges.
+export async function markRepairRecordQrPaymentPending(id: string, sessionId: string, checkoutUrl: string, amountPesos: number) {
+  await query(
+    "update repair_records set qr_payment_status='pending', qr_payment_amount=$2, paymongo_checkout_session_id=$3, paymongo_checkout_url=$4 where id=$1",
+    [id, amountPesos, sessionId, checkoutUrl]
+  );
+}
+// Conditional UPDATE, same shape (and same reason) as
+// claimHomeServiceDownpaymentAsPaid: only the first caller to see
+// qr_payment_status='pending' actually claims it, so the PayMongo webhook
+// and any fallback re-verification can race safely.
+export async function claimRepairRecordQrPaymentAsPaid(id: string, paymongoPaymentId: string) {
+  const row = await queryOne<RepairRecordRow>(
+    "update repair_records set qr_payment_status='paid', paymongo_payment_id=$2, qr_paid_at=now() where id=$1 and qr_payment_status='pending' returning *",
+    [id, paymongoPaymentId]
+  );
   return row ? mapRepairRecord(row) : null;
 }
 export async function getSiteContent(): Promise<SiteContent> {
