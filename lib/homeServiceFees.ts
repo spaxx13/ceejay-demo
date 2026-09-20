@@ -40,6 +40,7 @@ export const EXCLUDED_FROM_HOME_SERVICE = new Set([
   "Charging Port",
   "Front Camera",
   "Camera Lens",
+  "Reglass",
 ]);
 
 // These provinces require a QR Ph down payment (via PayMongo), equal to
