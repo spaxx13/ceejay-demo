@@ -32,6 +32,7 @@ type Req = {
   confirmedAt: string | null;
   repairCost: number | null;
   serviceFee: number | null;
+  serviceFeeWaived: boolean;
   inProgress: boolean;
   hasPreAgreement: boolean;
   hasPostAgreement: boolean;
@@ -125,9 +126,16 @@ export default function TechnicianBoard({ requests, statuses }: { requests: Req[
               <DetailRow label="Issue">{r.issueDescription}</DetailRow>
               <DetailRow label="Quotation">
                 {r.repairCost !== null ? peso(r.repairCost) : "Confirmed upon inspection"}
-                {r.serviceFee !== null && <span className="text-sm text-slate-400"> + {peso(r.serviceFee)} service fee</span>}
+                {r.serviceFee !== null && (
+                  <span className="text-sm text-slate-400">
+                    {" "}
+                    + {r.serviceFeeWaived ? <span className="font-medium text-green-700">service fee waived</span> : `${peso(r.serviceFee)} service fee`}
+                  </span>
+                )}
                 {r.repairCost !== null && r.serviceFee !== null && (
-                  <span className="block text-sm text-slate-400">Total: {peso(r.repairCost + r.serviceFee)}</span>
+                  <span className="block text-sm text-slate-400">
+                    Total: {peso(r.repairCost + (r.serviceFeeWaived ? 0 : r.serviceFee))}
+                  </span>
                 )}
               </DetailRow>
               <DetailRow label="Address">

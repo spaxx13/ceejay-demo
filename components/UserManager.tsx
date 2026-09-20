@@ -18,6 +18,7 @@ type UserRow = {
   canViewAllBranches: boolean;
   canAccessCrm: boolean;
   canManageWalkIns: boolean;
+  canWaiveServiceFee: boolean;
   phone: string;
   active: boolean;
 };
@@ -336,6 +337,23 @@ export default function UserManager({
               <p className="text-[11px] text-slate-400">
                 Off by default — independent of &quot;Can Manage Requests&quot; above, so this account can have one without the other. Check
                 this to let it view/manage Walk-In pre-registrations.
+              </p>
+            </div>
+          )}
+          {role === "branch_admin" && (
+            <div className="space-y-1.5">
+              <label className="flex items-center gap-1.5 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  name="canWaiveServiceFee"
+                  defaultChecked={editing?.canWaiveServiceFee ?? false}
+                  className="h-4 w-4 rounded border-slate-300"
+                />
+                Can waive the Home Service visit fee
+              </label>
+              <p className="text-[11px] text-slate-400">
+                Off by default — independent of &quot;Can Manage Requests&quot; above. Check this to let it waive/restore a specific Home
+                Service request&apos;s Service Fee from the request&apos;s detail page.
               </p>
             </div>
           )}

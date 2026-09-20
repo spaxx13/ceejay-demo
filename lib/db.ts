@@ -84,6 +84,7 @@ type UserRow = {
   can_view_all_branches: boolean;
   can_access_crm: boolean;
   can_manage_walkins: boolean;
+  can_waive_service_fee: boolean;
   phone: string;
   active: boolean;
 };
@@ -100,6 +101,7 @@ function mapUser(r: UserRow): User {
     canViewAllBranches: r.can_view_all_branches,
     canAccessCrm: r.can_access_crm,
     canManageWalkIns: r.can_manage_walkins,
+    canWaiveServiceFee: r.can_waive_service_fee,
     phone: r.phone,
     active: r.active,
   };
@@ -188,6 +190,15 @@ export function canManageWalkIns(user: Pick<User, "role" | "canManageWalkIns"> |
   return user.role === "owner_admin" || (user.role === "branch_admin" && user.canManageWalkIns);
 }
 
+// True when this account is allowed to waive a Home Service request's
+// visit fee. Owner admins always can; branch admins are scoped by
+// canWaiveServiceFee — deliberately independent of canManageRequests, so
+// a branch admin can have one without the other.
+export function canWaiveServiceFee(user: Pick<User, "role" | "canWaiveServiceFee"> | null) {
+  if (!user) return false;
+  return user.role === "owner_admin" || (user.role === "branch_admin" && user.canWaiveServiceFee);
+}
+
 type BranchRow = { id: string; name: string; address: string; contact_number: string; home_service_queue: Branch["homeServiceQueue"]; active: boolean };
 function mapBranch(r: BranchRow): Branch {
   return { id: r.id, name: r.name, address: r.address, contactNumber: r.contact_number, homeServiceQueue: r.home_service_queue, active: r.active };
@@ -245,7 +256,7 @@ type RequestRow = {
   status_history: { statusId: string; at: string }[]; custom_fields: Record<string, string | boolean>; created_at: Date;
   vlog_consent: boolean; vlog_blur_preference: HomeServiceRequest["vlogBlurPreference"]; screen_quality: HomeServiceRequest["screenQuality"]; back_housing_color: string; reminder_sent_at: Date | null;
   confirmation_token: string | null; confirmation_expires_at: Date | null; confirmed_at: Date | null; booking_group_id: string | null;
-  deleted_at: Date | null;
+  deleted_at: Date | null; service_fee_waived: boolean;
 };
 function mapRequest(r: RequestRow): HomeServiceRequest {
   return {
@@ -258,7 +269,7 @@ function mapRequest(r: RequestRow): HomeServiceRequest {
     vlogConsent: r.vlog_consent, vlogBlurPreference: r.vlog_blur_preference || "", screenQuality: r.screen_quality || "", backHousingColor: r.back_housing_color || "",
     reminderSentAt: toIsoOrNull(r.reminder_sent_at),
     confirmationToken: r.confirmation_token, confirmationExpiresAt: toIsoOrNull(r.confirmation_expires_at), confirmedAt: toIsoOrNull(r.confirmed_at),
-    bookingGroupId: r.booking_group_id, deletedAt: toIsoOrNull(r.deleted_at),
+    bookingGroupId: r.booking_group_id, deletedAt: toIsoOrNull(r.deleted_at), serviceFeeWaived: r.service_fee_waived,
   };
 }
 

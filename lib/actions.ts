@@ -34,6 +34,7 @@ import {
   canDeleteHomeServiceRequests,
   canAccessCrm,
   canManageWalkIns,
+  canWaiveServiceFee,
 } from "./db";
 import { getCurrentUser, setSession, clearSession, requireRole } from "./auth";
 import { sendRepairReceiptEmail, sendCancellationEmail, sendQuotationEmail, sendLeadReplyEmail, sendBroadcastEmail, sendWalkInOtpEmail, emailConfigured } from "./email";
@@ -100,6 +101,7 @@ export async function createUser(formData: FormData) {
   const canViewAllBranches = role === "branch_admin" ? formData.get("canViewAllBranches") === "on" : true;
   const canAccessCrmFlag = role === "branch_admin" ? formData.get("canAccessCrm") === "on" : true;
   const canManageWalkInsFlag = role === "branch_admin" ? formData.get("canManageWalkIns") === "on" : true;
+  const canWaiveServiceFeeFlag = role === "branch_admin" ? formData.get("canWaiveServiceFee") === "on" : true;
   const phone = str(formData, "phone");
   if (!name || !email || !password || !role) return;
 
@@ -122,7 +124,7 @@ export async function createUser(formData: FormData) {
 
   const passwordHash = await bcrypt.hash(password, 10);
   await query(
-    "insert into users (name, email, password_hash, role, technician_id, assigned_branch_ids, can_manage_requests, can_delete_requests, can_view_all_branches, can_access_crm, can_manage_walkins, phone) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)",
+    "insert into users (name, email, password_hash, role, technician_id, assigned_branch_ids, can_manage_requests, can_delete_requests, can_view_all_branches, can_access_crm, can_manage_walkins, can_waive_service_fee, phone) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)",
     [
       name,
       email,
@@ -135,6 +137,7 @@ export async function createUser(formData: FormData) {
       canViewAllBranches,
       canAccessCrmFlag,
       canManageWalkInsFlag,
+      canWaiveServiceFeeFlag,
       phone,
     ]
   );
@@ -167,6 +170,7 @@ export async function updateUser(formData: FormData) {
   const canViewAllBranches = role === "branch_admin" ? formData.get("canViewAllBranches") === "on" : true;
   const canAccessCrmFlag = role === "branch_admin" ? formData.get("canAccessCrm") === "on" : true;
   const canManageWalkInsFlag = role === "branch_admin" ? formData.get("canManageWalkIns") === "on" : true;
+  const canWaiveServiceFeeFlag = role === "branch_admin" ? formData.get("canWaiveServiceFee") === "on" : true;
   const phone = formData.has("phone") ? str(formData, "phone") : user.phone;
 
   if (role === "technician") {
@@ -195,7 +199,7 @@ export async function updateUser(formData: FormData) {
   if (password) {
     const passwordHash = await bcrypt.hash(password, 10);
     await query(
-      "update users set name=$1, email=$2, password_hash=$3, role=$4, technician_id=$5, assigned_branch_ids=$6, can_manage_requests=$7, can_delete_requests=$8, can_view_all_branches=$9, can_access_crm=$10, can_manage_walkins=$11, phone=$12 where id=$13",
+      "update users set name=$1, email=$2, password_hash=$3, role=$4, technician_id=$5, assigned_branch_ids=$6, can_manage_requests=$7, can_delete_requests=$8, can_view_all_branches=$9, can_access_crm=$10, can_manage_walkins=$11, can_waive_service_fee=$12, phone=$13 where id=$14",
       [
         name,
         email || user.email,
@@ -208,13 +212,14 @@ export async function updateUser(formData: FormData) {
         canViewAllBranches,
         canAccessCrmFlag,
         canManageWalkInsFlag,
+        canWaiveServiceFeeFlag,
         phone,
         userId,
       ]
     );
   } else {
     await query(
-      "update users set name=$1, email=$2, role=$3, technician_id=$4, assigned_branch_ids=$5, can_manage_requests=$6, can_delete_requests=$7, can_view_all_branches=$8, can_access_crm=$9, can_manage_walkins=$10, phone=$11 where id=$12",
+      "update users set name=$1, email=$2, role=$3, technician_id=$4, assigned_branch_ids=$5, can_manage_requests=$6, can_delete_requests=$7, can_view_all_branches=$8, can_access_crm=$9, can_manage_walkins=$10, can_waive_service_fee=$11, phone=$12 where id=$13",
       [
         name,
         email || user.email,
@@ -226,6 +231,7 @@ export async function updateUser(formData: FormData) {
         canViewAllBranches,
         canAccessCrmFlag,
         canManageWalkInsFlag,
+        canWaiveServiceFeeFlag,
         phone,
         userId,
       ]
@@ -1882,6 +1888,35 @@ export async function updateRequestNotes(formData: FormData) {
   const notes = str(formData, "adminNotes");
   await query("update home_service_requests set admin_notes=$1 where id=$2", [notes, requestId]);
   revalidatePath(`/admin/requests/${requestId}`);
+}
+
+// Waives (or restores) the flat per-visit Home Service fee for a request —
+// the fee itself stays computed from province as always
+// (lib/homeServiceFees.ts); this only marks that this request's copy
+// should be treated as ₱0 wherever it's quoted/displayed. Gated by the
+// dedicated canWaiveServiceFee permission (independent of
+// canManageRequests) on top of the section-level access every action on
+// this page already requires.
+export async function waiveServiceFee(formData: FormData) {
+  const user = await getCurrentUser();
+  if (!canManageHomeServiceRequests(user) || !canWaiveServiceFee(user)) return;
+  const requestId = str(formData, "id");
+  const req = await getRequestById(requestId);
+  if (!req) return;
+  await query("update home_service_requests set service_fee_waived=true where id=$1", [requestId]);
+  await logActivity("home_service_request", requestId, `Service fee waived by ${user?.name ?? "Admin"}`, user?.name ?? "Admin");
+  revalidatePath(`/admin/requests/${requestId}`);
+  revalidatePath("/technician");
+}
+
+export async function unwaiveServiceFee(formData: FormData) {
+  const user = await getCurrentUser();
+  if (!canManageHomeServiceRequests(user) || !canWaiveServiceFee(user)) return;
+  const requestId = str(formData, "id");
+  await query("update home_service_requests set service_fee_waived=false where id=$1", [requestId]);
+  await logActivity("home_service_request", requestId, `Service fee restored (un-waived) by ${user?.name ?? "Admin"}`, user?.name ?? "Admin");
+  revalidatePath(`/admin/requests/${requestId}`);
+  revalidatePath("/technician");
 }
 
 // ---------- Sales: Business Expenses ----------

@@ -14,6 +14,7 @@ import {
   getServicePrices,
   canManageHomeServiceRequests,
   canDeleteHomeServiceRequests,
+  canWaiveServiceFee,
   isBranchHidden,
 } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
@@ -21,7 +22,7 @@ import StatusBadge from "@/components/StatusBadge";
 import ResendReceiptButton from "@/components/ResendReceiptButton";
 import DeleteButton from "@/components/DeleteButton";
 import Linkify from "@/components/Linkify";
-import { reassignRequest, changeRequestStatus, updateRequestNotes, deleteHomeServiceRequest } from "@/lib/actions";
+import { reassignRequest, changeRequestStatus, updateRequestNotes, deleteHomeServiceRequest, waiveServiceFee, unwaiveServiceFee } from "@/lib/actions";
 import type { ServiceAgreement } from "@/lib/types";
 import { formatDate, formatDateTime } from "@/lib/format";
 import { serviceFeeAmount } from "@/lib/homeServiceFees";
@@ -137,6 +138,7 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
     };
   });
   const quotedServiceFee = serviceFeeAmount(req.province, req.city);
+  const effectiveServiceFee = req.serviceFeeWaived ? 0 : quotedServiceFee;
   const statuses = lookups.filter((l) => l.kind === "request_status").sort((a, b) => a.order - b.order);
   const serviceType = lookups.find((l) => l.id === req.serviceTypeId);
   const brand = lookups.find((l) => l.id === req.deviceBrandId);
@@ -217,14 +219,46 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
           ))}
           <div className="flex items-center justify-between gap-3 pt-1 text-sm">
             <p className="text-slate-500">Service Fee (one visit)</p>
-            <span className="text-slate-800">{quotedServiceFee !== null ? peso(quotedServiceFee) : "—"}</span>
+            <span className="text-slate-800">
+              {req.serviceFeeWaived ? (
+                <>
+                  {quotedServiceFee !== null && <span className="mr-1.5 text-slate-400 line-through">{peso(quotedServiceFee)}</span>}
+                  <span className="font-medium text-green-700">Waived</span>
+                </>
+              ) : quotedServiceFee !== null ? (
+                peso(quotedServiceFee)
+              ) : (
+                "—"
+              )}
+            </span>
           </div>
-          {quotedServiceFee !== null && quotationDevices.every((d) => d.repairCost !== null) && (
+          {effectiveServiceFee !== null && quotationDevices.every((d) => d.repairCost !== null) && (
             <div className="flex items-center justify-between gap-3 border-t border-slate-200 pt-2 text-sm font-semibold">
               <p className="text-slate-700">Total</p>
               <span className="text-slate-900">
-                {peso(quotationDevices.reduce((sum, d) => sum + (d.repairCost ?? 0), 0) + quotedServiceFee)}
+                {peso(quotationDevices.reduce((sum, d) => sum + (d.repairCost ?? 0), 0) + effectiveServiceFee)}
               </span>
+            </div>
+          )}
+          {canWaiveServiceFee(user) && quotedServiceFee !== null && (
+            <div className="border-t border-slate-100 pt-2">
+              {req.serviceFeeWaived ? (
+                <DeleteButton
+                  id={req.id}
+                  action={unwaiveServiceFee}
+                  confirmMessage={`Restore the ${peso(quotedServiceFee)} service fee for ${req.reference}? The customer will be expected to pay it again.`}
+                  label="Restore Service Fee"
+                  className="btn-secondary !px-3 !py-1 text-xs"
+                />
+              ) : (
+                <DeleteButton
+                  id={req.id}
+                  action={waiveServiceFee}
+                  confirmMessage={`Waive the ${peso(quotedServiceFee)} service fee for ${req.reference}? The customer won't be charged for this visit.`}
+                  label="Waive Service Fee"
+                  className="btn-secondary !px-3 !py-1 text-xs !text-amber-700"
+                />
+              )}
             </div>
           )}
         </div>

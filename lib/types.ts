@@ -12,6 +12,7 @@ export type User = {
   canViewAllBranches: boolean; // whether this account can see combined "All Branches" sales figures (branch_admin scoping) — false means own branch(es) only
   canAccessCrm: boolean; // whether this account can access the CRM (leads/customers) section (branch_admin scoping) — owner_admin always can regardless
   canManageWalkIns: boolean; // whether this account can access/manage Walk-In Registrations (branch_admin scoping) — independent of canManageRequests, defaults to false for new/existing branch admins
+  canWaiveServiceFee: boolean; // whether this account can waive a Home Service request's visit fee (branch_admin scoping) — independent of canManageRequests, defaults to false
   phone: string; // optional — set by the account holder to opt into SMS alerts (new requests, technician status updates); blank means not opted in
   active: boolean;
 };
@@ -301,6 +302,7 @@ export type HomeServiceRequest = {
   confirmedAt: string | null; // set when the customer clicks the confirm link in their quotation email
   bookingGroupId: string | null; // shared by every device from the same "+ Add Another Device" submission — one technician assignment cascades to the whole group, since it's one visit to one address
   deletedAt: string | null; // set when moved to Trash — null again once restored
+  serviceFeeWaived: boolean; // set by a staff account with canWaiveServiceFee — treats the province-computed visit fee (lib/homeServiceFees.ts) as ₱0 wherever it's quoted/displayed, without changing the underlying province fee table
 };
 
 export type SaleLineItem = {

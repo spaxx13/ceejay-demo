@@ -55,6 +55,7 @@ export default async function TechnicianPage() {
         confirmedAt: r.confirmedAt,
         repairCost,
         serviceFee,
+        serviceFeeWaived: r.serviceFeeWaived,
         inProgress: status?.label === "In Progress",
         hasPreAgreement: agreements.some((a) => a.requestId === r.id && a.phase === "pre_repair"),
         hasPostAgreement: agreements.some((a) => a.requestId === r.id && a.phase === "post_repair"),

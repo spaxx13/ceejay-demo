@@ -21,6 +21,7 @@ export default async function UsersPage() {
     canViewAllBranches: u.canViewAllBranches,
     canAccessCrm: u.canAccessCrm,
     canManageWalkIns: u.canManageWalkIns,
+    canWaiveServiceFee: u.canWaiveServiceFee,
     phone: u.phone,
     active: u.active,
   }));
