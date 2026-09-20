@@ -262,6 +262,23 @@ export type WalkInRequest = {
   createdAt: string;
 };
 
+// Created the moment a Home Service visit fee is waived, and lands
+// straight in Trash (deletedAt set immediately) rather than an "active"
+// list — Trash is the only place this is ever managed from: Restore
+// un-waives the fee and clears the entry, Delete Permanently just
+// removes this tracking record (the fee stays waived on the request).
+export type ServiceFeeWaiver = {
+  id: string;
+  requestId: string;
+  queueBranchId: string | null; // snapshot of the request's queueBranchId, for branch-scoped Trash visibility
+  reference: string; // snapshot of the request's reference, readable even if the request is later deleted
+  customerName: string; // snapshot, same reasoning
+  amount: number; // the waived fee amount, snapshot at time of waiving
+  waivedBy: string;
+  waivedAt: string;
+  deletedAt: string | null;
+};
+
 export type HomeServiceRequest = {
   id: string;
   reference: string;

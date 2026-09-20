@@ -1890,11 +1890,14 @@ export async function updateRequestNotes(formData: FormData) {
   revalidatePath(`/admin/requests/${requestId}`);
 }
 
-// Waives (or restores) the flat per-visit Home Service fee for a request —
-// the fee itself stays computed from province as always
-// (lib/homeServiceFees.ts); this only marks that this request's copy
-// should be treated as ₱0 wherever it's quoted/displayed. Gated by the
-// dedicated canWaiveServiceFee permission (independent of
+// Waives the flat per-visit Home Service fee for a request — the fee
+// itself stays computed from province as always (lib/homeServiceFees.ts);
+// this only marks that this request's copy should be treated as ₱0
+// wherever it's quoted/displayed. A waiver record is created and lands
+// straight in Trash (deleted_at set immediately) — Trash is the only
+// place it's ever managed from afterward (Restore / Delete Permanently),
+// and nothing about the waiver is shown on the request itself. Gated by
+// the dedicated canWaiveServiceFee permission (independent of
 // canManageRequests) on top of the section-level access every action on
 // this page already requires.
 export async function waiveServiceFee(formData: FormData) {
@@ -1902,21 +1905,45 @@ export async function waiveServiceFee(formData: FormData) {
   if (!canManageHomeServiceRequests(user) || !canWaiveServiceFee(user)) return;
   const requestId = str(formData, "id");
   const req = await getRequestById(requestId);
-  if (!req) return;
+  if (!req || req.serviceFeeWaived) return;
+  const amount = serviceFeeAmount(req.province, req.city) ?? 0;
   await query("update home_service_requests set service_fee_waived=true where id=$1", [requestId]);
+  await query(
+    `insert into service_fee_waivers (request_id, queue_branch_id, reference, customer_name, amount, waived_by, deleted_at)
+     values ($1,$2,$3,$4,$5,$6,now())`,
+    [requestId, req.queueBranchId, req.reference, req.customerName, amount, user?.name ?? "Admin"]
+  );
   await logActivity("home_service_request", requestId, `Service fee waived by ${user?.name ?? "Admin"}`, user?.name ?? "Admin");
   revalidatePath(`/admin/requests/${requestId}`);
+  revalidatePath("/admin/trash");
   revalidatePath("/technician");
 }
 
-export async function unwaiveServiceFee(formData: FormData) {
+// The only way to undo a waiver — from its entry in Trash. Un-waives the
+// fee on the request and clears the waiver entry.
+export async function restoreServiceFeeWaiver(formData: FormData) {
   const user = await getCurrentUser();
   if (!canManageHomeServiceRequests(user) || !canWaiveServiceFee(user)) return;
-  const requestId = str(formData, "id");
-  await query("update home_service_requests set service_fee_waived=false where id=$1", [requestId]);
-  await logActivity("home_service_request", requestId, `Service fee restored (un-waived) by ${user?.name ?? "Admin"}`, user?.name ?? "Admin");
-  revalidatePath(`/admin/requests/${requestId}`);
+  const id = str(formData, "id");
+  const waiver = await queryOne<{ request_id: string }>("select request_id from service_fee_waivers where id=$1 and deleted_at is not null", [id]);
+  if (!waiver) return;
+  await query("update home_service_requests set service_fee_waived=false where id=$1", [waiver.request_id]);
+  await query("delete from service_fee_waivers where id=$1", [id]);
+  await logActivity("home_service_request", waiver.request_id, `Service fee restored (un-waived) by ${user?.name ?? "Admin"}`, user?.name ?? "Admin");
+  revalidatePath(`/admin/requests/${waiver.request_id}`);
+  revalidatePath("/admin/trash");
   revalidatePath("/technician");
+}
+
+// Stops tracking a waiver — the fee stays waived on the request; this
+// just clears the Trash entry, same "no more undo path" semantics as
+// every other Delete Permanently action in this app.
+export async function permanentlyDeleteServiceFeeWaiver(formData: FormData) {
+  const user = await getCurrentUser();
+  if (!canManageHomeServiceRequests(user) || !canWaiveServiceFee(user)) return;
+  const id = str(formData, "id");
+  await query("delete from service_fee_waivers where id=$1 and deleted_at is not null", [id]);
+  revalidatePath("/admin/trash");
 }
 
 // ---------- Sales: Business Expenses ----------

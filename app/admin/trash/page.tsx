@@ -1,6 +1,17 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { getDeletedRequests, getDeletedRepairRecords, getDeletedWalkInRequests, getBranches, canDeleteHomeServiceRequests, canManageWalkIns, isBranchHidden } from "@/lib/db";
+import {
+  getDeletedRequests,
+  getDeletedRepairRecords,
+  getDeletedWalkInRequests,
+  getDeletedServiceFeeWaivers,
+  getBranches,
+  canDeleteHomeServiceRequests,
+  canManageWalkIns,
+  canWaiveServiceFee,
+  canManageHomeServiceRequests,
+  isBranchHidden,
+} from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import {
   restoreHomeServiceRequest,
@@ -9,6 +20,8 @@ import {
   permanentlyDeleteRepairRecord,
   restoreWalkInRequest,
   permanentlyDeleteWalkInRequest,
+  restoreServiceFeeWaiver,
+  permanentlyDeleteServiceFeeWaiver,
 } from "@/lib/actions";
 import DeleteButton from "@/components/DeleteButton";
 import { formatDateTime } from "@/lib/format";
@@ -33,10 +46,11 @@ export default async function TrashPage({ searchParams }: { searchParams: Promis
   // Walk-in Trash needs both section access (canManageWalkIns) and the
   // shared delete permission, same layering as the Walk-in server actions.
   const canWalkIns = canManageWalkIns(user) && canDeleteHomeServiceRequests(user);
-  if (!canPos && !canRequests && !canWalkIns) redirect("/admin");
+  const canWaivers = canWaiveServiceFee(user) && canManageHomeServiceRequests(user);
+  if (!canPos && !canRequests && !canWalkIns && !canWaivers) redirect("/admin");
 
   const { tab: rawTab } = await searchParams;
-  const defaultTab = canRequests ? "requests" : canWalkIns ? "walkins" : "pos";
+  const defaultTab = canRequests ? "requests" : canWalkIns ? "walkins" : canWaivers ? "waivers" : "pos";
   const tab =
     rawTab === "pos" && canPos
       ? "pos"
@@ -44,17 +58,21 @@ export default async function TrashPage({ searchParams }: { searchParams: Promis
         ? "requests"
         : rawTab === "walkins" && canWalkIns
           ? "walkins"
-          : defaultTab;
+          : rawTab === "waivers" && canWaivers
+            ? "waivers"
+            : defaultTab;
 
-  const [allBranches, deletedRequestsRaw, deletedRecordsRaw, deletedWalkInsRaw] = await Promise.all([
+  const [allBranches, deletedRequestsRaw, deletedRecordsRaw, deletedWalkInsRaw, deletedWaiversRaw] = await Promise.all([
     getBranches(),
     canRequests ? getDeletedRequests() : Promise.resolve([]),
     canPos ? getDeletedRepairRecords() : Promise.resolve([]),
     canWalkIns ? getDeletedWalkInRequests() : Promise.resolve([]),
+    canWaivers ? getDeletedServiceFeeWaivers() : Promise.resolve([]),
   ]);
   const deletedRequests = deletedRequestsRaw.filter((r) => !isBranchHidden(user, r.queueBranchId));
   const deletedRecords = deletedRecordsRaw.filter((r) => !isBranchHidden(user, r.branchId));
   const deletedWalkIns = deletedWalkInsRaw.filter((r) => !isBranchHidden(user, r.branchId));
+  const deletedWaivers = deletedWaiversRaw.filter((r) => !isBranchHidden(user, r.queueBranchId));
   const branchName = (branchId: string | null) => allBranches.find((b) => b.id === branchId)?.name ?? "—";
 
   const tabLink = (t: string) => `/admin/trash?tab=${t}`;
@@ -66,12 +84,12 @@ export default async function TrashPage({ searchParams }: { searchParams: Promis
       <div>
         <h1 className="text-xl font-bold text-slate-900">Trash</h1>
         <p className="mt-1 text-sm text-slate-400">
-          Deleted home service requests, walk-in registrations, and POS repair records land here first — restore one back to normal, or delete it permanently
-          (which can&apos;t be undone).
+          Deleted home service requests, walk-in registrations, waived service fees, and POS repair records land here first — restore one back to normal, or
+          delete it permanently (which can&apos;t be undone).
         </p>
       </div>
 
-      {(canRequests ? 1 : 0) + (canWalkIns ? 1 : 0) + (canPos ? 1 : 0) > 1 && (
+      {(canRequests ? 1 : 0) + (canWalkIns ? 1 : 0) + (canPos ? 1 : 0) + (canWaivers ? 1 : 0) > 1 && (
         <div className="flex flex-wrap gap-1 border-b border-slate-200">
           {canRequests && (
             <Link href={tabLink("requests")} className={tabClass(tab === "requests")}>
@@ -81,6 +99,11 @@ export default async function TrashPage({ searchParams }: { searchParams: Promis
           {canWalkIns && (
             <Link href={tabLink("walkins")} className={tabClass(tab === "walkins")}>
               Walk-Ins ({deletedWalkIns.length})
+            </Link>
+          )}
+          {canWaivers && (
+            <Link href={tabLink("waivers")} className={tabClass(tab === "waivers")}>
+              Waived Service Fees ({deletedWaivers.length})
             </Link>
           )}
           {canPos && (
@@ -227,6 +250,88 @@ export default async function TrashPage({ searchParams }: { searchParams: Promis
                           id={r.id}
                           action={permanentlyDeleteWalkInRequest}
                           confirmMessage={`Permanently delete walk-in registration ${r.reference}? This can't be undone.`}
+                          label="Delete Permanently"
+                        />
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
+      {tab === "waivers" && canWaivers && (
+        <section className="space-y-3">
+          <div className="space-y-3 sm:hidden">
+            {deletedWaivers.length === 0 && <p className="card text-center text-sm text-slate-400">Trash is empty.</p>}
+            {deletedWaivers.map((w) => (
+              <div key={w.id} className="card space-y-2">
+                <div>
+                  <p className="font-mono text-xs text-blue-300">{w.reference}</p>
+                  <p className="mt-0.5 text-sm font-medium text-slate-800">{w.customerName}</p>
+                </div>
+                <div className="grid grid-cols-2 gap-y-1 text-xs">
+                  <span className="text-slate-400">Amount</span>
+                  <span className="text-right font-semibold text-slate-800">{peso(w.amount)}</span>
+                  <span className="text-slate-400">Waived By</span>
+                  <span className="text-right text-slate-600">{w.waivedBy || "—"}</span>
+                  <span className="text-slate-400">Waived</span>
+                  <span className="text-right text-slate-600">{formatDateTime(w.waivedAt)}</span>
+                </div>
+                <div className="flex gap-1.5 pt-1">
+                  <RestoreButton id={w.id} action={restoreServiceFeeWaiver} className="btn-secondary flex-1 !py-1.5 text-xs" />
+                  <DeleteButton
+                    id={w.id}
+                    action={permanentlyDeleteServiceFeeWaiver}
+                    confirmMessage={`Permanently delete this waiver record for ${w.reference}? The fee stays waived — this just stops tracking it here.`}
+                    label="Delete Permanently"
+                    className="btn-secondary flex-1 !py-1.5 text-xs !text-red-600"
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="hidden card overflow-x-auto sm:block">
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-400">
+                  <th className="pb-2 pr-3">Reference</th>
+                  <th className="pb-2 pr-3">Customer</th>
+                  <th className="pb-2 pr-3">Amount</th>
+                  <th className="pb-2 pr-3">Waived By</th>
+                  <th className="pb-2 pr-3">Waived</th>
+                  <th className="pb-2">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {deletedWaivers.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="py-6 text-center text-slate-400">
+                      Trash is empty.
+                    </td>
+                  </tr>
+                )}
+                {deletedWaivers.map((w) => (
+                  <tr key={w.id} className="border-b border-slate-200 last:border-0">
+                    <td className="py-3 pr-3 font-mono text-xs text-blue-300">
+                      <Link href={`/admin/requests/${w.requestId}`} className="hover:underline">
+                        {w.reference}
+                      </Link>
+                    </td>
+                    <td className="py-3 pr-3 text-slate-800">{w.customerName}</td>
+                    <td className="py-3 pr-3 font-semibold text-slate-800">{peso(w.amount)}</td>
+                    <td className="py-3 pr-3 text-slate-500">{w.waivedBy || "—"}</td>
+                    <td className="py-3 pr-3 text-slate-500">{formatDateTime(w.waivedAt)}</td>
+                    <td className="py-3">
+                      <div className="flex gap-1.5">
+                        <RestoreButton id={w.id} action={restoreServiceFeeWaiver} />
+                        <DeleteButton
+                          id={w.id}
+                          action={permanentlyDeleteServiceFeeWaiver}
+                          confirmMessage={`Permanently delete this waiver record for ${w.reference}? The fee stays waived — this just stops tracking it here.`}
                           label="Delete Permanently"
                         />
                       </div>

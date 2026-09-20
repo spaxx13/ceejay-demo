@@ -11,6 +11,7 @@ import type {
   Lead,
   WalkInRequest,
   HomeServiceRequest,
+  ServiceFeeWaiver,
   ActivityLog,
   Sale,
   RepairRecord,
@@ -468,6 +469,24 @@ export async function getDeletedWalkInRequests() {
 export async function getWalkInRequestById(id: string) {
   const row = await queryOne<WalkInRequestRow>("select * from walkin_requests where id = $1", [id]);
   return row ? mapWalkInRequest(row) : null;
+}
+
+type ServiceFeeWaiverRow = {
+  id: string; request_id: string; queue_branch_id: string | null; reference: string; customer_name: string; amount: string | number;
+  waived_by: string; waived_at: Date; deleted_at: Date | null;
+};
+function mapServiceFeeWaiver(r: ServiceFeeWaiverRow): ServiceFeeWaiver {
+  return {
+    id: r.id, requestId: r.request_id, queueBranchId: r.queue_branch_id, reference: r.reference, customerName: r.customer_name,
+    amount: Number(r.amount), waivedBy: r.waived_by, waivedAt: toIso(r.waived_at), deletedAt: toIsoOrNull(r.deleted_at),
+  };
+}
+// Every waiver lands straight in Trash (deleted_at set on creation) —
+// there is no "active" list to read, only this Trash-tab query.
+export async function getDeletedServiceFeeWaivers() {
+  return (await query<ServiceFeeWaiverRow>("select * from service_fee_waivers where deleted_at is not null order by deleted_at desc")).map(
+    mapServiceFeeWaiver
+  );
 }
 
 export async function getRequests() {
