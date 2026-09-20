@@ -1,4 +1,5 @@
 import { getBranches, getLookups, getDeviceModels } from "@/lib/db";
+import { emailConfigured } from "@/lib/email";
 import WalkInForm from "@/components/site/WalkInForm";
 
 export default async function WalkInPage() {
@@ -35,7 +36,7 @@ export default async function WalkInPage() {
           {branches.length === 0 ? (
             <p className="card text-center text-sm text-slate-400">Walk-in pre-registration is temporarily unavailable. Please contact a branch directly.</p>
           ) : (
-            <WalkInForm branches={branches} brands={brands} models={models} serviceTypes={serviceTypes} />
+            <WalkInForm branches={branches} brands={brands} models={models} serviceTypes={serviceTypes} emailAvailable={emailConfigured()} />
           )}
         </div>
       </div>

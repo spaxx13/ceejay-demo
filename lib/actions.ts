@@ -35,7 +35,7 @@ import {
   canAccessCrm,
 } from "./db";
 import { getCurrentUser, setSession, clearSession, requireRole } from "./auth";
-import { sendRepairReceiptEmail, sendCancellationEmail, sendQuotationEmail, sendLeadReplyEmail, sendBroadcastEmail } from "./email";
+import { sendRepairReceiptEmail, sendCancellationEmail, sendQuotationEmail, sendLeadReplyEmail, sendBroadcastEmail, sendWalkInOtpEmail, emailConfigured } from "./email";
 import { sendSms, sendOtpSms, smsConfigured, normalizePhone, getAccountStatus, type SmsAccountStatus } from "./sms";
 import { SUNDAY_ONLY_PROVINCES, serviceFeeAmount } from "./homeServiceFees";
 import { getRepairQuote } from "./servicePricing";
@@ -1441,6 +1441,78 @@ export async function submitContactInquiry(_prev: ContactResult | undefined, for
   return { ok: true };
 }
 
+// ---------- Walk-In Registration: Email OTP Verification ----------
+// Anti-spam gate — a customer must prove they control the email address
+// they typed before the Walk-In pre-registration form can be submitted at
+// all. Mirrors Home Service Requests' phone-based OTP gate
+// (sendHomeServiceOtp/verifyHomeServiceOtp) in shape and UX, but keyed by
+// email in its own table (email_otp_codes) since Walk-In verifies email,
+// not phone. Unlike Semaphore's dedicated OTP route (which generates the
+// code for us), Resend is plain transactional email, so this generates and
+// hashes its own 6-digit code.
+
+const WALKIN_OTP_TTL_MS = 10 * 60_000;
+const WALKIN_OTP_RESEND_COOLDOWN_MS = 60_000;
+const WALKIN_OTP_MAX_ATTEMPTS = 5;
+
+function isValidEmail(email: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+function generateOtpCode() {
+  return String(Math.floor(100000 + Math.random() * 900000));
+}
+
+export async function sendWalkInOtp(emailInput: string): Promise<SendOtpResult> {
+  const email = emailInput.trim().toLowerCase();
+  if (!isValidEmail(email)) return { ok: false, error: "Enter a valid email address first." };
+  if (!emailConfigured()) return { ok: false, error: "Email verification is temporarily unavailable — please try again later." };
+
+  const existing = await queryOne<{ created_at: Date }>("select created_at from email_otp_codes where email=$1", [email]);
+  if (existing && Date.now() - new Date(existing.created_at).getTime() < WALKIN_OTP_RESEND_COOLDOWN_MS) {
+    return { ok: false, error: "Please wait a moment before requesting another code." };
+  }
+
+  const code = generateOtpCode();
+  const codeHash = await bcrypt.hash(code, 10);
+  const expiresAt = new Date(Date.now() + WALKIN_OTP_TTL_MS).toISOString();
+
+  await query(
+    `insert into email_otp_codes (email, code_hash, attempts, verified, expires_at, created_at)
+     values ($1,$2,0,false,$3,now())
+     on conflict (email) do update set code_hash=$2, attempts=0, verified=false, expires_at=$3, created_at=now()`,
+    [email, codeHash, expiresAt]
+  );
+
+  try {
+    await sendWalkInOtpEmail(email, code);
+  } catch {
+    return { ok: false, error: "Couldn't send the verification email — please try again in a moment." };
+  }
+  return { ok: true };
+}
+
+export async function verifyWalkInOtp(emailInput: string, codeInput: string): Promise<VerifyOtpResult> {
+  const email = emailInput.trim().toLowerCase();
+  const code = codeInput.trim();
+  const row = await queryOne<{ code_hash: string; attempts: number; expires_at: Date; verified: boolean }>(
+    "select code_hash, attempts, expires_at, verified from email_otp_codes where email=$1",
+    [email]
+  );
+  if (!row) return { ok: false, error: "Send a verification code first." };
+  if (row.verified) return { ok: true };
+  if (new Date(row.expires_at).getTime() < Date.now()) return { ok: false, error: "That code expired — request a new one." };
+  if (row.attempts >= WALKIN_OTP_MAX_ATTEMPTS) return { ok: false, error: "Too many incorrect attempts — request a new code." };
+
+  const match = code.length > 0 && (await bcrypt.compare(code, row.code_hash));
+  if (!match) {
+    await query("update email_otp_codes set attempts = attempts + 1 where email=$1", [email]);
+    return { ok: false, error: "Incorrect code. Please try again." };
+  }
+  await query("update email_otp_codes set verified=true where email=$1", [email]);
+  return { ok: true };
+}
+
 export type WalkInResult = { ok: true; reference: string } | { ok: false; error: string };
 
 // A lighter-weight cousin of submitHomeServiceRequest — a customer planning
@@ -1469,6 +1541,19 @@ export async function submitWalkInRequest(_prev: WalkInResult | undefined, formD
   }
   if (!isValidPhone(phone)) {
     return { ok: false, error: "Please enter a valid PH mobile number, e.g. 0917 123 4567." };
+  }
+  if (!email) {
+    return { ok: false, error: "Please share your email address." };
+  }
+  if (!isValidEmail(email)) {
+    return { ok: false, error: "Please enter a valid email address." };
+  }
+  // A misconfigured/missing Resend key must never be able to take the
+  // public form down — the gate only actually applies once email sending
+  // is really available, same convention as Home Service's phone OTP gate.
+  if (OTP_GATE_ENABLED && emailConfigured()) {
+    const otpRow = await queryOne<{ verified: boolean }>("select verified from email_otp_codes where email=$1", [email.trim().toLowerCase()]);
+    if (!otpRow?.verified) return { ok: false, error: "Please verify your email address before submitting." };
   }
   if (!branchId) {
     return { ok: false, error: "Please select which branch you plan to visit." };
@@ -1523,6 +1608,9 @@ export async function submitWalkInRequest(_prev: WalkInResult | undefined, formD
   }
 
   await logActivity("walkin_request", created!.id, `Walk-in pre-registration ${reference} submitted via website for ${branch.name}`, "System");
+  // Same convention as Home Service's phone OTP cleanup — a submitted,
+  // verified code has done its job and shouldn't linger for reuse.
+  await query("delete from email_otp_codes where email=$1", [email.trim().toLowerCase()]);
   revalidatePath("/admin/walk-ins");
   revalidatePath("/admin");
   return { ok: true, reference };
