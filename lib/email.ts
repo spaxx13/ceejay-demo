@@ -163,6 +163,72 @@ function escapeHtml(s: string) {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
+// The public /quote page's price is never rendered on screen — this email
+// is the only place the customer ever sees the number, so it doubles as
+// both the "here's your quote" message and the record they can keep.
+export async function sendPublicQuoteEmail(
+  to: string,
+  opts: {
+    customerName: string;
+    deviceLabel: string;
+    serviceTypeLabel: string;
+    screenQuality?: string;
+    repairCost: number;
+    serviceMode: "walk_in" | "home_service";
+    branchName?: string;
+    address?: string;
+    serviceFee?: number | null;
+  }
+) {
+  const client = getClient();
+  const peso = (n: number) => `₱${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const fee = opts.serviceMode === "home_service" ? (opts.serviceFee ?? 0) : 0;
+  const total = opts.repairCost + fee;
+  const qualityLabel = opts.screenQuality === "original" ? "Original" : opts.screenQuality === "high_quality" ? "High Quality (compatible)" : "";
+
+  const rows: string[] = [
+    row("Device", escapeHtml(opts.deviceLabel)),
+    row("Repair Type", `${escapeHtml(opts.serviceTypeLabel)}${qualityLabel ? ` (${qualityLabel})` : ""}`),
+    row("Repair Cost", peso(opts.repairCost)),
+  ];
+  if (opts.serviceMode === "home_service") {
+    rows.push(row("Service Mode", "Home Service"));
+    rows.push(row("Home Service Fee", opts.serviceFee !== null ? peso(fee) : "To be confirmed"));
+    rows.push(row("Address", escapeHtml(opts.address ?? "")));
+  } else {
+    rows.push(row("Service Mode", "Walk-in"));
+    rows.push(row("Branch", escapeHtml(opts.branchName ?? "")));
+  }
+  rows.push(
+    `<tr><td style="padding:8px 0 0;font-weight:700;border-top:1px solid #e2e8f0;">Total</td><td style="padding:8px 0 0;font-weight:700;text-align:right;border-top:1px solid #e2e8f0;">${peso(total)}</td></tr>`
+  );
+
+  function row(label: string, value: string) {
+    return `<tr><td style="padding:4px 0;color:#64748b;">${label}</td><td style="padding:4px 0;text-align:right;">${value}</td></tr>`;
+  }
+
+  const html = `
+    <div style="font-family: -apple-system, sans-serif; max-width: 480px; margin: 0 auto; color: #1e293b;">
+      <p style="font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8;">Ceejay Cellphone Repair Shop</p>
+      <h2 style="margin: 4px 0 16px;">Your repair quotation</h2>
+      <p style="font-size: 14px; line-height: 1.5;">Hi ${escapeHtml(opts.customerName || "there")}, here's the quote you requested:</p>
+      <table style="width: 100%; font-size: 13px; border-collapse: collapse; margin: 12px 0;">${rows.join("")}</table>
+      <p style="font-size: 13px; color: #64748b;">
+        This is an estimate based on our standard price list. Final pricing will be confirmed upon inspection
+        ${opts.serviceMode === "walk_in" ? "at the branch" : "by our technician"}.
+      </p>
+    </div>
+  `;
+
+  const { error } = await client.emails.send({
+    from: FROM,
+    to,
+    subject: `Your repair quotation — ${opts.deviceLabel}`,
+    html,
+  });
+  if (error) throw new Error(error.message);
+}
+
 export async function sendLeadReplyEmail(to: string, opts: { customerName: string; message: string }) {
   const client = getClient();
   const { error } = await client.emails.send({

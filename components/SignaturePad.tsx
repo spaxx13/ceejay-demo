@@ -50,6 +50,13 @@ export default function SignaturePad({ name, label }: { name: string; label: str
     ensureSized(canvas);
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
+    e.preventDefault();
+    // Keeps receiving pointermove/pointerup for this pointer even if the
+    // cursor briefly drifts outside the canvas mid-stroke — a trackpad's
+    // acceleration makes that easy to trigger on a compact box, and without
+    // capture the stroke would otherwise cut off right there (see the old
+    // onPointerLeave-ends-the-stroke behavior this replaces).
+    canvas.setPointerCapture(e.pointerId);
     drawing.current = true;
     const { x, y } = pointFromEvent(e);
     ctx.beginPath();
@@ -57,6 +64,7 @@ export default function SignaturePad({ name, label }: { name: string; label: str
   }
   function move(e: React.PointerEvent<HTMLCanvasElement>) {
     if (!drawing.current) return;
+    e.preventDefault();
     const ctx = canvasRef.current?.getContext("2d");
     if (!ctx) return;
     const { x, y } = pointFromEvent(e);
@@ -64,9 +72,10 @@ export default function SignaturePad({ name, label }: { name: string; label: str
     ctx.stroke();
     setHasDrawn(true);
   }
-  function end() {
+  function end(e: React.PointerEvent<HTMLCanvasElement>) {
     if (!drawing.current) return;
     drawing.current = false;
+    if (canvasRef.current?.hasPointerCapture(e.pointerId)) canvasRef.current.releasePointerCapture(e.pointerId);
     setDataUrl(canvasRef.current?.toDataURL("image/png") ?? "");
   }
   function clear() {
@@ -94,7 +103,7 @@ export default function SignaturePad({ name, label }: { name: string; label: str
         onPointerDown={start}
         onPointerMove={move}
         onPointerUp={end}
-        onPointerLeave={end}
+        onPointerCancel={end}
         className="h-32 w-full touch-none rounded-lg border border-slate-300 bg-white"
       />
       {!hasDrawn && <p className="text-[11px] text-slate-400">Sign above with mouse, stylus, or finger.</p>}

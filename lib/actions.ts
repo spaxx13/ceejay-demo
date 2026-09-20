@@ -49,7 +49,7 @@ import {
   claimRepairRecordQrPaymentAsPaid,
 } from "./db";
 import { getCurrentUser, setSession, clearSession, requireRole } from "./auth";
-import { sendRepairReceiptEmail, sendCancellationEmail, sendQuotationEmail, sendLeadReplyEmail, sendBroadcastEmail, sendWalkInOtpEmail, emailConfigured } from "./email";
+import { sendRepairReceiptEmail, sendCancellationEmail, sendQuotationEmail, sendLeadReplyEmail, sendBroadcastEmail, sendWalkInOtpEmail, sendPublicQuoteEmail, emailConfigured } from "./email";
 import { sendSms, sendOtpSms, smsConfigured, normalizePhone, getAccountStatus, type SmsAccountStatus } from "./sms";
 import { SUNDAY_ONLY_PROVINCES, DOWNPAYMENT_PROVINCES, serviceFeeAmount } from "./homeServiceFees";
 import { getRepairQuote } from "./servicePricing";
@@ -1652,6 +1652,105 @@ export async function submitContactInquiry(_prev: ContactResult | undefined, for
   );
   await logActivity("lead", lead!.id, "Inquiry submitted via website contact form", "System");
   revalidatePath("/admin/crm");
+  return { ok: true };
+}
+
+// ---------- Public Quotation Tool ----------
+
+// The price list (Admin > Settings > Repair Pricing) is owner/admin-private
+// — the only place a customer ever sees a number from it is inside their
+// own emailed quotation — so the public /quote page can't be handed the
+// raw service_prices rows to check client-side. This is the one server
+// round-trip it makes while stepping through the wizard: given a device
+// model + repair type (+ screen quality), say ONLY whether a price exists,
+// never the price itself, so the page can decide whether to continue to
+// the service-mode step or show the "contact a branch" fallback.
+export async function checkQuoteAvailability(deviceModelId: string, serviceTypeId: string, screenQuality?: string): Promise<{ matched: boolean }> {
+  if (!deviceModelId || !serviceTypeId) return { matched: false };
+  const [lookups, prices] = await Promise.all([getLookups(), getServicePrices()]);
+  const serviceType = lookups.find((l) => l.id === serviceTypeId && l.kind === "service_type");
+  if (!serviceType) return { matched: false };
+  return { matched: getRepairQuote(prices, serviceType.label, deviceModelId, screenQuality) !== null };
+}
+
+export type PublicQuoteResult = { ok: true } | { ok: false; error: string };
+
+// Deliberately stateless — no lead/record is created, matching the "email
+// only" spec: this recomputes the price server-side (never trusts a
+// client-submitted number) and emails it, nothing is shown on screen or
+// persisted anywhere.
+export async function submitPublicQuote(_prev: PublicQuoteResult | undefined, formData: FormData): Promise<PublicQuoteResult> {
+  const name = str(formData, "name");
+  const email = str(formData, "email");
+  const phone = str(formData, "phone");
+  const deviceBrandId = str(formData, "deviceBrandId");
+  const deviceModelId = str(formData, "deviceModelId");
+  const serviceTypeId = str(formData, "serviceTypeId");
+  const screenQuality = str(formData, "screenQuality");
+  const serviceMode = str(formData, "serviceMode");
+  const branchId = str(formData, "branchId") || null;
+  const street = str(formData, "street");
+  const barangay = str(formData, "barangay");
+  const city = str(formData, "city");
+  const province = str(formData, "province");
+
+  if (!email || !isValidEmail(email)) {
+    return { ok: false, error: "Please enter a valid email address." };
+  }
+  if (!phone || !isValidPhone(phone)) {
+    return { ok: false, error: "Please enter a valid PH mobile number, e.g. 0917 123 4567." };
+  }
+  if (!deviceBrandId || !deviceModelId || !serviceTypeId) {
+    return { ok: false, error: "Please complete the device and repair type selection." };
+  }
+  if (serviceMode !== "walk_in" && serviceMode !== "home_service") {
+    return { ok: false, error: "Please choose Walk-in or Home Service." };
+  }
+  if (serviceMode === "walk_in" && !branchId) {
+    return { ok: false, error: "Please select which branch you'd like to visit." };
+  }
+  if (serviceMode === "home_service" && (!street || !city || !province)) {
+    return { ok: false, error: "Please complete your address." };
+  }
+
+  const [lookups, deviceModels, prices, branches] = await Promise.all([getLookups(), getDeviceModels(), getServicePrices(), getBranches()]);
+  const brand = lookups.find((l) => l.id === deviceBrandId && l.kind === "device_brand");
+  const model = deviceModels.find((m) => m.id === deviceModelId);
+  const serviceType = lookups.find((l) => l.id === serviceTypeId && l.kind === "service_type");
+  if (!brand || !model || !serviceType) {
+    return { ok: false, error: "Something went wrong with your submission. Please try again." };
+  }
+
+  const repairCost = getRepairQuote(prices, serviceType.label, deviceModelId, screenQuality);
+  if (repairCost === null) {
+    return { ok: false, error: "Sorry, we don't have a price on file for that combination — please contact a branch directly." };
+  }
+  const deviceLabel = `${brand.label} ${model.name}`.trim();
+
+  let serviceFee: number | null = null;
+  let branchName: string | undefined;
+  let address: string | undefined;
+  if (serviceMode === "home_service") {
+    serviceFee = serviceFeeAmount(province, city);
+    address = [street, barangay ? `Brgy. ${barangay}` : null, city, province].filter(Boolean).join(", ");
+  } else {
+    const branch = branches.find((b) => b.id === branchId && b.active);
+    if (!branch) return { ok: false, error: "Please select a valid branch." };
+    branchName = branch.name;
+  }
+
+  await sendPublicQuoteEmail(email, {
+    customerName: name,
+    deviceLabel,
+    serviceTypeLabel: serviceType.label,
+    screenQuality: screenQuality || undefined,
+    repairCost,
+    serviceMode,
+    branchName,
+    address,
+    serviceFee,
+  });
+
   return { ok: true };
 }
 
