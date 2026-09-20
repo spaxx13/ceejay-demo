@@ -3,7 +3,14 @@
 import { Fragment, useActionState, useEffect, useRef, useState } from "react";
 import { submitHomeServiceRequest, sendHomeServiceOtp, verifyHomeServiceOtp } from "@/lib/actions";
 import { OTP_GATE_ENABLED, BOOKING_CONFIRMATION_WINDOW_HOURS } from "@/lib/config";
-import { PROVINCE_FEES, SUNDAY_ONLY_PROVINCES, EXCLUDED_FROM_HOME_SERVICE, nextSunday, minPreferredDateStr } from "@/lib/homeServiceFees";
+import {
+  PROVINCE_FEES,
+  SUNDAY_ONLY_PROVINCES,
+  DOWNPAYMENT_PROVINCES,
+  EXCLUDED_FROM_HOME_SERVICE,
+  nextSunday,
+  minPreferredDateStr,
+} from "@/lib/homeServiceFees";
 import PhotoUpload from "./PhotoUpload";
 import DynamicFormField from "./DynamicFormField";
 import type { RequestFormContent, CustomFormField, HomeServiceQueue } from "@/lib/types";
@@ -519,6 +526,21 @@ export default function HomeServiceForm({
                 Home service for {province} is available every Sunday only — please pick a Sunday date.
               </FormNotice>
               {pickedWrongDay && <p className="text-sm text-red-600">That date isn&apos;t a Sunday — please pick a Sunday instead.</p>}
+              {DOWNPAYMENT_PROVINCES.has(province) && PROVINCE_FEES[province] && (
+                <FormNotice tone="amber" icon="💳">
+                  <p className="font-semibold">Down payment required to secure your slot</p>
+                  <p className="mt-1">
+                    For home service in {province}, we require a ₱{PROVINCE_FEES[province].base.toLocaleString()}.00 down payment —
+                    equivalent to the service fee — to secure your slot on your preferred date. This will be deducted from your final
+                    bill on the day of service.
+                  </p>
+                  <p className="mt-1">
+                    If you cancel on the day of service for any reason, the down payment is non-refundable since your slot has
+                    already been secured. If you need to reschedule instead, you may still use your down payment — please contact us
+                    at least 2 days before your scheduled date.
+                  </p>
+                </FormNotice>
+              )}
             </div>
           );
         }
