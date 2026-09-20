@@ -16,6 +16,7 @@ export function priceCategoryForServiceType(serviceTypeLabel: string): PriceCate
   if (serviceTypeLabel === "Front Camera") return "front_camera";
   if (serviceTypeLabel === "Camera Lens") return "camera_lens";
   if (serviceTypeLabel === "Reglass") return "reglass";
+  if (serviceTypeLabel === "Charging Port") return "charging_port";
   if (serviceTypeLabel === "Screen Repair") return "screen";
   return null;
 }

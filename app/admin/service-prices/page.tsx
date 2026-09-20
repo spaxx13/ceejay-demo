@@ -11,6 +11,7 @@ const COLUMNS = [
   { field: "front_camera", label: "Front Camera" },
   { field: "camera_lens", label: "Camera Lens" },
   { field: "reglass", label: "Reglass (Walk-in only)" },
+  { field: "charging_port", label: "Charging Port (Walk-in only)" },
   { field: "screen_hq", label: "Screen (High Quality)" },
   { field: "screen_orig", label: "Screen (Original)" },
 ] as const;
@@ -32,6 +33,7 @@ export default async function ServicePricesPage() {
     if (field === "front_camera") return priceFor(modelId, "front_camera", "");
     if (field === "camera_lens") return priceFor(modelId, "camera_lens", "");
     if (field === "reglass") return priceFor(modelId, "reglass", "");
+    if (field === "charging_port") return priceFor(modelId, "charging_port", "");
     if (field === "screen_hq") return priceFor(modelId, "screen", "high_quality");
     return priceFor(modelId, "screen", "original");
   };

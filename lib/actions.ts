@@ -468,6 +468,7 @@ const PRICE_CELLS = [
   { category: "front_camera", quality: "", field: "front_camera" },
   { category: "camera_lens", quality: "", field: "camera_lens" },
   { category: "reglass", quality: "", field: "reglass" },
+  { category: "charging_port", quality: "", field: "charging_port" },
   { category: "screen", quality: "high_quality", field: "screen_hq" },
   { category: "screen", quality: "original", field: "screen_orig" },
 ] as const;
