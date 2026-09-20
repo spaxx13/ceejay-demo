@@ -47,9 +47,14 @@ import {
   claimHomeServiceDownpaymentAsPaid,
   markRepairRecordQrPaymentPending,
   claimRepairRecordQrPaymentAsPaid,
+  getMailInRequestById,
+  getMailInRequestByToken,
+  markMailInPaymentPending,
+  claimMailInPaymentAsPaid,
 } from "./db";
 import { getCurrentUser, setSession, clearSession, requireRole } from "./auth";
-import { sendRepairReceiptEmail, sendCancellationEmail, sendQuotationEmail, sendLeadReplyEmail, sendBroadcastEmail, sendWalkInOtpEmail, emailConfigured } from "./email";
+import { sendRepairReceiptEmail, sendCancellationEmail, sendQuotationEmail, sendLeadReplyEmail, sendBroadcastEmail, sendWalkInOtpEmail, sendMailInEmail, emailConfigured } from "./email";
+import { resolveCourierLabel } from "./couriers";
 import { sendSms, sendOtpSms, smsConfigured, normalizePhone, getAccountStatus, type SmsAccountStatus } from "./sms";
 import { SUNDAY_ONLY_PROVINCES, DOWNPAYMENT_PROVINCES, serviceFeeAmount } from "./homeServiceFees";
 import { getRepairQuote } from "./servicePricing";
@@ -65,6 +70,7 @@ import type {
   ChecklistPhase,
   Expense,
   HomeServiceRequest,
+  MailInRequest,
 } from "./types";
 
 function str(fd: FormData, key: string) {
@@ -3104,4 +3110,472 @@ export async function removePushSubscription(endpoint: string) {
   const user = await getCurrentUser();
   if (!user) return;
   await query("delete from push_subscriptions where endpoint=$1 and user_id=$2", [endpoint, user.id]);
+}
+
+// ---------- Mail-In Repairs ----------
+//
+// A customer far from any branch ships their phone to us by courier. The
+// flow: Awaiting Shipment -> In Transit (customer enters courier + tracking)
+// -> Received (staff logs condition + photos) -> Repairing -> Awaiting
+// Payment (final cost set; the customer pays by PayMongo QR Ph from their
+// tracking page — no down payment) -> Paid -> Shipped Back -> Delivered.
+// The customer pays shipping both ways. Staff-side actions share the Walk-In
+// Registrations permission (canManageWalkIns).
+
+const MAILIN_STATUS = {
+  pendingReview: "Pending Review",
+  awaitingShipment: "Awaiting Shipment",
+  inTransit: "In Transit",
+  received: "Received",
+  repairing: "Repairing",
+  awaitingPayment: "Awaiting Payment",
+  paid: "Paid",
+  shippedBack: "Shipped Back",
+  delivered: "Delivered",
+  cancelled: "Cancelled",
+} as const;
+type MailInStatusLabel = (typeof MAILIN_STATUS)[keyof typeof MAILIN_STATUS];
+
+async function setMailInStatus(id: string, label: MailInStatusLabel) {
+  const lookups = await getLookups();
+  const statusId = lookups.find((l) => l.kind === "mailin_status" && l.label === label)?.id;
+  if (statusId) await query("update mailin_requests set status_id=$1 where id=$2", [statusId, id]);
+}
+
+async function mailInStatusLabel(statusId: string) {
+  const lookups = await getLookups();
+  return lookups.find((l) => l.id === statusId)?.label ?? "";
+}
+
+function mailInTrackUrl(token: string) {
+  return `${SITE_URL}/mail-in/track/${token}`;
+}
+
+// Best-effort email to the customer — a Resend hiccup must never fail the
+// staff action or the customer's own submission that triggered it.
+async function emailMailInCustomer(
+  req: Pick<MailInRequest, "email" | "token">,
+  opts: { subject: string; heading: string; body: string; buttonLabel?: string }
+) {
+  if (!req.email || !emailConfigured()) return "";
+  try {
+    await sendMailInEmail(req.email, { ...opts, trackUrl: mailInTrackUrl(req.token) });
+    return ` — email sent to ${req.email}`;
+  } catch (err) {
+    return ` — email failed to send to ${req.email} (${err instanceof Error ? err.message : "unknown error"})`;
+  }
+}
+
+async function requireMailInStaff() {
+  const user = await getCurrentUser();
+  if (!canManageWalkIns(user)) return null;
+  return user;
+}
+
+function revalidateMailIn(id: string, token?: string) {
+  revalidatePath("/admin/mail-ins");
+  revalidatePath(`/admin/mail-ins/${id}`);
+  if (token) revalidatePath(`/mail-in/track/${token}`);
+}
+
+export type MailInSubmitResult = { ok: true; reference: string; token: string } | { ok: false; error: string };
+
+export async function submitMailInRequest(_prev: MailInSubmitResult | undefined, formData: FormData): Promise<MailInSubmitResult> {
+  const name = str(formData, "name");
+  const phone = str(formData, "phone");
+  const email = str(formData, "email");
+  const branchId = str(formData, "branchId") || null;
+  const rawDeviceBrandId = str(formData, "deviceBrandId");
+  const rawDeviceModelId = str(formData, "deviceModelId");
+  const deviceOther = str(formData, "deviceOther");
+  const serviceTypeId = str(formData, "serviceTypeId") || null;
+  const issue = str(formData, "issue");
+  const photoDataUrlRaw = str(formData, "photoDataUrl");
+  const photoDataUrl = photoDataUrlRaw.startsWith("data:image/") ? photoDataUrlRaw : null;
+  const returnStreet = str(formData, "returnStreet");
+  const returnBarangay = str(formData, "returnBarangay");
+  const returnCity = str(formData, "returnCity");
+  const returnProvince = str(formData, "returnProvince");
+  const returnLandmark = str(formData, "returnLandmark");
+
+  if (!name || !phone) return { ok: false, error: "Please share your name and mobile number." };
+  if (!isValidPhone(phone)) return { ok: false, error: "Please enter a valid PH mobile number, e.g. 0917 123 4567." };
+  if (!email) return { ok: false, error: "Please share your email address — we send your tracking link there." };
+  if (!isValidEmail(email)) return { ok: false, error: "Please enter a valid email address." };
+  if (OTP_GATE_ENABLED && emailConfigured()) {
+    const otpRow = await queryOne<{ verified: boolean }>("select verified from email_otp_codes where email=$1", [email.trim().toLowerCase()]);
+    if (!otpRow?.verified) return { ok: false, error: "Please verify your email address before submitting." };
+  }
+  if (!branchId) return { ok: false, error: "Please select which branch you'll ship your phone to." };
+  if (!rawDeviceBrandId) return { ok: false, error: "Please select your device brand." };
+  if (!issue) return { ok: false, error: "Please briefly describe the issue." };
+  if (!returnStreet || !returnCity || !returnProvince) {
+    return { ok: false, error: "Please complete your return address (street, city/municipality and province) so we can ship your phone back." };
+  }
+  if (formData.get("agree") !== "on") return { ok: false, error: "Please confirm that you've read the shipping terms." };
+
+  const [lookups, branches] = await Promise.all([getLookups(), getBranches()]);
+  const branch = branches.find((b) => b.id === branchId && b.active && b.address.trim());
+  if (!branch) return { ok: false, error: "Something went wrong with your submission. Please try again." };
+  const statusId = lookups.find((l) => l.kind === "mailin_status" && l.label === MAILIN_STATUS.pendingReview)?.id;
+  if (!statusId) return { ok: false, error: "Repair by Courier isn't available right now. Please contact a branch directly." };
+
+  const deviceBrandId = UUID_RE.test(rawDeviceBrandId) ? rawDeviceBrandId : null;
+  const deviceModelId = deviceBrandId && UUID_RE.test(rawDeviceModelId) ? rawDeviceModelId : null;
+
+  // Same max-based + retry-on-collision reference pattern as walk-ins/repairs.
+  const year = new Date().getFullYear();
+  let reference = "";
+  let created: { id: string; token: string } | null = null;
+  for (let attempt = 1; attempt <= 5; attempt++) {
+    const max = await queryOne<{ n: number }>(
+      "select coalesce(max(split_part(reference, '-', 3)::int), 0)::int as n from mailin_requests where reference like $1",
+      [`MI-${year}-%`]
+    );
+    reference = `MI-${year}-${String((max?.n ?? 0) + 1).padStart(4, "0")}`;
+    try {
+      created = await queryOne<{ id: string; token: string }>(
+        `insert into mailin_requests
+           (reference, name, phone, email, branch_id, device_brand_id, device_model_id, device_other, service_type_id, issue_description, photo_data_url,
+            return_street, return_barangay, return_city, return_province, return_landmark, status_id)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) returning id, token`,
+        [reference, name, phone, email, branchId, deviceBrandId, deviceModelId, deviceOther, serviceTypeId, issue, photoDataUrl,
+         returnStreet, returnBarangay, returnCity, returnProvince, returnLandmark, statusId]
+      );
+      break;
+    } catch (err) {
+      const code = (err as { code?: string }).code;
+      if (code === "23505" && attempt < 5) continue;
+      throw err;
+    }
+  }
+
+  await logActivity("mailin_request", created!.id, `Mail-in request ${reference} submitted via website — to ship to ${branch.name}`, "System");
+  await query("delete from email_otp_codes where email=$1", [email.trim().toLowerCase()]);
+  await emailMailInCustomer(
+    { email, token: created!.token },
+    {
+      subject: `Your repair request ${reference}`,
+      heading: "We got your repair request",
+      body: `Hi ${name}, your request ${reference} is in and we're reviewing it. Please don't ship your phone yet — we'll email you once we've approved it, with our shipping address and packing tips.`,
+      buttonLabel: "Check Request Status",
+    }
+  );
+  revalidatePath("/admin/mail-ins");
+  return { ok: true, reference, token: created!.token };
+}
+
+export type MailInActionResult = { ok: true } | { ok: false; error: string };
+
+// Staff approves a Pending Review request -> the customer is told to ship.
+// To decline instead, staff uses Cancel (with a reason the customer sees).
+export async function approveMailInRequest(formData: FormData) {
+  const user = await requireMailInStaff();
+  if (!user) return;
+  const id = str(formData, "id");
+  const req = await getMailInRequestById(id);
+  if (!req || (await mailInStatusLabel(req.statusId)) !== MAILIN_STATUS.pendingReview) return;
+  const note = str(formData, "estimateNote");
+
+  await query("update mailin_requests set estimate_note=$2 where id=$1", [id, note]);
+  await setMailInStatus(id, MAILIN_STATUS.awaitingShipment);
+  const emailNote = await emailMailInCustomer(req, {
+    subject: `Approved — you can ship your phone (${req.reference})`,
+    heading: "Your request is approved",
+    body: `Good news — we can take your phone. ${note ? `${note} ` : ""}Open your tracking page for our shipping address and packing tips, then add your courier and tracking number once you've shipped it.`,
+    buttonLabel: "Shipping Instructions",
+  });
+  await logActivity("mailin_request", id, `Approved by ${user.name}${note ? ` — ${note}` : ""}${emailNote}`, user.name);
+  revalidateMailIn(id, req.token);
+}
+
+// Customer: tells us which courier they used and the tracking number.
+// Allowed until the phone is actually received (so a typo can be fixed).
+export async function submitMailInShipment(token: string, formData: FormData): Promise<MailInActionResult> {
+  const req = await getMailInRequestByToken(token);
+  if (!req) return { ok: false, error: "We couldn't find this request." };
+  const status = await mailInStatusLabel(req.statusId);
+  if (status !== MAILIN_STATUS.awaitingShipment && status !== MAILIN_STATUS.inTransit) {
+    return { ok: false, error: "We've already received your phone, so shipping details can no longer be changed here." };
+  }
+  const courier = resolveCourierLabel(str(formData, "courier"), str(formData, "courierOther"));
+  const tracking = str(formData, "tracking");
+  if (!courier) return { ok: false, error: "Please choose the courier you used." };
+  if (!tracking) return { ok: false, error: "Please enter your tracking number." };
+
+  await query("update mailin_requests set outbound_courier=$2, outbound_tracking=$3, outbound_shipped_at=coalesce(outbound_shipped_at, now()) where id=$1", [
+    req.id,
+    courier,
+    tracking,
+  ]);
+  await setMailInStatus(req.id, MAILIN_STATUS.inTransit);
+  await logActivity("mailin_request", req.id, `Customer shipped via ${courier}, tracking ${tracking}`, req.name);
+  revalidateMailIn(req.id, token);
+  return { ok: true };
+}
+
+// Customer: pay the final cost by PayMongo QR Ph from the tracking page.
+// Redirects to PayMongo on success, so it only ever returns an error.
+export async function startMailInPayment(token: string): Promise<{ ok: false; error: string }> {
+  const req = await getMailInRequestByToken(token);
+  if (!req) return { ok: false, error: "We couldn't find this request." };
+  if (req.qrPaymentStatus === "paid") return { ok: false, error: "This repair has already been paid." };
+  if ((await mailInStatusLabel(req.statusId)) !== MAILIN_STATUS.awaitingPayment || !req.finalCost) {
+    return { ok: false, error: "Your repair isn't ready for payment yet." };
+  }
+  if (!paymongoConfigured()) return { ok: false, error: "Online payment isn't available right now — please contact the shop." };
+
+  let session: Awaited<ReturnType<typeof createPaymongoCheckoutSession>>;
+  try {
+    session = await createPaymongoCheckoutSession({
+      metadata: { kind: "mailin_payment", mailInId: req.id },
+      amountPesos: req.finalCost,
+      description: `Repair payment — ${req.reference}`,
+      lineItemName: "Repair Payment",
+      paymentMethodTypes: ["qrph"],
+      successUrl: mailInTrackUrl(token),
+      cancelUrl: mailInTrackUrl(token),
+    });
+  } catch {
+    return { ok: false, error: "Couldn't start the payment — please try again in a moment." };
+  }
+  await markMailInPaymentPending(req.id, session.id, session.checkoutUrl, req.finalCost);
+  redirect(session.checkoutUrl);
+}
+
+// Creates the POS repair record for a paid mail-in so Branch Sales counts it
+// (Sales reads repair_records). No checklists — the phone wasn't handed over
+// in person — so it's a plain record staff can edit from POS.
+async function createRepairRecordForMailIn(req: MailInRequest, actor: string) {
+  if (req.repairRecordId || !req.finalCost) return;
+  const [lookups, models, customers] = await Promise.all([getLookups(), getDeviceModels(), getCustomers()]);
+  const brand = lookups.find((l) => l.id === req.deviceBrandId);
+  const model = models.find((m) => m.id === req.deviceModelId);
+  const deviceLabel = brand ? `${brand.label} ${model?.name ?? ""}`.trim() : req.deviceOther || "Device";
+
+  const normalizedPhone = req.phone.replace(/[\s-]/g, "");
+  const existing =
+    (normalizedPhone && customers.find((c) => c.phone.replace(/[\s-]/g, "") === normalizedPhone)) ||
+    (req.email && customers.find((c) => c.email.toLowerCase() === req.email.toLowerCase())) ||
+    null;
+  let customerId: string;
+  if (existing) {
+    customerId = existing.id;
+  } else {
+    const created = await queryOne<{ id: string }>("insert into customers (name, phone, email, source) values ($1,$2,$3,'Mail-in') returning id", [
+      req.name,
+      req.phone,
+      req.email,
+    ]);
+    customerId = created!.id;
+    await logActivity("customer", customerId, `Customer created from mail-in repair ${req.reference}`, actor);
+  }
+
+  const year = new Date().getFullYear();
+  let recordId: string | null = null;
+  let reference = "";
+  for (let attempt = 1; attempt <= 5; attempt++) {
+    const max = await queryOne<{ n: number }>(
+      "select coalesce(max(split_part(reference, '-', 3)::int), 0)::int as n from repair_records where reference like $1",
+      [`REPAIR-${year}-%`]
+    );
+    reference = `REPAIR-${year}-${String((max?.n ?? 0) + 1).padStart(4, "0")}`;
+    try {
+      const row = await queryOne<{ id: string }>(
+        `insert into repair_records
+           (reference, branch_id, customer_id, customer_name, contact_number, email, device_model, reported_problem, service_performed, parts_used, cost, parts_cost, labor_cost, other_expenses, technician_name, service_date, notes, logged_by)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,'',$10,0,0,0,'',$11,$12,$13) returning id`,
+        [
+          reference,
+          req.branchId,
+          customerId,
+          req.name,
+          req.phone,
+          req.email,
+          deviceLabel,
+          req.issueDescription,
+          req.diagnosis,
+          req.finalCost,
+          new Date().toISOString().slice(0, 10),
+          `Mail-in repair ${req.reference} (paid via ${req.paidMethod || "QR Ph"})`,
+          actor,
+        ]
+      );
+      recordId = row!.id;
+      break;
+    } catch (e) {
+      const code = e && typeof e === "object" && "code" in e ? (e as { code: string }).code : "";
+      if (code === "23505" && attempt < 5) continue;
+      throw e;
+    }
+  }
+  await query("update mailin_requests set repair_record_id=$2, customer_id=$3 where id=$1", [req.id, recordId, customerId]);
+  await logActivity("customer", customerId, `Mail-in repair ${req.reference} paid — POS record ${reference} created (₱${req.finalCost.toLocaleString()})`, actor);
+  revalidatePath("/admin/pos");
+  revalidatePath("/admin");
+}
+
+async function finishMailInPayment(req: MailInRequest, actor: string, how: string) {
+  await setMailInStatus(req.id, MAILIN_STATUS.paid);
+  await createRepairRecordForMailIn(req, actor);
+  await logActivity("mailin_request", req.id, `Payment received (${how}) — ₱${(req.finalCost ?? 0).toLocaleString()}`, actor);
+  await emailMailInCustomer(req, {
+    subject: `Payment received for ${req.reference}`,
+    heading: "Payment received — thank you!",
+    body: `We've received your payment of ₱${(req.finalCost ?? 0).toLocaleString()}. We'll ship your phone back to you soon and email you the tracking number.`,
+  });
+  revalidateMailIn(req.id, req.token);
+}
+
+// The only place a QR Ph mail-in payment is marked paid — called from both
+// the PayMongo webhook and the tracking page's fallback re-verification, so
+// either one racing ahead of the other is safe.
+export async function processMailInPayment(mailInId: string, paymongoPaymentId: string) {
+  const claimed = await claimMailInPaymentAsPaid(mailInId, paymongoPaymentId);
+  if (claimed) await finishMailInPayment(claimed, "System", "QR Ph");
+  return getMailInRequestById(mailInId);
+}
+
+export async function markMailInReceived(formData: FormData) {
+  const user = await requireMailInStaff();
+  if (!user) return;
+  const id = str(formData, "id");
+  const req = await getMailInRequestById(id);
+  if (!req || req.receivedAt) return;
+  const notes = str(formData, "conditionNotes");
+  const photos = ["photo1", "photo2", "photo3"].map((k) => str(formData, k)).filter((p) => p.startsWith("data:image/"));
+
+  await query("update mailin_requests set received_at=now(), received_by=$2, received_condition_notes=$3, received_photo_data_urls=$4::jsonb where id=$1", [
+    id,
+    user.name,
+    notes,
+    JSON.stringify(photos),
+  ]);
+  await setMailInStatus(id, MAILIN_STATUS.received);
+  const emailNote = await emailMailInCustomer(req, {
+    subject: `We received your phone — ${req.reference}`,
+    heading: "We've received your phone",
+    body: "Your phone arrived at our shop and we've logged its condition. A technician will start on it shortly — we'll email you again when the repair is done.",
+  });
+  await logActivity("mailin_request", id, `Marked received by ${user.name}${photos.length ? ` with ${photos.length} photo(s)` : ""}${emailNote}`, user.name);
+  revalidateMailIn(id, req.token);
+}
+
+export async function startMailInRepair(formData: FormData) {
+  const user = await requireMailInStaff();
+  if (!user) return;
+  const id = str(formData, "id");
+  const req = await getMailInRequestById(id);
+  if (!req) return;
+  await query("update mailin_requests set diagnosis=$2 where id=$1", [id, str(formData, "diagnosis")]);
+  await setMailInStatus(id, MAILIN_STATUS.repairing);
+  await logActivity("mailin_request", id, `Repair started by ${user.name}`, user.name);
+  revalidateMailIn(id, req.token);
+}
+
+// Staff sets the final cost -> customer is told it's ready to pay.
+export async function completeMailInRepair(formData: FormData) {
+  const user = await requireMailInStaff();
+  if (!user) return;
+  const id = str(formData, "id");
+  const req = await getMailInRequestById(id);
+  if (!req || req.qrPaymentStatus === "paid") return;
+  const cost = Math.round(Number(str(formData, "finalCost")) * 100) / 100;
+  if (!Number.isFinite(cost) || cost <= 0) return;
+
+  // A new amount invalidates any QR session generated for the old one.
+  await query(
+    `update mailin_requests set final_cost=$2, diagnosis=$3, repair_completed_at=now(),
+       qr_payment_status='none', qr_payment_amount=null, paymongo_checkout_session_id=null, paymongo_checkout_url=null
+     where id=$1`,
+    [id, cost, str(formData, "diagnosis") || req.diagnosis]
+  );
+  await setMailInStatus(id, MAILIN_STATUS.awaitingPayment);
+  const emailNote = await emailMailInCustomer(req, {
+    subject: `Your phone is repaired — pay to ship it back (${req.reference})`,
+    heading: "Your phone is repaired",
+    body: `Good news — the repair is done. The total is ₱${cost.toLocaleString()}. Pay by QR Ph from your tracking page and we'll ship your phone back right after.`,
+    buttonLabel: "Pay Now",
+  });
+  await logActivity("mailin_request", id, `Repair completed by ${user.name} — final cost ₱${cost.toLocaleString()}${emailNote}`, user.name);
+  revalidateMailIn(id, req.token);
+}
+
+// For a customer who paid some other way (cash deposit, bank transfer, ...).
+export async function markMailInPaidManually(formData: FormData) {
+  const user = await requireMailInStaff();
+  if (!user) return;
+  const id = str(formData, "id");
+  const req = await getMailInRequestById(id);
+  if (!req || !req.finalCost || req.qrPaymentStatus === "paid") return;
+  const method = str(formData, "method") || "Manual";
+  await query("update mailin_requests set qr_payment_status='paid', paid_at=now(), paid_method=$2 where id=$1 and qr_payment_status <> 'paid'", [id, method]);
+  const fresh = await getMailInRequestById(id);
+  if (fresh) await finishMailInPayment(fresh, user.name, method);
+}
+
+export async function shipMailInBack(formData: FormData) {
+  const user = await requireMailInStaff();
+  if (!user) return;
+  const id = str(formData, "id");
+  const req = await getMailInRequestById(id);
+  if (!req || req.qrPaymentStatus !== "paid") return;
+  const courier = resolveCourierLabel(str(formData, "courier"), str(formData, "courierOther"));
+  const tracking = str(formData, "tracking");
+  if (!courier || !tracking) return;
+
+  await query("update mailin_requests set return_courier=$2, return_tracking=$3, return_shipped_at=now() where id=$1", [id, courier, tracking]);
+  await setMailInStatus(id, MAILIN_STATUS.shippedBack);
+  const emailNote = await emailMailInCustomer(req, {
+    subject: `Your phone is on its way back — ${req.reference}`,
+    heading: "Your phone has been shipped",
+    body: `We shipped your phone via ${courier}. Tracking number: ${tracking}.`,
+  });
+  await logActivity("mailin_request", id, `Shipped back via ${courier}, tracking ${tracking} by ${user.name}${emailNote}`, user.name);
+  revalidateMailIn(id, req.token);
+}
+
+export async function markMailInDelivered(formData: FormData) {
+  const user = await requireMailInStaff();
+  if (!user) return;
+  const id = str(formData, "id");
+  const req = await getMailInRequestById(id);
+  if (!req) return;
+  await query("update mailin_requests set delivered_at=now() where id=$1", [id]);
+  await setMailInStatus(id, MAILIN_STATUS.delivered);
+  await logActivity("mailin_request", id, `Marked delivered by ${user.name}`, user.name);
+  revalidateMailIn(id, req.token);
+}
+
+export async function cancelMailInRequest(formData: FormData) {
+  const user = await requireMailInStaff();
+  if (!user) return;
+  const id = str(formData, "id");
+  const req = await getMailInRequestById(id);
+  if (!req || req.qrPaymentStatus === "paid") return;
+  const reason = str(formData, "reason");
+  await query("update mailin_requests set cancelled_reason=$2 where id=$1", [id, reason]);
+  await setMailInStatus(id, MAILIN_STATUS.cancelled);
+  const emailNote = await emailMailInCustomer(req, {
+    subject: `Your repair request ${req.reference} was cancelled`,
+    heading: "Your request was cancelled",
+    body: reason ? `Reason: ${reason}` : "Your repair request has been cancelled. Contact the shop if you have questions.",
+  });
+  await logActivity("mailin_request", id, `Cancelled by ${user.name}${reason ? ` — ${reason}` : ""}${emailNote}`, user.name);
+  revalidateMailIn(id, req.token);
+}
+
+// Manual override for anything the guided steps don't cover.
+export async function updateMailInStatus(formData: FormData) {
+  const user = await requireMailInStaff();
+  if (!user) return;
+  const id = str(formData, "id");
+  const statusId = str(formData, "statusId");
+  const lookups = await getLookups();
+  const status = lookups.find((l) => l.id === statusId && l.kind === "mailin_status");
+  const req = await getMailInRequestById(id);
+  if (!status || !req) return;
+  await query("update mailin_requests set status_id=$1 where id=$2", [statusId, id]);
+  await logActivity("mailin_request", id, `Status changed to "${status.label}" by ${user.name}`, user.name);
+  revalidateMailIn(id, req.token);
 }

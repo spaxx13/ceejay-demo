@@ -16,6 +16,7 @@ const NAV_GROUPS: {
     links: [
       { href: "/admin/requests", label: "Home Service Requests", requestsGated: true },
       { href: "/admin/walk-ins", label: "Walk-In Registrations", walkinsGated: true },
+      { href: "/admin/mail-ins", label: "Repair by Courier", walkinsGated: true },
       { href: "/admin/pos", label: "POS" },
       { href: "/admin/sales", label: "Branch Sales" },
     ],

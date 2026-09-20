@@ -10,6 +10,7 @@ import type {
   ServicePrice,
   Lead,
   WalkInRequest,
+  MailInRequest,
   HomeServiceRequest,
   ServiceFeeWaiver,
   ActivityLog,
@@ -482,6 +483,66 @@ export async function getDeletedWalkInRequests() {
 export async function getWalkInRequestById(id: string) {
   const row = await queryOne<WalkInRequestRow>("select * from walkin_requests where id = $1", [id]);
   return row ? mapWalkInRequest(row) : null;
+}
+
+type MailInRequestRow = {
+  id: string; reference: string; token: string; customer_id: string | null; name: string; phone: string; email: string; branch_id: string | null;
+  device_brand_id: string | null; device_model_id: string | null; device_other: string; service_type_id: string | null;
+  issue_description: string; photo_data_url: string | null;
+  return_street: string; return_barangay: string; return_city: string; return_province: string; return_landmark: string;
+  outbound_courier: string; outbound_tracking: string; outbound_shipped_at: Date | null;
+  received_at: Date | null; received_by: string; received_condition_notes: string; received_photo_data_urls: string[] | null;
+  estimate_note: string; diagnosis: string; final_cost: string | number | null; repair_completed_at: Date | null;
+  qr_payment_status: MailInRequest["qrPaymentStatus"]; qr_payment_amount: string | number | null;
+  paymongo_checkout_session_id: string | null; paymongo_checkout_url: string | null; paymongo_payment_id: string | null;
+  paid_at: Date | null; paid_method: string; repair_record_id: string | null;
+  return_courier: string; return_tracking: string; return_shipped_at: Date | null; delivered_at: Date | null;
+  status_id: string; cancelled_reason: string; created_at: Date;
+};
+function mapMailInRequest(r: MailInRequestRow): MailInRequest {
+  return {
+    id: r.id, reference: r.reference, token: r.token, customerId: r.customer_id, name: r.name, phone: r.phone, email: r.email, branchId: r.branch_id,
+    deviceBrandId: r.device_brand_id, deviceModelId: r.device_model_id, deviceOther: r.device_other, serviceTypeId: r.service_type_id,
+    issueDescription: r.issue_description, photoDataUrl: r.photo_data_url,
+    returnStreet: r.return_street, returnBarangay: r.return_barangay, returnCity: r.return_city, returnProvince: r.return_province, returnLandmark: r.return_landmark,
+    outboundCourier: r.outbound_courier, outboundTracking: r.outbound_tracking, outboundShippedAt: toIsoOrNull(r.outbound_shipped_at),
+    receivedAt: toIsoOrNull(r.received_at), receivedBy: r.received_by, receivedConditionNotes: r.received_condition_notes,
+    receivedPhotoDataUrls: r.received_photo_data_urls ?? [],
+    estimateNote: r.estimate_note, diagnosis: r.diagnosis, finalCost: r.final_cost === null ? null : Number(r.final_cost), repairCompletedAt: toIsoOrNull(r.repair_completed_at),
+    qrPaymentStatus: r.qr_payment_status, qrPaymentAmount: r.qr_payment_amount === null ? null : Number(r.qr_payment_amount),
+    paymongoCheckoutSessionId: r.paymongo_checkout_session_id, paymongoCheckoutUrl: r.paymongo_checkout_url, paymongoPaymentId: r.paymongo_payment_id,
+    paidAt: toIsoOrNull(r.paid_at), paidMethod: r.paid_method, repairRecordId: r.repair_record_id,
+    returnCourier: r.return_courier, returnTracking: r.return_tracking, returnShippedAt: toIsoOrNull(r.return_shipped_at), deliveredAt: toIsoOrNull(r.delivered_at),
+    statusId: r.status_id, cancelledReason: r.cancelled_reason, createdAt: toIso(r.created_at),
+  };
+}
+export async function getMailInRequests() {
+  return (await query<MailInRequestRow>("select * from mailin_requests order by created_at desc")).map(mapMailInRequest);
+}
+export async function getMailInRequestById(id: string) {
+  const row = await queryOne<MailInRequestRow>("select * from mailin_requests where id = $1", [id]);
+  return row ? mapMailInRequest(row) : null;
+}
+export async function getMailInRequestByToken(token: string) {
+  const row = await queryOne<MailInRequestRow>("select * from mailin_requests where token = $1", [token]);
+  return row ? mapMailInRequest(row) : null;
+}
+export async function markMailInPaymentPending(id: string, sessionId: string, checkoutUrl: string, amountPesos: number) {
+  await query(
+    "update mailin_requests set qr_payment_status='pending', qr_payment_amount=$2, paymongo_checkout_session_id=$3, paymongo_checkout_url=$4 where id=$1 and qr_payment_status <> 'paid'",
+    [id, amountPesos, sessionId, checkoutUrl]
+  );
+}
+// Conditional UPDATE, same shape (and reason) as
+// claimRepairRecordQrPaymentAsPaid: only the first caller to see
+// qr_payment_status='pending' claims it, so the PayMongo webhook and the
+// tracking page's fallback re-verification can race safely.
+export async function claimMailInPaymentAsPaid(id: string, paymongoPaymentId: string) {
+  const row = await queryOne<MailInRequestRow>(
+    "update mailin_requests set qr_payment_status='paid', paymongo_payment_id=$2, paid_at=now(), paid_method='QR Ph' where id=$1 and qr_payment_status='pending' returning *",
+    [id, paymongoPaymentId]
+  );
+  return row ? mapMailInRequest(row) : null;
 }
 
 type ServiceFeeWaiverRow = {

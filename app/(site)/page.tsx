@@ -38,7 +38,7 @@ export default async function HomePage() {
 
       <section className="mx-auto max-w-6xl px-4 py-16 sm:px-6">
         <div className="mb-10 text-center">
-          <p className="kicker">Two Ways to Get Fixed</p>
+          <p className="kicker">Ways to Get Fixed</p>
           <h2 className="mt-1 text-2xl font-bold text-slate-900 sm:text-3xl">However works for you</h2>
         </div>
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -68,6 +68,17 @@ export default async function HomePage() {
               </p>
               <Link href="/request" className="mt-4 inline-block text-sm text-blue-500 hover:underline">
                 Book home service →
+              </Link>
+            </div>
+          </div>
+          <div className="card overflow-hidden !p-0 lg:col-span-2">
+            <div className="p-6">
+              <p className="font-semibold text-slate-800">Far from a Branch?</p>
+              <p className="mt-1.5 text-sm text-slate-400">
+                Ship your phone to us with any courier — J&amp;T, LBC, Flash, Ninja Van and more. Pay only after it&apos;s repaired.
+              </p>
+              <Link href="/mail-in" className="mt-4 inline-block text-sm text-blue-500 hover:underline">
+                Repair by courier →
               </Link>
             </div>
           </div>

@@ -184,6 +184,7 @@ export type LookupKind =
   | "lead_status"
   | "request_status"
   | "walkin_status"
+  | "mailin_status"
   | "service_type"
   | "customer_source"
   | "device_brand"
@@ -259,6 +260,57 @@ export type WalkInRequest = {
   preferredDate: string | null;
   statusId: string; // LookupItem id (walkin_status)
   deletedAt: string | null;
+  createdAt: string;
+};
+
+// A customer far from any branch who ships their phone to us by courier.
+// The customer follows it on a public tracking page keyed by `token`;
+// payment is taken by PayMongo QR Ph only after the repair is done.
+export type MailInRequest = {
+  id: string;
+  reference: string; // MI-<year>-<seq>
+  token: string;
+  customerId: string | null;
+  name: string;
+  phone: string;
+  email: string;
+  branchId: string | null; // branch the phone is shipped to
+  deviceBrandId: string | null;
+  deviceModelId: string | null;
+  deviceOther: string;
+  serviceTypeId: string | null;
+  issueDescription: string;
+  photoDataUrl: string | null;
+  returnStreet: string;
+  returnBarangay: string;
+  returnCity: string;
+  returnProvince: string;
+  returnLandmark: string;
+  outboundCourier: string;
+  outboundTracking: string;
+  outboundShippedAt: string | null;
+  receivedAt: string | null;
+  receivedBy: string;
+  receivedConditionNotes: string;
+  receivedPhotoDataUrls: string[];
+  estimateNote: string; // staff's approval note / estimated price, shown to the customer once approved
+  diagnosis: string;
+  finalCost: number | null;
+  repairCompletedAt: string | null;
+  qrPaymentStatus: "none" | "pending" | "paid";
+  qrPaymentAmount: number | null;
+  paymongoCheckoutSessionId: string | null;
+  paymongoCheckoutUrl: string | null;
+  paymongoPaymentId: string | null;
+  paidAt: string | null;
+  paidMethod: string; // "QR Ph" or whatever staff typed for a manual payment
+  repairRecordId: string | null; // POS record created once paid, so Sales counts it
+  returnCourier: string;
+  returnTracking: string;
+  returnShippedAt: string | null;
+  deliveredAt: string | null;
+  statusId: string; // LookupItem id (mailin_status)
+  cancelledReason: string;
   createdAt: string;
 };
 
@@ -394,7 +446,7 @@ export type RepairRecord = {
 
 export type ActivityLog = {
   id: string;
-  entityType: "customer" | "lead" | "home_service_request" | "walkin_request";
+  entityType: "customer" | "lead" | "home_service_request" | "walkin_request" | "mailin_request";
   entityId: string;
   message: string;
   actor: string; // user name or "System"

@@ -238,8 +238,35 @@ export async function sendWalkInOtpEmail(to: string, code: string) {
         <p style="font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8;">Ceejay Cellphone Repair Shop</p>
         <h2 style="margin: 4px 0 16px;">Your verification code</h2>
         <p style="font-size: 28px; font-weight: 700; letter-spacing: 4px; margin: 0 0 16px;">${code}</p>
-        <p style="font-size: 14px; line-height: 1.5;">Enter this code to confirm your walk-in pre-registration. This code expires in 10 minutes.</p>
+        <p style="font-size: 14px; line-height: 1.5;">Enter this code to confirm your request. This code expires in 10 minutes.</p>
         <p style="font-size: 13px; color: #64748b;">If you didn&apos;t request this, you can safely ignore this email.</p>
+      </div>
+    `,
+  });
+  if (error) throw new Error(error.message);
+}
+
+// One generic template for every Mail-In status email (request received,
+// phone received, ready to pay, shipped back, ...) — each is just a
+// heading, a paragraph, and a button to the customer's tracking page.
+export async function sendMailInEmail(
+  to: string,
+  opts: { subject: string; heading: string; body: string; trackUrl: string; buttonLabel?: string }
+) {
+  const client = getClient();
+  const { error } = await client.emails.send({
+    from: FROM,
+    to,
+    subject: opts.subject,
+    html: `
+      <div style="font-family: -apple-system, sans-serif; max-width: 480px; margin: 0 auto; color: #1e293b;">
+        <p style="font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8;">Ceejay Cellphone Repair Shop</p>
+        <h2 style="margin: 4px 0 16px;">${escapeHtml(opts.heading)}</h2>
+        <p style="font-size: 14px; line-height: 1.5;">${escapeHtml(opts.body)}</p>
+        <p style="margin: 24px 0;">
+          <a href="${opts.trackUrl}" style="background: #2563eb; color: #fff; text-decoration: none; padding: 10px 18px; border-radius: 8px; font-size: 14px; font-weight: 600;">${escapeHtml(opts.buttonLabel ?? "Track My Repair")}</a>
+        </p>
+        <p style="font-size: 12px; color: #64748b;">Or open this link: ${opts.trackUrl}</p>
       </div>
     `,
   });
