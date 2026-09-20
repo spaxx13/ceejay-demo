@@ -145,18 +145,29 @@ export default async function RequestsPage({
             Total Home Service Today: {todaysRequests.length}
           </span>
         </div>
-        <p className="mt-1 text-xs text-slate-400">Requests assigned per home service technician for today — a count of 0 means they haven&apos;t been assigned anything yet.</p>
+        <p className="mt-1 text-xs text-slate-400">
+          Requests assigned per home service technician for today — a count of 0 means they haven&apos;t been assigned anything yet. Click a name to see
+          their list below.
+        </p>
         <div className="mt-3 flex flex-wrap gap-2">
-          {technicianCounts.map((t) => (
-            <span
-              key={t.id}
-              className={`rounded-full border px-3 py-1 text-xs ${
-                t.count === 0 ? "border-amber-300 bg-amber-50 text-amber-700" : "border-slate-200 bg-slate-50 text-slate-600"
-              }`}
-            >
-              {t.name}: {t.count}
-            </span>
-          ))}
+          {technicianCounts.map((t) => {
+            const active = sp.technician === t.id && sp.date === todayStr;
+            return (
+              <Link
+                key={t.id}
+                href={qs({ technician: active ? undefined : t.id, date: active ? undefined : todayStr, unassigned: undefined })}
+                className={`rounded-full border px-3 py-1 text-xs transition-colors ${
+                  active
+                    ? "border-blue-300 bg-blue-100 text-blue-700"
+                    : t.count === 0
+                      ? "border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100"
+                      : "border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100"
+                }`}
+              >
+                {t.name}: {t.count}
+              </Link>
+            );
+          })}
         </div>
       </div>
 
