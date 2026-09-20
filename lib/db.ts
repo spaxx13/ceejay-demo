@@ -583,19 +583,20 @@ export type HomeServiceSalesRow = {
 // Shared by Sales > Home Service and the Home Service Requests dashboard
 // summary — same "Total Amount = Repair Price + Labor/Service Cost" and
 // 30/70 Net Amount split computed in exactly one place, so the two pages
-// can never disagree on a figure. `requests` (optional — defaults to none)
-// is only used to look up which jobs' visit fee is currently waived, so
-// that amount can be subtracted here too; a waived fee moving to Trash (or
-// coming back via Restore) is reflected in Sales immediately since this is
-// recomputed from source data every time, never stored separately.
+// can never disagree on a figure. `requests` (optional — defaults to none;
+// every call site passes getRequests()'s non-deleted list) does two things:
+//   1. A completed job whose request isn't in this list — i.e. it's been
+//      moved to Trash — is excluded from Sales entirely, and counts again
+//      automatically the moment it's restored, since this whole report is
+//      recomputed from source data on every load, never stored separately.
+//   2. For a request that IS still active, its currently-waived visit fee
+//      (if any) is subtracted the same way — see ServiceFeeWaiver.
 export function homeServiceSalesByTechnician(
   agreements: ServiceAgreement[],
   inRange: (date: string) => boolean,
   requests: Pick<HomeServiceRequest, "id" | "serviceFeeWaived" | "province" | "city">[] = []
 ): HomeServiceSalesRow[] {
-  const waivedFeeByRequestId = new Map(
-    requests.filter((r) => r.serviceFeeWaived).map((r) => [r.id, serviceFeeAmount(r.province, r.city) ?? 0])
-  );
+  const requestById = new Map(requests.map((r) => [r.id, r]));
   const homeServiceJobs = agreements.filter((a) => a.phase === "post_repair" && a.requestId && inRange(a.completedAt.slice(0, 10)));
 
   type TechTotals = { name: string; count: number; totalAmount: number; partsCost: number; jobs: { deviceLabel: string; amount: number }[] };
@@ -607,8 +608,10 @@ export function homeServiceSalesByTechnician(
   };
 
   for (const a of homeServiceJobs) {
+    const request = a.requestId ? requestById.get(a.requestId) : undefined;
+    if (a.requestId && !request) continue; // request moved to Trash — excluded from Sales until restored
     const bucket = ensure(a.technicianName);
-    const waivedFee = a.requestId ? waivedFeeByRequestId.get(a.requestId) ?? 0 : 0;
+    const waivedFee = request?.serviceFeeWaived ? serviceFeeAmount(request.province, request.city) ?? 0 : 0;
     const amount = Math.max(0, a.cost + a.laborCost - waivedFee);
     bucket.count += 1;
     bucket.totalAmount += amount;
