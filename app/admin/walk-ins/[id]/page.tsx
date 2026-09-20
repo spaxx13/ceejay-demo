@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { getWalkInRequestById, getLookups, getDeviceModels, getBranches, getActivity, canManageHomeServiceRequests, canDeleteHomeServiceRequests, isBranchHidden } from "@/lib/db";
+import { getWalkInRequestById, getLookups, getDeviceModels, getBranches, getActivity, canManageWalkIns, canDeleteHomeServiceRequests, isBranchHidden } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import StatusBadge from "@/components/StatusBadge";
 import DeleteButton from "@/components/DeleteButton";
@@ -9,7 +9,7 @@ import { formatDate, formatDateTime } from "@/lib/format";
 
 export default async function WalkInDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const user = await getCurrentUser();
-  if (!canManageHomeServiceRequests(user)) redirect("/admin");
+  if (!canManageWalkIns(user)) redirect("/admin");
 
   const { id } = await params;
   const req = await getWalkInRequestById(id);

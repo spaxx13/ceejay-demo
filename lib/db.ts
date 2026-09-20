@@ -83,6 +83,7 @@ type UserRow = {
   can_delete_requests: boolean;
   can_view_all_branches: boolean;
   can_access_crm: boolean;
+  can_manage_walkins: boolean;
   phone: string;
   active: boolean;
 };
@@ -98,6 +99,7 @@ function mapUser(r: UserRow): User {
     canDeleteRequests: r.can_delete_requests,
     canViewAllBranches: r.can_view_all_branches,
     canAccessCrm: r.can_access_crm,
+    canManageWalkIns: r.can_manage_walkins,
     phone: r.phone,
     active: r.active,
   };
@@ -175,6 +177,15 @@ export function canViewAllBranchSales(user: Pick<User, "role" | "canViewAllBranc
 export function canAccessCrm(user: Pick<User, "role" | "canAccessCrm"> | null) {
   if (!user) return false;
   return user.role === "owner_admin" || (user.role === "branch_admin" && user.canAccessCrm);
+}
+
+// True when this account is allowed to access/manage Walk-In Registrations.
+// Owner admins always can; branch admins are scoped by canManageWalkIns —
+// deliberately independent of canManageRequests, so a branch admin can have
+// one without the other.
+export function canManageWalkIns(user: Pick<User, "role" | "canManageWalkIns"> | null) {
+  if (!user) return false;
+  return user.role === "owner_admin" || (user.role === "branch_admin" && user.canManageWalkIns);
 }
 
 type BranchRow = { id: string; name: string; address: string; contact_number: string; home_service_queue: Branch["homeServiceQueue"]; active: boolean };

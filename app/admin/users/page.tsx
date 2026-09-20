@@ -20,6 +20,7 @@ export default async function UsersPage() {
     canDeleteRequests: u.canDeleteRequests,
     canViewAllBranches: u.canViewAllBranches,
     canAccessCrm: u.canAccessCrm,
+    canManageWalkIns: u.canManageWalkIns,
     phone: u.phone,
     active: u.active,
   }));

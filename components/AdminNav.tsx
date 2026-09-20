@@ -6,13 +6,16 @@ import { logoutAction } from "@/lib/actions";
 import Logo from "@/components/Logo";
 import PushSubscribe from "@/components/PushSubscribe";
 
-const NAV_GROUPS: { label: string | null; links: { href: string; label: string; ownerOnly?: boolean; requestsGated?: boolean; crmGated?: boolean }[] }[] = [
+const NAV_GROUPS: {
+  label: string | null;
+  links: { href: string; label: string; ownerOnly?: boolean; requestsGated?: boolean; walkinsGated?: boolean; crmGated?: boolean }[];
+}[] = [
   { label: null, links: [{ href: "/admin", label: "Dashboard" }] },
   {
     label: "Operations",
     links: [
       { href: "/admin/requests", label: "Home Service Requests", requestsGated: true },
-      { href: "/admin/walk-ins", label: "Walk-In Registrations", requestsGated: true },
+      { href: "/admin/walk-ins", label: "Walk-In Registrations", walkinsGated: true },
       { href: "/admin/pos", label: "POS" },
       { href: "/admin/sales", label: "Branch Sales" },
     ],
@@ -38,6 +41,7 @@ export default function AdminNav({
   userName,
   role,
   canManageRequests = true,
+  canManageWalkIns = true,
   canAccessCrm = true,
   unreadCount = 0,
   vapidPublicKey = null,
@@ -45,6 +49,7 @@ export default function AdminNav({
   userName: string;
   role: string;
   canManageRequests?: boolean;
+  canManageWalkIns?: boolean;
   canAccessCrm?: boolean;
   unreadCount?: number;
   vapidPublicKey?: string | null;
@@ -66,6 +71,7 @@ export default function AdminNav({
             {group.links
               .filter((l) => !l.ownerOnly || role === "owner_admin")
               .filter((l) => !l.requestsGated || canManageRequests)
+              .filter((l) => !l.walkinsGated || canManageWalkIns)
               .filter((l) => !l.crmGated || canAccessCrm)
               .map((l) => {
               const active = l.href === "/admin" ? pathname === "/admin" : pathname.startsWith(l.href);

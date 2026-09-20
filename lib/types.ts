@@ -11,6 +11,7 @@ export type User = {
   canDeleteRequests: boolean; // whether this account can permanently delete Home Service Requests (branch_admin scoping) — owner_admin always can regardless
   canViewAllBranches: boolean; // whether this account can see combined "All Branches" sales figures (branch_admin scoping) — false means own branch(es) only
   canAccessCrm: boolean; // whether this account can access the CRM (leads/customers) section (branch_admin scoping) — owner_admin always can regardless
+  canManageWalkIns: boolean; // whether this account can access/manage Walk-In Registrations (branch_admin scoping) — independent of canManageRequests, defaults to false for new/existing branch admins
   phone: string; // optional — set by the account holder to opt into SMS alerts (new requests, technician status updates); blank means not opted in
   active: boolean;
 };

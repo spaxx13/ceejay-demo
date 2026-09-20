@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { getDeletedRequests, getDeletedRepairRecords, getDeletedWalkInRequests, getBranches, canDeleteHomeServiceRequests, isBranchHidden } from "@/lib/db";
+import { getDeletedRequests, getDeletedRepairRecords, getDeletedWalkInRequests, getBranches, canDeleteHomeServiceRequests, canManageWalkIns, isBranchHidden } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import {
   restoreHomeServiceRequest,
@@ -30,16 +30,19 @@ export default async function TrashPage({ searchParams }: { searchParams: Promis
   const user = await getCurrentUser();
   const canPos = user?.role === "owner_admin";
   const canRequests = canDeleteHomeServiceRequests(user);
-  if (!canPos && !canRequests) redirect("/admin");
+  // Walk-in Trash needs both section access (canManageWalkIns) and the
+  // shared delete permission, same layering as the Walk-in server actions.
+  const canWalkIns = canManageWalkIns(user) && canDeleteHomeServiceRequests(user);
+  if (!canPos && !canRequests && !canWalkIns) redirect("/admin");
 
   const { tab: rawTab } = await searchParams;
-  const defaultTab = canRequests ? "requests" : "pos";
+  const defaultTab = canRequests ? "requests" : canWalkIns ? "walkins" : "pos";
   const tab =
     rawTab === "pos" && canPos
       ? "pos"
       : rawTab === "requests" && canRequests
         ? "requests"
-        : rawTab === "walkins" && canRequests
+        : rawTab === "walkins" && canWalkIns
           ? "walkins"
           : defaultTab;
 
@@ -47,7 +50,7 @@ export default async function TrashPage({ searchParams }: { searchParams: Promis
     getBranches(),
     canRequests ? getDeletedRequests() : Promise.resolve([]),
     canPos ? getDeletedRepairRecords() : Promise.resolve([]),
-    canRequests ? getDeletedWalkInRequests() : Promise.resolve([]),
+    canWalkIns ? getDeletedWalkInRequests() : Promise.resolve([]),
   ]);
   const deletedRequests = deletedRequestsRaw.filter((r) => !isBranchHidden(user, r.queueBranchId));
   const deletedRecords = deletedRecordsRaw.filter((r) => !isBranchHidden(user, r.branchId));
@@ -68,14 +71,14 @@ export default async function TrashPage({ searchParams }: { searchParams: Promis
         </p>
       </div>
 
-      {(canRequests ? 2 : 0) + (canPos ? 1 : 0) > 1 && (
+      {(canRequests ? 1 : 0) + (canWalkIns ? 1 : 0) + (canPos ? 1 : 0) > 1 && (
         <div className="flex flex-wrap gap-1 border-b border-slate-200">
           {canRequests && (
             <Link href={tabLink("requests")} className={tabClass(tab === "requests")}>
               Home Service ({deletedRequests.length})
             </Link>
           )}
-          {canRequests && (
+          {canWalkIns && (
             <Link href={tabLink("walkins")} className={tabClass(tab === "walkins")}>
               Walk-Ins ({deletedWalkIns.length})
             </Link>
@@ -162,7 +165,7 @@ export default async function TrashPage({ searchParams }: { searchParams: Promis
         </section>
       )}
 
-      {tab === "walkins" && canRequests && (
+      {tab === "walkins" && canWalkIns && (
         <section className="space-y-3">
           <div className="space-y-3 sm:hidden">
             {deletedWalkIns.length === 0 && <p className="card text-center text-sm text-slate-400">Trash is empty.</p>}

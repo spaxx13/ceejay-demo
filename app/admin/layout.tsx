@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
-import { getNotifications, canManageHomeServiceRequests, canAccessCrm } from "@/lib/db";
+import { getNotifications, canManageHomeServiceRequests, canManageWalkIns, canAccessCrm } from "@/lib/db";
 import AdminNav from "@/components/AdminNav";
 import PwaNotificationBar from "@/components/PwaNotificationBar";
 import AppBadgeSync from "@/components/AppBadgeSync";
@@ -21,6 +21,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           userName={user.name}
           role={user.role}
           canManageRequests={canManageHomeServiceRequests(user)}
+          canManageWalkIns={canManageWalkIns(user)}
           canAccessCrm={canAccessCrm(user)}
           unreadCount={unreadCount}
           vapidPublicKey={process.env.VAPID_PUBLIC_KEY ?? null}

@@ -17,6 +17,7 @@ type UserRow = {
   canDeleteRequests: boolean;
   canViewAllBranches: boolean;
   canAccessCrm: boolean;
+  canManageWalkIns: boolean;
   phone: string;
   active: boolean;
 };
@@ -318,6 +319,23 @@ export default function UserManager({
               </label>
               <p className="text-[11px] text-slate-400">
                 Uncheck to hide the CRM section from this account entirely — no viewing or managing leads or customers.
+              </p>
+            </div>
+          )}
+          {role === "branch_admin" && (
+            <div className="space-y-1.5">
+              <label className="flex items-center gap-1.5 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  name="canManageWalkIns"
+                  defaultChecked={editing?.canManageWalkIns ?? false}
+                  className="h-4 w-4 rounded border-slate-300"
+                />
+                Can access Walk-In Registrations
+              </label>
+              <p className="text-[11px] text-slate-400">
+                Off by default — independent of &quot;Can Manage Requests&quot; above, so this account can have one without the other. Check
+                this to let it view/manage Walk-In pre-registrations.
               </p>
             </div>
           )}

@@ -33,6 +33,7 @@ import {
   canManageHomeServiceRequests,
   canDeleteHomeServiceRequests,
   canAccessCrm,
+  canManageWalkIns,
 } from "./db";
 import { getCurrentUser, setSession, clearSession, requireRole } from "./auth";
 import { sendRepairReceiptEmail, sendCancellationEmail, sendQuotationEmail, sendLeadReplyEmail, sendBroadcastEmail, sendWalkInOtpEmail, emailConfigured } from "./email";
@@ -98,6 +99,7 @@ export async function createUser(formData: FormData) {
   const canDeleteRequests = role === "branch_admin" ? formData.get("canDeleteRequests") === "on" : true;
   const canViewAllBranches = role === "branch_admin" ? formData.get("canViewAllBranches") === "on" : true;
   const canAccessCrmFlag = role === "branch_admin" ? formData.get("canAccessCrm") === "on" : true;
+  const canManageWalkInsFlag = role === "branch_admin" ? formData.get("canManageWalkIns") === "on" : true;
   const phone = str(formData, "phone");
   if (!name || !email || !password || !role) return;
 
@@ -120,8 +122,21 @@ export async function createUser(formData: FormData) {
 
   const passwordHash = await bcrypt.hash(password, 10);
   await query(
-    "insert into users (name, email, password_hash, role, technician_id, assigned_branch_ids, can_manage_requests, can_delete_requests, can_view_all_branches, can_access_crm, phone) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)",
-    [name, email, passwordHash, role, role === "technician" ? technicianId : null, assignedBranchIds, canManageRequests, canDeleteRequests, canViewAllBranches, canAccessCrmFlag, phone]
+    "insert into users (name, email, password_hash, role, technician_id, assigned_branch_ids, can_manage_requests, can_delete_requests, can_view_all_branches, can_access_crm, can_manage_walkins, phone) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)",
+    [
+      name,
+      email,
+      passwordHash,
+      role,
+      role === "technician" ? technicianId : null,
+      assignedBranchIds,
+      canManageRequests,
+      canDeleteRequests,
+      canViewAllBranches,
+      canAccessCrmFlag,
+      canManageWalkInsFlag,
+      phone,
+    ]
   );
   revalidatePath("/admin/users");
   revalidatePath("/admin/technicians");
@@ -151,6 +166,7 @@ export async function updateUser(formData: FormData) {
   const canDeleteRequests = role === "branch_admin" ? formData.get("canDeleteRequests") === "on" : true;
   const canViewAllBranches = role === "branch_admin" ? formData.get("canViewAllBranches") === "on" : true;
   const canAccessCrmFlag = role === "branch_admin" ? formData.get("canAccessCrm") === "on" : true;
+  const canManageWalkInsFlag = role === "branch_admin" ? formData.get("canManageWalkIns") === "on" : true;
   const phone = formData.has("phone") ? str(formData, "phone") : user.phone;
 
   if (role === "technician") {
@@ -179,7 +195,7 @@ export async function updateUser(formData: FormData) {
   if (password) {
     const passwordHash = await bcrypt.hash(password, 10);
     await query(
-      "update users set name=$1, email=$2, password_hash=$3, role=$4, technician_id=$5, assigned_branch_ids=$6, can_manage_requests=$7, can_delete_requests=$8, can_view_all_branches=$9, can_access_crm=$10, phone=$11 where id=$12",
+      "update users set name=$1, email=$2, password_hash=$3, role=$4, technician_id=$5, assigned_branch_ids=$6, can_manage_requests=$7, can_delete_requests=$8, can_view_all_branches=$9, can_access_crm=$10, can_manage_walkins=$11, phone=$12 where id=$13",
       [
         name,
         email || user.email,
@@ -191,13 +207,14 @@ export async function updateUser(formData: FormData) {
         canDeleteRequests,
         canViewAllBranches,
         canAccessCrmFlag,
+        canManageWalkInsFlag,
         phone,
         userId,
       ]
     );
   } else {
     await query(
-      "update users set name=$1, email=$2, role=$3, technician_id=$4, assigned_branch_ids=$5, can_manage_requests=$6, can_delete_requests=$7, can_view_all_branches=$8, can_access_crm=$9, phone=$10 where id=$11",
+      "update users set name=$1, email=$2, role=$3, technician_id=$4, assigned_branch_ids=$5, can_manage_requests=$6, can_delete_requests=$7, can_view_all_branches=$8, can_access_crm=$9, can_manage_walkins=$10, phone=$11 where id=$12",
       [
         name,
         email || user.email,
@@ -208,6 +225,7 @@ export async function updateUser(formData: FormData) {
         canDeleteRequests,
         canViewAllBranches,
         canAccessCrmFlag,
+        canManageWalkInsFlag,
         phone,
         userId,
       ]
@@ -1620,7 +1638,7 @@ export async function submitWalkInRequest(_prev: WalkInResult | undefined, formD
 
 export async function updateWalkInStatus(formData: FormData) {
   const user = await getCurrentUser();
-  if (!canManageHomeServiceRequests(user)) return;
+  if (!canManageWalkIns(user)) return;
   const id = str(formData, "id");
   const statusId = str(formData, "statusId");
   const lookups = await getLookups();
@@ -1633,10 +1651,13 @@ export async function updateWalkInStatus(formData: FormData) {
 }
 
 // Soft delete — moves it to Trash rather than permanently deleting it,
-// consistent with Home Service Requests and POS records.
+// consistent with Home Service Requests and POS records. Requires both
+// section access (canManageWalkIns) and the existing shared delete
+// permission (canDeleteHomeServiceRequests), same layering as every other
+// entity that flows through Trash.
 export async function deleteWalkInRequest(formData: FormData) {
   const user = await getCurrentUser();
-  if (!canDeleteHomeServiceRequests(user)) return;
+  if (!canManageWalkIns(user) || !canDeleteHomeServiceRequests(user)) return;
   const id = str(formData, "id");
   await query("update walkin_requests set deleted_at=now() where id=$1", [id]);
   await logActivity("walkin_request", id, `Moved to Trash by ${user?.name ?? "Admin"}`, user?.name ?? "Admin");
@@ -1647,7 +1668,7 @@ export async function deleteWalkInRequest(formData: FormData) {
 
 export async function restoreWalkInRequest(formData: FormData) {
   const user = await getCurrentUser();
-  if (!canDeleteHomeServiceRequests(user)) return;
+  if (!canManageWalkIns(user) || !canDeleteHomeServiceRequests(user)) return;
   const id = str(formData, "id");
   await query("update walkin_requests set deleted_at=null where id=$1", [id]);
   await logActivity("walkin_request", id, `Restored from Trash by ${user?.name ?? "Admin"}`, user?.name ?? "Admin");
@@ -1658,7 +1679,7 @@ export async function restoreWalkInRequest(formData: FormData) {
 
 export async function permanentlyDeleteWalkInRequest(formData: FormData) {
   const user = await getCurrentUser();
-  if (!canDeleteHomeServiceRequests(user)) return;
+  if (!canManageWalkIns(user) || !canDeleteHomeServiceRequests(user)) return;
   const id = str(formData, "id");
   await query("delete from walkin_requests where id=$1 and deleted_at is not null", [id]);
   revalidatePath("/admin/trash");

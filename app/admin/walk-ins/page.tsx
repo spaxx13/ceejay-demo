@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { getLookups, getBranches, getDeviceModels, getWalkInRequests, canManageHomeServiceRequests, canDeleteHomeServiceRequests, isBranchHidden } from "@/lib/db";
+import { getLookups, getBranches, getDeviceModels, getWalkInRequests, canManageWalkIns, canDeleteHomeServiceRequests, isBranchHidden } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import StatusBadge from "@/components/StatusBadge";
 import DeleteButton from "@/components/DeleteButton";
@@ -14,7 +14,7 @@ export default async function WalkInsPage({
   searchParams: Promise<{ status?: string; branch?: string; date?: string }>;
 }) {
   const user = await getCurrentUser();
-  if (!canManageHomeServiceRequests(user)) redirect("/admin");
+  if (!canManageWalkIns(user)) redirect("/admin");
 
   const sp = await searchParams;
   const [lookups, branches, deviceModels, allRequests] = await Promise.all([getLookups(), getBranches(), getDeviceModels(), getWalkInRequests()]);
