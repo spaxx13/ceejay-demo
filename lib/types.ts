@@ -234,40 +234,6 @@ export type Lead = {
   createdAt: string;
 };
 
-// Public "Get a Quote" feature (app/(site)/quote) — a customer-built price
-// estimate, independent of HomeServiceRequest. Never becomes a booking on
-// its own; it's just computed, saved for tracking, and emailed.
-export type QuotationDeliveryMethod = "home_service" | "walk_in";
-
-export type QuotationLineItem = {
-  deviceBrandId: string | null;
-  deviceModelId: string | null;
-  deviceLabel: string;
-  serviceTypeId: string | null;
-  serviceTypeLabel: string;
-  screenQuality: string;
-  backHousingColor: string;
-  price: number | null; // null = no price on file for this exact combination
-};
-
-export type Quotation = {
-  id: string;
-  reference: string;
-  customerName: string;
-  phone: string;
-  email: string;
-  deliveryMethod: QuotationDeliveryMethod;
-  branchId: string | null; // walk-in's preferred branch, optional
-  province: string; // home_service only
-  city: string; // home_service only
-  serviceFee: number;
-  lineItems: QuotationLineItem[];
-  subtotal: number;
-  total: number | null; // null when any line item's price is unknown
-  emailedAt: string | null;
-  createdAt: string;
-};
-
 export type HomeServiceRequest = {
   id: string;
   reference: string;

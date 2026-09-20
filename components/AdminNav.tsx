@@ -14,7 +14,6 @@ const NAV_GROUPS: { label: string | null; links: { href: string; label: string; 
       { href: "/admin/requests", label: "Home Service Requests", requestsGated: true },
       { href: "/admin/pos", label: "POS" },
       { href: "/admin/sales", label: "Branch Sales" },
-      { href: "/admin/quotations", label: "Quotations" },
     ],
   },
   { label: "Customers", links: [{ href: "/admin/crm", label: "CRM", crmGated: true }] },
