@@ -42,8 +42,31 @@ const TERM_HIGHLIGHT_BORDER = rgb(0.9, 0.75, 0.35);
 const RESULT_LABEL: Record<string, string> = { pass: "PASS", fail: "FAIL", na: "N/A" };
 const RESULT_COLOR: Record<string, ReturnType<typeof rgb>> = { pass: PASS, fail: FAIL, na: NA };
 
+// pdf-lib's Standard fonts (Helvetica) only support WinAnsi encoding —
+// any character outside it (emoji, most non-Latin symbols, some exotic
+// punctuation) throws at draw/measure time. Free-text fields (a
+// customer's or technician's typed problem description, notes, etc.) can
+// contain anything, so every string that reaches wrapText/drawText is
+// filtered through this first. Delegates the "can this font draw it"
+// question to the font itself rather than guessing a WinAnsi range, so it
+// stays correct even for characters WinAnsi does support at unexpected
+// Unicode code points (e.g. curly quotes).
+function sanitizeForPdf(font: PDFFont, text: string): string {
+  return Array.from(text)
+    .map((ch) => {
+      if (ch === "\n") return ch; // preserve line breaks — never a glyph, so never goes through the font check
+      try {
+        font.widthOfTextAtSize(ch, 10);
+        return ch;
+      } catch {
+        return "";
+      }
+    })
+    .join("");
+}
+
 function wrapText(font: PDFFont, text: string, size: number, maxWidth: number): string[] {
-  const paragraphs = text.split("\n");
+  const paragraphs = sanitizeForPdf(font, text).split("\n");
   const lines: string[] = [];
   for (const para of paragraphs) {
     const words = para.split(/\s+/).filter(Boolean);
