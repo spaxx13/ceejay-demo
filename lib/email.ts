@@ -2,6 +2,7 @@ import "server-only";
 import { Resend } from "resend";
 import type { ChecklistItem } from "./types";
 import { generateRepairReceiptPdf, generateQuotationPdf } from "./receiptPdf";
+import { SITE_URL } from "./config";
 
 const FROM = "Ceejay Cellphone Repair Shop <noreply@ceejayrepair.com>";
 
@@ -207,6 +208,12 @@ export async function sendPublicQuoteEmail(
     return `<tr><td style="padding:4px 0;color:#64748b;">${label}</td><td style="padding:4px 0;text-align:right;">${value}</td></tr>`;
   }
 
+  // Next step depends on which mode they quoted for — a Walk-in quote
+  // points at pre-registering that visit, a Home Service quote points at
+  // actually booking the technician.
+  const ctaHref = opts.serviceMode === "walk_in" ? `${SITE_URL}/walk-in` : `${SITE_URL}/request?area=near`;
+  const ctaLabel = opts.serviceMode === "walk_in" ? "Pre-Register My Walk-In" : "Book Home Service";
+
   const html = `
     <div style="font-family: -apple-system, sans-serif; max-width: 480px; margin: 0 auto; color: #1e293b;">
       <p style="font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8;">Ceejay Cellphone Repair Shop</p>
@@ -217,6 +224,14 @@ export async function sendPublicQuoteEmail(
         This is an estimate based on our standard price list. Final pricing will be confirmed upon inspection
         ${opts.serviceMode === "walk_in" ? "at the branch" : "by our technician"}.
       </p>
+      <div style="margin: 20px 0; text-align: center;">
+        <a
+          href="${ctaHref}"
+          style="display: inline-block; background: #2563eb; color: #ffffff; font-size: 14px; font-weight: 600; text-decoration: none; padding: 10px 24px; border-radius: 999px;"
+        >
+          ${ctaLabel}
+        </a>
+      </div>
     </div>
   `;
 
