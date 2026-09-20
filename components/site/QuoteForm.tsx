@@ -2,16 +2,16 @@
 
 import { useActionState, useEffect, useState } from "react";
 import { checkQuoteAvailability, submitPublicQuote } from "@/lib/actions";
-import { PROVINCE_FEES, EXCLUDED_FROM_HOME_SERVICE } from "@/lib/homeServiceFees";
+import { EXCLUDED_FROM_HOME_SERVICE } from "@/lib/homeServiceFees";
 
 type Brand = { id: string; label: string };
 type Model = { id: string; brandId: string; name: string };
 type ServiceType = { id: string; label: string };
 type Branch = { id: string; name: string; address: string; contactNumber: string };
+type PhCity = { name: string; barangays: string[] };
+type PhProvince = { key: string; label: string; cities: PhCity[] };
 
 type MatchState = "idle" | "checking" | "matched" | "unmatched";
-
-const PROVINCES = Object.keys(PROVINCE_FEES);
 
 function BranchList({ branches }: { branches: Branch[] }) {
   return (
@@ -46,6 +46,25 @@ export default function QuoteForm({
   const [serviceTypeId, setServiceTypeId] = useState("");
   const [screenQuality, setScreenQuality] = useState("");
   const [matchState, setMatchState] = useState<MatchState>("idle");
+  const [province, setProvince] = useState("");
+  const [city, setCity] = useState("");
+  const [barangay, setBarangay] = useState("");
+
+  // Same PSGC-derived "near" queue dataset (all 8 provinces) the real Home
+  // Service form offers — Quezon and Rizal have no flat fee on file
+  // (PROVINCE_FEES), so their quoted fee falls back to "To be confirmed"
+  // (see sendPublicQuoteEmail), but they're still bookable, so still shown
+  // here rather than silently dropped.
+  const [phData, setPhData] = useState<PhProvince[] | null>(null);
+  useEffect(() => {
+    fetch("/ph-addresses-near.json")
+      .then((r) => r.json())
+      .then(setPhData)
+      .catch(() => setPhData([]));
+  }, []);
+  const availableProvinces = phData ?? [];
+  const selectedPhProvince = phData?.find((p) => p.label === province) ?? null;
+  const selectedPhCity = selectedPhProvince?.cities.find((c) => c.name === city) ?? null;
 
   const modelsForBrand = models.filter((m) => m.brandId === brandId);
   const otherBrandSelected = brandId === "other";
@@ -97,6 +116,9 @@ export default function QuoteForm({
     setServiceMode(value);
     setServiceTypeId("");
     setScreenQuality("");
+    setProvince("");
+    setCity("");
+    setBarangay("");
   }
   function onServiceTypeChange(value: string) {
     setServiceTypeId(value);
@@ -249,29 +271,66 @@ export default function QuoteForm({
                 </label>
                 <input name="street" required className="input" placeholder="House/Unit No., Street" />
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-slate-500">Barangay</label>
-                  <input name="barangay" className="input" placeholder="Barangay" />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-slate-500">
-                    City/Municipality <span className="text-red-600">*</span>
-                  </label>
-                  <input name="city" required className="input" placeholder="City/Municipality" />
-                </div>
-              </div>
               <div className="space-y-1.5">
                 <label className="text-xs font-medium text-slate-500">
                   Province <span className="text-red-600">*</span>
                 </label>
-                <select name="province" required defaultValue="" className="input">
-                  <option value="" disabled>
-                    Select a province
-                  </option>
-                  {PROVINCES.map((p) => (
-                    <option key={p} value={p}>
-                      {p}
+                <select
+                  name="province"
+                  required
+                  value={province}
+                  onChange={(e) => {
+                    setProvince(e.target.value);
+                    setCity("");
+                    setBarangay("");
+                  }}
+                  disabled={!phData}
+                  className="input"
+                >
+                  <option value="">{phData ? "Select a province" : "Loading..."}</option>
+                  {availableProvinces.map((p) => (
+                    <option key={p.key} value={p.label}>
+                      {p.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-slate-500">
+                  City/Municipality <span className="text-red-600">*</span>
+                </label>
+                <select
+                  name="city"
+                  required
+                  value={city}
+                  onChange={(e) => {
+                    setCity(e.target.value);
+                    setBarangay("");
+                  }}
+                  disabled={!selectedPhProvince}
+                  className="input"
+                >
+                  <option value="">Select city/municipality...</option>
+                  {(selectedPhProvince?.cities ?? []).map((c) => (
+                    <option key={c.name} value={c.name}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-slate-500">Barangay</label>
+                <select
+                  name="barangay"
+                  value={barangay}
+                  onChange={(e) => setBarangay(e.target.value)}
+                  disabled={!selectedPhCity}
+                  className="input"
+                >
+                  <option value="">Select barangay...</option>
+                  {(selectedPhCity?.barangays ?? []).map((b) => (
+                    <option key={b} value={b}>
+                      {b}
                     </option>
                   ))}
                 </select>
