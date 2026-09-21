@@ -15,6 +15,21 @@ export default function SignaturePad({ name, label }: { name: string; label: str
   const [isFullscreen, setIsFullscreen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
+  // iOS Safari has no web API to lock screen orientation (an Apple platform
+  // restriction, not something any JS/CSS trick works around) — the real
+  // lock in enterFullscreen() silently no-ops there. This tracks whether the
+  // phone is still portrait so full screen can prompt the customer to rotate
+  // manually on browsers where the automatic lock didn't take.
+  const [viewportIsPortrait, setViewportIsPortrait] = useState(false);
+  useEffect(() => {
+    function updateOrientation() {
+      setViewportIsPortrait(window.innerHeight > window.innerWidth);
+    }
+    updateOrientation();
+    window.addEventListener("resize", updateOrientation);
+    return () => window.removeEventListener("resize", updateOrientation);
+  }, []);
+
   // Strokes are kept as points (in the canvas's current CSS-pixel space)
   // rather than only as a rasterized snapshot, so a resize — full screen
   // toggle or device rotation — can replay them at the new size instead of
@@ -206,6 +221,11 @@ export default function SignaturePad({ name, label }: { name: string; label: str
           </button>
         </div>
       </div>
+      {isFullscreen && viewportIsPortrait && (
+        <p className="rounded-md bg-indigo-50 px-3 py-2 text-center text-xs font-medium text-indigo-700">
+          Rotate your phone to landscape for a wider signing area.
+        </p>
+      )}
       <input type="hidden" name={name} value={dataUrl} />
       <canvas
         ref={canvasRef}
