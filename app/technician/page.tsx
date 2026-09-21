@@ -1,11 +1,12 @@
-import { getLookups, getRequests, getDeviceModels, getServiceAgreements, getCustomFormFields, getServicePrices } from "@/lib/db";
+import { getLookups, getRequests, getDeviceModels, getServiceAgreements, getCustomFormFields, getServicePrices, getBranches, getTechnicians, getTodayCheckIn } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import TechnicianBoard from "@/components/TechnicianBoard";
+import CheckInWidget from "@/components/CheckInWidget";
 import { serviceFeeAmount } from "@/lib/homeServiceFees";
 import { getRepairQuote } from "@/lib/servicePricing";
 
 export default async function TechnicianPage() {
-  const [user, lookups, allRequests, deviceModels, agreements, customFormFields, servicePrices] = await Promise.all([
+  const [user, lookups, allRequests, deviceModels, agreements, customFormFields, servicePrices, branches, technicians] = await Promise.all([
     getCurrentUser(),
     getLookups(),
     getRequests(),
@@ -13,7 +14,12 @@ export default async function TechnicianPage() {
     getServiceAgreements(),
     getCustomFormFields(),
     getServicePrices(),
+    getBranches(),
+    getTechnicians(),
   ]);
+  const myBranchIds = technicians.find((t) => t.id === user?.technicianId)?.branchIds ?? [];
+  const myBranches = branches.filter((b) => b.active && myBranchIds.includes(b.id));
+  const todayCheckIn = user ? await getTodayCheckIn(user.id) : null;
   const statuses = lookups.filter((l) => l.kind === "request_status").sort((a, b) => a.order - b.order);
   const cancelledStatusId = statuses.find((s) => s.label === "Cancelled")?.id;
 
@@ -66,6 +72,7 @@ export default async function TechnicianPage() {
 
   return (
     <div className="space-y-4">
+      <CheckInWidget branches={myBranches} todayCheckIn={todayCheckIn} />
       <div>
         <h1 className="text-lg font-bold text-slate-900">My Assigned Jobs</h1>
         <p className="text-sm text-slate-400">{myRequests.length} request(s) assigned to you.</p>
