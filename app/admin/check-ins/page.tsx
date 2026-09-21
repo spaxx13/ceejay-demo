@@ -3,13 +3,22 @@ import { redirect } from "next/navigation";
 import { getCheckIns, isBranchHidden } from "@/lib/db";
 import { getCurrentUser, requireRole } from "@/lib/auth";
 import { formatDateTime } from "@/lib/format";
-import type { Role } from "@/lib/types";
+import type { CheckIn, Role } from "@/lib/types";
 
 const ROLE_LABELS: Record<Role, string> = {
   owner_admin: "Owner Admin",
   branch_admin: "Branch Admin",
   technician: "Technician",
 };
+
+// "Home Service" is the address-less pseudo-branch home-service technicians
+// check in under (see lib/types.ts's Branch comment on the near/far queue
+// buckets) — everyone else checked in at a real, physical branch. Sorted
+// oldest-first within each group so whoever checked in first (branch admin
+// or technician alike) leads the list.
+function byCheckedInAsc(a: CheckIn, b: CheckIn) {
+  return a.checkedInAt.localeCompare(b.checkedInAt);
+}
 
 export default async function CheckInsPage({ searchParams }: { searchParams: Promise<{ q?: string; role?: string; from?: string; to?: string }> }) {
   if (!(await requireRole("owner_admin", "branch_admin"))) redirect("/admin");
@@ -29,6 +38,9 @@ export default async function CheckInsPage({ searchParams }: { searchParams: Pro
 
   const today = new Date().toISOString().slice(0, 10);
   const todayCheckIns = allCheckIns.filter((c) => c.checkedInAt.slice(0, 10) === today);
+
+  const homeServiceCheckIns = checkIns.filter((c) => c.branchName === "Home Service").sort(byCheckedInAsc);
+  const branchCheckIns = checkIns.filter((c) => c.branchName !== "Home Service").sort(byCheckedInAsc);
 
   return (
     <div className="space-y-6">
@@ -79,7 +91,19 @@ export default async function CheckInsPage({ searchParams }: { searchParams: Pro
         </Link>
       </form>
 
-      {/* Mobile: one card per check-in — a 4-column table doesn't fit a phone screen. */}
+      <CheckInGroup title="Branch" checkIns={branchCheckIns} />
+      <CheckInGroup title="Home Service" checkIns={homeServiceCheckIns} />
+    </div>
+  );
+}
+
+// One category's list, oldest-first (whoever checked in first leads), shown
+// as cards on mobile and a table on desktop/tablet — same fields either way.
+function CheckInGroup({ title, checkIns }: { title: string; checkIns: CheckIn[] }) {
+  return (
+    <div className="space-y-3">
+      <h2 className="text-sm font-semibold text-slate-700">{title}</h2>
+
       <div className="space-y-3 sm:hidden">
         {checkIns.length === 0 && <p className="card text-center text-sm text-slate-400">No check-ins recorded for this filter.</p>}
         {checkIns.map((c) => (
@@ -94,7 +118,6 @@ export default async function CheckInsPage({ searchParams }: { searchParams: Pro
         ))}
       </div>
 
-      {/* Desktop/tablet: full table, same fields. */}
       <div className="hidden card overflow-x-auto sm:block">
         <table className="w-full text-left text-sm">
           <thead>
