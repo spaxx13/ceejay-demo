@@ -298,6 +298,14 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
   // real branch's card captures would silently drop most of this revenue.
   const grandHomeService = sumHomeServiceSales(homeServiceSalesByTechnician(visibleAgreements, inRange, requests));
 
+  // The one true bottom-line figure — what the business actually keeps
+  // across every revenue stream (every branch's POS/walk-in business share,
+  // already net of all expenses, plus Home Service's company share) — since
+  // the two waterfalls above are never otherwise added together anywhere on
+  // this page.
+  const branchNamesLabel = visibleRows.map((r) => r.name).join(" + ") || "All Branches";
+  const grandTotalBusinessShare = grandBusinessShareNet + grandHomeService.companyShare;
+
   // Home Service technicians are usually tied only to the backend "Home
   // Service" queue branch(es) (near/far), not a real addressed branch — so
   // their revenue needs its own card(s) here too, same shape as a real
@@ -842,7 +850,11 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
                     </tr>
                     <tr>
                       <td className="pt-2 pr-3 font-semibold text-slate-900">= Business Share (Net)</td>
-                      <td className="pt-2 pr-3 text-right font-semibold text-blue-300">{peso(grandBusinessShareNet)}</td>
+                      <td className="pt-2 pr-3 text-right">
+                        <span className="inline-block rounded-md border-2 border-blue-200 bg-blue-50 px-2.5 py-1 text-base font-bold text-blue-300">
+                          {peso(grandBusinessShareNet)}
+                        </span>
+                      </td>
                     </tr>
                   </>
                 )}
@@ -882,6 +894,19 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
                 </table>
               </>
             )}
+
+            <div className="mt-1 border-t-2 border-slate-300 pt-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-sm font-bold text-slate-900">Grand Total Business Share (Net)</p>
+                <span className="inline-block rounded-md border-2 border-blue-300 bg-blue-50 px-3 py-1.5 text-lg font-extrabold text-blue-300">
+                  {peso(grandTotalBusinessShare)}
+                </span>
+              </div>
+              <p className="mt-1 text-xs text-slate-400">
+                {branchNamesLabel} ({peso(grandBusinessShareNet)}) + Home Service ({peso(grandHomeService.companyShare)}) — after every
+                expense and share is deducted.
+              </p>
+            </div>
           </div>
         )}
       </div>
