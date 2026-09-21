@@ -4,6 +4,24 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 type Point = { x: number; y: number };
 
+// A signature only needs to be legible, not high-res — capping the export
+// keeps the saved PNG small (and the checklist submission's total payload
+// under the server action's body size limit) no matter how big the on-screen
+// canvas gets, which full-screen mode can push well past 1000px on a
+// high-DPI phone.
+const MAX_EXPORT_DIMENSION = 800;
+function exportDataUrl(canvas: HTMLCanvasElement): string {
+  const scale = Math.min(1, MAX_EXPORT_DIMENSION / Math.max(canvas.width, canvas.height));
+  if (scale >= 1) return canvas.toDataURL("image/png");
+  const scaled = document.createElement("canvas");
+  scaled.width = Math.round(canvas.width * scale);
+  scaled.height = Math.round(canvas.height * scale);
+  const ctx = scaled.getContext("2d");
+  if (!ctx) return canvas.toDataURL("image/png");
+  ctx.drawImage(canvas, 0, 0, scaled.width, scaled.height);
+  return scaled.toDataURL("image/png");
+}
+
 // Captures a signature by drawing on a canvas (mouse or touch) and exposes
 // it as a base64 PNG via a hidden input — same "no file storage, just
 // in-memory data URLs" approach as PhotoUpload.
@@ -94,7 +112,7 @@ export default function SignaturePad({ name, label }: { name: string; label: str
     sizeRef.current = next;
     redrawStrokes(canvas);
     if (sizeChanged && strokesRef.current.some((s) => s.length > 0)) {
-      setDataUrl(canvas.toDataURL("image/png"));
+      setDataUrl(exportDataUrl(canvas));
     }
   }, []);
 
@@ -190,7 +208,7 @@ export default function SignaturePad({ name, label }: { name: string; label: str
     if (!drawing.current) return;
     drawing.current = false;
     if (canvasRef.current?.hasPointerCapture(e.pointerId)) canvasRef.current.releasePointerCapture(e.pointerId);
-    setDataUrl(canvasRef.current?.toDataURL("image/png") ?? "");
+    setDataUrl(canvasRef.current ? exportDataUrl(canvasRef.current) : "");
   }
   function clear() {
     const canvas = canvasRef.current;
