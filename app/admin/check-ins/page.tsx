@@ -1,8 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { getCheckIns } from "@/lib/db";
-import { requireRole } from "@/lib/auth";
-import SettingsTabs from "@/components/SettingsTabs";
+import { getCheckIns, isBranchHidden } from "@/lib/db";
+import { getCurrentUser, requireRole } from "@/lib/auth";
 import { formatDateTime } from "@/lib/format";
 import type { Role } from "@/lib/types";
 
@@ -13,10 +12,11 @@ const ROLE_LABELS: Record<Role, string> = {
 };
 
 export default async function CheckInsPage({ searchParams }: { searchParams: Promise<{ q?: string; role?: string; from?: string; to?: string }> }) {
-  if (!(await requireRole("owner_admin"))) redirect("/admin");
+  if (!(await requireRole("owner_admin", "branch_admin"))) redirect("/admin");
 
+  const user = await getCurrentUser();
   const sp = await searchParams;
-  const allCheckIns = await getCheckIns();
+  const allCheckIns = (await getCheckIns()).filter((c) => !isBranchHidden(user, c.branchId));
 
   let checkIns = [...allCheckIns];
   if (sp.role) checkIns = checkIns.filter((c) => c.role === sp.role);
@@ -38,8 +38,6 @@ export default async function CheckInsPage({ searchParams }: { searchParams: Pro
           When a technician or branch admin marked themselves as checked in at a branch — separate from Login Logs, which fires on every login.
         </p>
       </div>
-
-      <SettingsTabs />
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         <div className="card">
