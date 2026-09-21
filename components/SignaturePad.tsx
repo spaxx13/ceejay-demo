@@ -10,6 +10,11 @@ export default function SignaturePad({ name, label }: { name: string; label: str
   const drawing = useRef(false);
   const [dataUrl, setDataUrl] = useState("");
   const [hasDrawn, setHasDrawn] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const dataUrlRef = useRef(dataUrl);
+  useEffect(() => {
+    dataUrlRef.current = dataUrl;
+  }, [dataUrl]);
 
   // Sizes the canvas's backing bitmap to match its current CSS layout size.
   // Re-checked (not just run once on mount) because if this component
@@ -38,6 +43,31 @@ export default function SignaturePad({ name, label }: { name: string; label: str
     if (!canvas) return;
     ensureSized(canvas);
   }, []);
+
+  // Entering/leaving full screen changes the canvas's CSS size, which resets
+  // its bitmap — repaint whatever was already signed so switching modes
+  // mid-signature doesn't lose the stroke.
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    ensureSized(canvas);
+    if (!dataUrlRef.current) return;
+    const img = new Image();
+    img.onload = () => {
+      canvasRef.current?.getContext("2d")?.drawImage(img, 0, 0, canvas.clientWidth, canvas.clientHeight);
+    };
+    img.src = dataUrlRef.current;
+  }, [isFullscreen]);
+
+  // Keeps the page from scrolling behind the overlay while signing full screen.
+  useEffect(() => {
+    if (!isFullscreen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isFullscreen]);
 
   function pointFromEvent(e: React.PointerEvent<HTMLCanvasElement>) {
     const rect = canvasRef.current!.getBoundingClientRect();
@@ -88,14 +118,23 @@ export default function SignaturePad({ name, label }: { name: string; label: str
   }
 
   return (
-    <div className="space-y-1.5">
+    <div className={isFullscreen ? "fixed inset-0 z-50 flex flex-col gap-2 bg-white p-4" : "space-y-1.5"}>
       <div className="flex items-center justify-between">
         <label className="text-xs font-medium text-slate-500">{label}</label>
-        {hasDrawn && (
-          <button type="button" onClick={clear} className="text-xs text-red-600 hover:underline">
-            Clear
+        <div className="flex items-center gap-3">
+          {hasDrawn && (
+            <button type="button" onClick={clear} className="text-xs text-red-600 hover:underline">
+              Clear
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => setIsFullscreen((v) => !v)}
+            className="text-xs font-medium text-indigo-600 hover:underline"
+          >
+            {isFullscreen ? "Done" : "Full screen"}
           </button>
-        )}
+        </div>
       </div>
       <input type="hidden" name={name} value={dataUrl} />
       <canvas
@@ -104,7 +143,11 @@ export default function SignaturePad({ name, label }: { name: string; label: str
         onPointerMove={move}
         onPointerUp={end}
         onPointerCancel={end}
-        className="h-32 w-full touch-none rounded-lg border border-slate-300 bg-white"
+        className={
+          isFullscreen
+            ? "w-full flex-1 touch-none rounded-lg border border-slate-300 bg-white"
+            : "h-32 w-full touch-none rounded-lg border border-slate-300 bg-white"
+        }
       />
       {!hasDrawn && <p className="text-[11px] text-slate-400">Sign above with mouse, stylus, or finger.</p>}
     </div>
