@@ -842,7 +842,11 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
                     </tr>
                     <tr>
                       <td className="pt-2 pr-3 font-semibold text-slate-900">= Business Share (Net)</td>
-                      <td className="pt-2 pr-3 text-right font-semibold text-blue-300">{peso(grandBusinessShareNet)}</td>
+                      <td className="pt-2 pr-3 text-right">
+                        <span className="inline-block rounded-md border-2 border-blue-200 bg-blue-50 px-2.5 py-1 text-base font-bold text-blue-300">
+                          {peso(grandBusinessShareNet)}
+                        </span>
+                      </td>
                     </tr>
                   </>
                 )}
