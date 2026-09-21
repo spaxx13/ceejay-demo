@@ -127,6 +127,10 @@ export default async function TrashPage({ searchParams }: { searchParams: Promis
                 <div className="grid grid-cols-2 gap-y-1 text-xs">
                   <span className="text-slate-400">Phone</span>
                   <span className="text-right text-slate-600">{r.phone || "—"}</span>
+                  <span className="text-slate-400">Province</span>
+                  <span className="text-right text-slate-600">{r.province || "—"}</span>
+                  <span className="text-slate-400">City</span>
+                  <span className="text-right text-slate-600">{r.city || "—"}</span>
                   <span className="text-slate-400">Deleted</span>
                   <span className="text-right text-slate-600">{r.deletedAt ? formatDateTime(r.deletedAt) : "—"}</span>
                 </div>
@@ -151,6 +155,8 @@ export default async function TrashPage({ searchParams }: { searchParams: Promis
                   <th className="pb-2 pr-3">Reference</th>
                   <th className="pb-2 pr-3">Customer</th>
                   <th className="pb-2 pr-3">Phone</th>
+                  <th className="pb-2 pr-3">Province</th>
+                  <th className="pb-2 pr-3">City</th>
                   <th className="pb-2 pr-3">Deleted</th>
                   <th className="pb-2">Actions</th>
                 </tr>
@@ -158,7 +164,7 @@ export default async function TrashPage({ searchParams }: { searchParams: Promis
               <tbody>
                 {deletedRequests.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="py-6 text-center text-slate-400">
+                    <td colSpan={7} className="py-6 text-center text-slate-400">
                       Trash is empty.
                     </td>
                   </tr>
@@ -168,6 +174,8 @@ export default async function TrashPage({ searchParams }: { searchParams: Promis
                     <td className="py-3 pr-3 font-mono text-xs text-blue-300">{r.reference}</td>
                     <td className="py-3 pr-3 text-slate-800">{r.customerName}</td>
                     <td className="py-3 pr-3 text-slate-500">{r.phone || "—"}</td>
+                    <td className="py-3 pr-3 text-slate-500">{r.province || "—"}</td>
+                    <td className="py-3 pr-3 text-slate-500">{r.city || "—"}</td>
                     <td className="py-3 pr-3 text-slate-500">{r.deletedAt ? formatDateTime(r.deletedAt) : "—"}</td>
                     <td className="py-3">
                       <div className="flex gap-1.5">
