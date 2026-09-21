@@ -16,6 +16,7 @@ const GROUPS = [
     tabs: [
       { href: "/admin/users", label: "Staff Accounts" },
       { href: "/admin/login-logs", label: "Login Logs" },
+      { href: "/admin/check-ins", label: "Check-Ins" },
     ],
   },
   {
