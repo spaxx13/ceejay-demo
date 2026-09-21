@@ -25,7 +25,7 @@ const peso = (n: number) => `₱${n.toLocaleString(undefined, { minimumFractionD
 export default async function RequestsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string; technician?: string; date?: string; unassigned?: string }>;
+  searchParams: Promise<{ status?: string; technician?: string; date?: string; unassigned?: string; province?: string }>;
 }) {
   const user = await getCurrentUser();
   if (!canManageHomeServiceRequests(user)) redirect("/admin");
@@ -63,8 +63,31 @@ export default async function RequestsPage({
   if (sp.status) requests = requests.filter((r) => r.statusId === sp.status);
   if (sp.technician) requests = requests.filter((r) => r.assignedTechnicianId === sp.technician);
   if (sp.date) requests = requests.filter((r) => r.preferredDatetime.startsWith(sp.date!));
+  if (sp.province) requests = requests.filter((r) => r.province === sp.province);
   if (sp.unassigned === "1") requests = requests.filter(isUnassigned);
   requests.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+
+  // Every province actually seen on a request — not just the shop's current
+  // serviceable list (lib/homeServiceFees.ts), since an older request can
+  // carry a province (e.g. Quezon) that's since been dropped from the
+  // public picker but still needs to show up here.
+  const provinceOptions = Array.from(new Set(visibleRequests.map((r) => r.province).filter(Boolean))).sort((a, b) => a.localeCompare(b));
+
+  // Technician breakdown for whatever's currently filtered — most useful
+  // paired with the province dropdown ("who's covering this province, and
+  // how many"), but reflects every active filter (date, status, etc.) too.
+  const filteredTechnicianCounts =
+    sp.province || sp.date
+      ? Array.from(
+          requests.reduce((map, r) => {
+            const name = r.assignedTechnicianId ? (technicians.find((t) => t.id === r.assignedTechnicianId)?.name ?? "—") : "Unassigned";
+            map.set(name, (map.get(name) ?? 0) + 1);
+            return map;
+          }, new Map<string, number>())
+        )
+          .map(([name, count]) => ({ name, count }))
+          .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
+      : [];
 
   const unassignedCount = visibleRequests.filter(isUnassigned).length;
   // How many requests share each booking_group_id — a count > 1 means
@@ -229,6 +252,14 @@ export default async function RequestsPage({
           ))}
         </select>
         <input type="date" name="date" defaultValue={sp.date ?? ""} className="input w-full sm:w-44" />
+        <select name="province" defaultValue={sp.province ?? ""} className="input w-full sm:w-44">
+          <option value="">All provinces</option>
+          {provinceOptions.map((p) => (
+            <option key={p} value={p}>
+              {p}
+            </option>
+          ))}
+        </select>
         <button type="submit" className="btn-secondary flex-1 sm:flex-none">
           Filter
         </button>
@@ -236,6 +267,32 @@ export default async function RequestsPage({
           Clear
         </Link>
       </form>
+
+      {(sp.date || sp.province || sp.status || sp.technician || sp.unassigned === "1") && (
+        <div className="card">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-sm font-semibold text-slate-800">
+              {requests.length} job{requests.length === 1 ? "" : "s"}
+              {sp.date && <> on {formatDate(sp.date)}</>}
+              {sp.province && <> in {sp.province}</>}
+            </p>
+          </div>
+          {filteredTechnicianCounts.length > 0 && (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {filteredTechnicianCounts.map((t) => (
+                <span
+                  key={t.name}
+                  className={`rounded-full border px-3 py-1 text-xs ${
+                    t.name === "Unassigned" ? "border-amber-300 bg-amber-50 text-amber-700" : "border-slate-200 bg-slate-50 text-slate-600"
+                  }`}
+                >
+                  {t.name}: {t.count}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Mobile: one card per request — a 7-column table (with a Delete
           button in the last column) doesn't fit a phone screen without
