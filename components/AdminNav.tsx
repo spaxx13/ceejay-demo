@@ -18,6 +18,7 @@ const NAV_GROUPS: {
       { href: "/admin/walk-ins", label: "Walk-In Registrations", walkinsGated: true },
       { href: "/admin/pos", label: "POS" },
       { href: "/admin/sales", label: "Branch Sales" },
+      { href: "/admin/check-ins", label: "Check-Ins" },
     ],
   },
   { label: "Customers", links: [{ href: "/admin/crm", label: "CRM", crmGated: true }] },
