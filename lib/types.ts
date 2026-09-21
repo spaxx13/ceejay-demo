@@ -439,20 +439,6 @@ export type LoginLog = {
   at: string;
 };
 
-// One "I'm here" mark for a technician or branch admin's shift, at a
-// specific branch. Separate from LoginLog, which fires on every login
-// regardless of whether the staff member is actually at a branch — see
-// 0060_check_ins.sql. At most one per user per calendar day.
-export type CheckIn = {
-  id: string;
-  userId: string | null;
-  userName: string;
-  role: Role;
-  branchId: string | null;
-  branchName: string;
-  checkedInAt: string;
-};
-
 // Digital pre-repair and post-repair checklists, filled out by the
 // technician once a job moves to "In Progress". Mirrors the shop's paper
 // "Post-Repair Checklist" / "Service Agreement" form — the same row set is

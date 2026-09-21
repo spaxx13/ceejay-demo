@@ -48,7 +48,6 @@ import {
   claimHomeServiceDownpaymentAsPaid,
   markRepairRecordQrPaymentPending,
   claimRepairRecordQrPaymentAsPaid,
-  getTodayCheckIn,
 } from "./db";
 import { getCurrentUser, setSession, clearSession, requireRole } from "./auth";
 import { sendRepairReceiptEmail, sendCancellationEmail, sendQuotationEmail, sendLeadReplyEmail, sendBroadcastEmail, sendWalkInOtpEmail, sendPublicQuoteEmail, emailConfigured } from "./email";
@@ -98,40 +97,6 @@ export async function loginAction(_prev: { error?: string } | undefined, formDat
 export async function logoutAction() {
   await clearSession();
   redirect("/login");
-}
-
-// Marks a technician or branch admin as checked in at a branch for today —
-// distinct from login_logs (see 0060_check_ins.sql). Silently no-ops on any
-// invalid input rather than surfacing an error: the form only ever offers
-// branches the account is actually allowed to check into, so a mismatch
-// here means a stale page (already checked in elsewhere, or a branch the
-// account lost access to since the page loaded) rather than a real error
-// worth showing.
-export async function checkIn(formData: FormData) {
-  const user = await getCurrentUser();
-  if (!user || (user.role !== "technician" && user.role !== "branch_admin")) return;
-
-  const branchId = str(formData, "branchId");
-  const branches = await getBranches();
-  const branch = branches.find((b) => b.id === branchId && b.active);
-  if (!branch) return;
-
-  const allowed =
-    user.role === "technician"
-      ? (await getTechnicians()).find((t) => t.id === user.technicianId)?.branchIds.includes(branchId)
-      : user.assignedBranchIds.length === 0 || user.assignedBranchIds.includes(branchId);
-  if (!allowed) return;
-
-  if (await getTodayCheckIn(user.id)) return; // already checked in today
-
-  await query("insert into check_ins (user_id, user_name, role, branch_id, branch_name) values ($1,$2,$3,$4,$5)", [
-    user.id,
-    user.name,
-    user.role,
-    branch.id,
-    branch.name,
-  ]);
-  revalidatePath(user.role === "technician" ? "/technician" : "/admin");
 }
 
 // ---------- Staff Accounts ----------

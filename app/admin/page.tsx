@@ -10,8 +10,6 @@ import {
   getRepairRecordStatus,
   getExpenses,
   getWalkInRequests,
-  getBranches,
-  getTodayCheckIn,
   technicianSharePercent,
   homeServiceSalesByTechnician,
   sumHomeServiceSales,
@@ -22,13 +20,12 @@ import {
 import { getCurrentUser } from "@/lib/auth";
 import StatusBadge from "@/components/StatusBadge";
 import SalesTrendChart from "@/components/SalesTrendChart";
-import CheckInWidget from "@/components/CheckInWidget";
 import { formatDateTime } from "@/lib/format";
 
 const peso = (n: number) => `₱${Math.round(n).toLocaleString()}`;
 
 export default async function AdminDashboard() {
-  const [user, allRequests, technicians, leads, customers, lookups, repairRecords, agreements, expenses, allWalkIns, branches] = await Promise.all([
+  const [user, allRequests, technicians, leads, customers, lookups, repairRecords, agreements, expenses, allWalkIns] = await Promise.all([
     getCurrentUser(),
     getRequests(),
     getTechnicians(),
@@ -39,13 +36,7 @@ export default async function AdminDashboard() {
     getServiceAgreements(),
     getExpenses(),
     getWalkInRequests(),
-    getBranches(),
   ]);
-  const isBranchAdmin = user?.role === "branch_admin";
-  const myBranches = isBranchAdmin
-    ? branches.filter((b) => b.active && (user!.assignedBranchIds.length === 0 || user!.assignedBranchIds.includes(b.id)))
-    : [];
-  const todayCheckIn = isBranchAdmin && user ? await getTodayCheckIn(user.id) : null;
   // Same queue scoping as Admin > Requests — a branch admin assigned to only
   // one queue's backend branch never sees the other queue's totals here.
   const requests = allRequests.filter((r) => !isBranchHidden(user, r.queueBranchId));
@@ -159,8 +150,6 @@ export default async function AdminDashboard() {
         <h1 className="text-xl font-bold text-slate-900">Dashboard</h1>
         <p className="mt-1 text-sm text-slate-400">Overview of home service operations.</p>
       </div>
-
-      {isBranchAdmin && <CheckInWidget branches={myBranches} todayCheckIn={todayCheckIn} />}
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
         {stats.map((s) =>

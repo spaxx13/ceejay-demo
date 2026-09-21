@@ -24,7 +24,6 @@ import type {
   Notification,
   Expense,
   LoginLog,
-  CheckIn,
   PushSubscription,
   ConversationMessage,
   CrmBroadcast,
@@ -291,11 +290,6 @@ function mapActivity(r: ActivityRow): ActivityLog {
 type LoginLogRow = { id: string; user_id: string | null; user_name: string; user_email: string; role: LoginLog["role"]; at: Date };
 function mapLoginLog(r: LoginLogRow): LoginLog {
   return { id: r.id, userId: r.user_id, userName: r.user_name, userEmail: r.user_email, role: r.role, at: toIso(r.at) };
-}
-
-type CheckInRow = { id: string; user_id: string | null; user_name: string; role: CheckIn["role"]; branch_id: string | null; branch_name: string; checked_in_at: Date };
-function mapCheckIn(r: CheckInRow): CheckIn {
-  return { id: r.id, userId: r.user_id, userName: r.user_name, role: r.role, branchId: r.branch_id, branchName: r.branch_name, checkedInAt: toIso(r.checked_in_at) };
 }
 
 type SaleRow = { id: string; reference: string; branch_id: string; customer_id: string | null; customer_name: string; customer_phone: string; home_service_request_id: string | null; discount: string; subtotal: string; total: string; payment_method: Sale["paymentMethod"]; cashier_name: string; created_at: Date };
@@ -579,22 +573,6 @@ export async function getActivity() {
 }
 export async function getLoginLogs() {
   return (await query<LoginLogRow>("select * from login_logs order by at desc")).map(mapLoginLog);
-}
-export async function getCheckIns() {
-  return (await query<CheckInRow>("select * from check_ins order by checked_in_at desc")).map(mapCheckIn);
-}
-// The signed-in user's own check-in for today, if any — drives whether the
-// Check In widget on /technician or /admin shows the button or "already
-// checked in" state, without pulling the whole (ever-growing) check_ins
-// table just to answer that.
-export async function getTodayCheckIn(userId: string) {
-  // Asia/Manila, not the database's own timezone — see the matching note
-  // on check_ins_user_day_idx in 0060_check_ins.sql.
-  const row = await queryOne<CheckInRow>(
-    "select * from check_ins where user_id = $1 and (checked_in_at at time zone 'Asia/Manila')::date = (now() at time zone 'Asia/Manila')::date",
-    [userId]
-  );
-  return row ? mapCheckIn(row) : null;
 }
 export async function getSales() {
   const [saleRows, lineRows] = await Promise.all([
