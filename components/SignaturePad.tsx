@@ -13,6 +13,7 @@ export default function SignaturePad({ name, label }: { name: string; label: str
   const [dataUrl, setDataUrl] = useState("");
   const [hasDrawn, setHasDrawn] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   // Strokes are kept as points (in the canvas's current CSS-pixel space)
   // rather than only as a rasterized snapshot, so a resize — full screen
@@ -102,9 +103,42 @@ export default function SignaturePad({ name, label }: { name: string; label: str
     };
   }, [isFullscreen]);
 
+  // If the browser drops out of fullscreen on its own (Android back button,
+  // system gesture) instead of via the Done button, follow it so the toggle
+  // label and orientation lock don't go stale.
+  useEffect(() => {
+    function handleFullscreenChange() {
+      if (!document.fullscreenElement) setIsFullscreen(false);
+    }
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
+  }, []);
+
+  // Real orientation lock only works while the element is in the Fullscreen
+  // API's fullscreen (not just our own fixed-position overlay), and only on
+  // browsers that support it at all — notably not iOS Safari. Where it's
+  // unsupported this silently no-ops and the box still fills the screen in
+  // whatever orientation the phone is already in, which stays undistorted.
+  async function enterFullscreen() {
+    try {
+      await containerRef.current?.requestFullscreen();
+    } catch {}
+    try {
+      await (screen.orientation as ScreenOrientation & { lock?: (o: string) => Promise<void> })?.lock?.("landscape");
+    } catch {}
+    setIsFullscreen(true);
+  }
+  function exitFullscreen() {
+    try {
+      (screen.orientation as ScreenOrientation & { unlock?: () => void })?.unlock?.();
+    } catch {}
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+    setIsFullscreen(false);
+  }
+
   function pointFromEvent(e: React.PointerEvent<HTMLCanvasElement>) {
-    const rect = canvasRef.current!.getBoundingClientRect();
-    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    const native = e.nativeEvent;
+    return { x: native.offsetX, y: native.offsetY };
   }
 
   function start(e: React.PointerEvent<HTMLCanvasElement>) {
@@ -154,7 +188,7 @@ export default function SignaturePad({ name, label }: { name: string; label: str
   }
 
   return (
-    <div className={isFullscreen ? "fixed inset-0 z-50 flex flex-col gap-2 bg-white p-4" : "space-y-1.5"}>
+    <div ref={containerRef} className={isFullscreen ? "fixed inset-0 z-50 flex flex-col gap-2 bg-white p-4" : "space-y-1.5"}>
       <div className="flex items-center justify-between">
         <label className="text-xs font-medium text-slate-500">{label}</label>
         <div className="flex items-center gap-3">
@@ -165,7 +199,7 @@ export default function SignaturePad({ name, label }: { name: string; label: str
           )}
           <button
             type="button"
-            onClick={() => setIsFullscreen((v) => !v)}
+            onClick={() => (isFullscreen ? exitFullscreen() : enterFullscreen())}
             className="text-xs font-medium text-indigo-600 hover:underline"
           >
             {isFullscreen ? "Done" : "Full screen"}
