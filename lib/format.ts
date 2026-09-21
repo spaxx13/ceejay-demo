@@ -26,3 +26,14 @@ export function formatTime(value: string | Date): string {
 export function todayDateStr(): string {
   return new Date().toLocaleDateString("en-CA", { timeZone: TIME_ZONE });
 }
+
+// Branches open at 6:00 AM — check-in before that is refused (see checkIn,
+// lib/actions.ts) and the widget hides the form rather than let someone tap
+// a button that will just silently no-op. hourCycle: "h23" is required —
+// "hour12: false" alone can format midnight as "24" instead of "00"
+// depending on the ICU data, which would wrongly read as check-in-open.
+export const CHECK_IN_OPEN_HOUR = 6;
+export function isCheckInOpen(now: Date = new Date()): boolean {
+  const hour = Number(new Intl.DateTimeFormat("en-US", { timeZone: TIME_ZONE, hour: "numeric", hourCycle: "h23" }).format(now));
+  return hour >= CHECK_IN_OPEN_HOUR;
+}

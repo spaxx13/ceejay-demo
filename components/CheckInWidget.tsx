@@ -1,5 +1,5 @@
 import { checkIn } from "@/lib/actions";
-import { formatTime } from "@/lib/format";
+import { formatTime, isCheckInOpen } from "@/lib/format";
 
 type Branch = { id: string; name: string };
 
@@ -23,6 +23,10 @@ export default function CheckInWidget({
 
   if (branches.length === 0) {
     return <div className="card text-sm text-slate-400">No branch assigned to check in at — contact the owner to get one added to your account.</div>;
+  }
+
+  if (!isCheckInOpen()) {
+    return <div className="card text-sm text-slate-400">Check-in opens at 6:00 AM.</div>;
   }
 
   return (
