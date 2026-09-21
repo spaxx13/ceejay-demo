@@ -50,11 +50,8 @@ export default function QuoteForm({
   const [city, setCity] = useState("");
   const [barangay, setBarangay] = useState("");
 
-  // Same PSGC-derived "near" queue dataset (all 8 provinces) the real Home
-  // Service form offers — Quezon and Rizal have no flat fee on file
-  // (PROVINCE_FEES), so their quoted fee falls back to "To be confirmed"
-  // (see sendPublicQuoteEmail), but they're still bookable, so still shown
-  // here rather than silently dropped.
+  // Same PSGC-derived "near" queue dataset (all 7 provinces) the real Home
+  // Service form offers.
   const [phData, setPhData] = useState<PhProvince[] | null>(null);
   useEffect(() => {
     fetch("/ph-addresses-near.json")

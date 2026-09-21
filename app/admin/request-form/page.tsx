@@ -54,7 +54,7 @@ export default async function RequestFormContentPage() {
           </p>
           <label className="flex items-center gap-2 text-sm text-slate-700">
             <input type="checkbox" name="nearAreaEnabled" defaultChecked={rc.nearAreaEnabled} className="h-4 w-4" />
-            Metro Manila, Laguna, Batangas, Quezon, Rizal, Bulacan, Cavite, and Pampanga
+            Metro Manila, Laguna, Batangas, Rizal, Bulacan, Cavite, and Pampanga
           </label>
           <label className="flex items-center gap-2 text-sm text-slate-700">
             <input type="checkbox" name="farAreaEnabled" defaultChecked={rc.farAreaEnabled} className="h-4 w-4" />
