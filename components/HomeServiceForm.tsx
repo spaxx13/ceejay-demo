@@ -126,7 +126,7 @@ export default function HomeServiceForm({
 
   // Province -> City -> Barangay cascading data, fetched on demand from a
   // static PSGC-derived asset rather than bundled into the JS — the "near"
-  // queue's 8 areas (~100KB) and the "far" queue's other 74 provinces
+  // queue's 7 areas (~85KB) and the "far" queue's other 74 provinces
   // nationwide (~470KB, includes Davao City and Zamboanga City under their
   // PSGC-linked provinces) are separate files so neither customer downloads
   // data for the queue they didn't pick.

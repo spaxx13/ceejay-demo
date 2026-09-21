@@ -75,7 +75,7 @@ export type RequestFormContent = {
   submitButtonLabel: string;
   successTitle: string;
   successBody: string;
-  nearAreaEnabled: boolean; // whether "near" (Metro Manila/Laguna/Batangas/Quezon/Rizal/Bulacan/Cavite/Pampanga) is offered on the area picker
+  nearAreaEnabled: boolean; // whether "near" (Metro Manila/Laguna/Batangas/Rizal/Bulacan/Cavite/Pampanga) is offered on the area picker
   farAreaEnabled: boolean; // whether "far" (Other Provinces) is offered on the area picker
 };
 
@@ -130,8 +130,9 @@ export type CustomFormField = {
 };
 
 // "near"/"far" mark the two address-less backend branches used purely as
-// Home Service queue buckets — near = Metro Manila/Laguna/Batangas/Quezon,
-// far = Other Provinces. Null on every real (address-having) branch.
+// Home Service queue buckets — near = Metro Manila/Laguna/Batangas/Rizal/
+// Bulacan/Cavite/Pampanga, far = Other Provinces. Null on every real
+// (address-having) branch.
 export type HomeServiceQueue = "near" | "far";
 
 export type Branch = {
