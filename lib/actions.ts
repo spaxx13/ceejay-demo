@@ -55,7 +55,7 @@ import { sendRepairReceiptEmail, sendCancellationEmail, sendQuotationEmail, send
 import { sendSms, sendOtpSms, smsConfigured, normalizePhone, getAccountStatus, type SmsAccountStatus } from "./sms";
 import { SUNDAY_ONLY_PROVINCES, DOWNPAYMENT_PROVINCES, serviceFeeAmount } from "./homeServiceFees";
 import { getRepairQuote } from "./servicePricing";
-import { formatDate } from "./format";
+import { formatDate, isCheckInOpen } from "./format";
 import { createCheckoutSession as createPaymongoCheckoutSession, paymongoConfigured } from "./paymongo";
 import { checkIcloudStatus } from "./sickw";
 import type {
@@ -110,6 +110,7 @@ export async function logoutAction() {
 export async function checkIn(formData: FormData) {
   const user = await getCurrentUser();
   if (!user || (user.role !== "technician" && user.role !== "branch_admin")) return;
+  if (!isCheckInOpen()) return; // branches open at 6:00 AM — see isCheckInOpen (lib/format.ts)
 
   const branchId = str(formData, "branchId");
   const branches = await getBranches();
