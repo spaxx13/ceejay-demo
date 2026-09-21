@@ -15,11 +15,6 @@ export function formatDate(value: string | Date): string {
   return date.toLocaleDateString("en-US", { timeZone: TIME_ZONE });
 }
 
-export function formatTime(value: string | Date): string {
-  const date = typeof value === "string" ? new Date(value) : value;
-  return date.toLocaleTimeString("en-US", { timeZone: TIME_ZONE, hour: "numeric", minute: "2-digit" });
-}
-
 // "en-CA" formats as YYYY-MM-DD, matching the date strings request rows
 // are already truncated to (see toDateStr in lib/db.ts), so this can be
 // compared directly against r.preferredDatetime.
