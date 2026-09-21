@@ -303,7 +303,6 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
   // already net of all expenses, plus Home Service's company share) — since
   // the two waterfalls above are never otherwise added together anywhere on
   // this page.
-  const branchNamesLabel = visibleRows.map((r) => r.name).join(" + ") || "All Branches";
   const grandTotalBusinessShare = grandBusinessShareNet + grandHomeService.companyShare;
 
   // Home Service technicians are usually tied only to the backend "Home
@@ -891,17 +890,26 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
               </>
             )}
 
-            <div className="mt-1 border-t-2 border-slate-300 pt-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="mt-1 space-y-2 border-t-2 border-slate-300 pt-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Breakdown — after every expense and share is deducted</p>
+              <ul className="space-y-1 text-sm">
+                {visibleRows.map((r) => (
+                  <li key={r.name} className="flex items-center justify-between gap-2">
+                    <span className="text-slate-600">{r.name}</span>
+                    <span className="font-medium text-slate-800">{peso(r.businessShareNet)}</span>
+                  </li>
+                ))}
+                <li className="flex items-center justify-between gap-2">
+                  <span className="text-slate-600">Home Service</span>
+                  <span className="font-medium text-slate-800">{peso(grandHomeService.companyShare)}</span>
+                </li>
+              </ul>
+              <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 pt-2">
                 <p className="text-sm font-bold text-slate-900">Grand Total Business Share (Net)</p>
                 <span className="inline-block rounded-md border-2 border-blue-300 bg-blue-50 px-3 py-1.5 text-lg font-extrabold text-blue-300">
                   {peso(grandTotalBusinessShare)}
                 </span>
               </div>
-              <p className="mt-1 text-xs text-slate-400">
-                {branchNamesLabel} ({peso(grandBusinessShareNet)}) + Home Service ({peso(grandHomeService.companyShare)}) — after every
-                expense and share is deducted.
-              </p>
             </div>
           </div>
         )}
