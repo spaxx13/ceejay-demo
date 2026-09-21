@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+
+type Point = { x: number; y: number };
 
 // Captures a signature by drawing on a canvas (mouse or touch) and exposes
 // it as a base64 PNG via a hidden input — same "no file storage, just
@@ -11,10 +13,13 @@ export default function SignaturePad({ name, label }: { name: string; label: str
   const [dataUrl, setDataUrl] = useState("");
   const [hasDrawn, setHasDrawn] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const dataUrlRef = useRef(dataUrl);
-  useEffect(() => {
-    dataUrlRef.current = dataUrl;
-  }, [dataUrl]);
+
+  // Strokes are kept as points (in the canvas's current CSS-pixel space)
+  // rather than only as a rasterized snapshot, so a resize — full screen
+  // toggle or device rotation — can replay them at the new size instead of
+  // stretching a bitmap, which distorts and blurs the signature.
+  const strokesRef = useRef<Point[][]>([]);
+  const sizeRef = useRef({ width: 0, height: 0 });
 
   // Sizes the canvas's backing bitmap to match its current CSS layout size.
   // Re-checked (not just run once on mount) because if this component
@@ -38,26 +43,54 @@ export default function SignaturePad({ name, label }: { name: string; label: str
     return true;
   }
 
-  useEffect(() => {
+  function redrawStrokes(canvas: HTMLCanvasElement) {
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.clearRect(0, 0, canvas.clientWidth, canvas.clientHeight);
+    for (const stroke of strokesRef.current) {
+      if (stroke.length === 0) continue;
+      ctx.beginPath();
+      ctx.moveTo(stroke[0].x, stroke[0].y);
+      for (const point of stroke.slice(1)) ctx.lineTo(point.x, point.y);
+      ctx.stroke();
+    }
+  }
+
+  // Resizes the canvas to match its current CSS layout, and — if it's
+  // already holding strokes — rescales them by a single uniform factor
+  // (never independently per axis) so the signature keeps its proportions
+  // instead of stretching to fill a box with a different aspect ratio.
+  const resizeAndRedraw = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    ensureSized(canvas);
+    const previous = sizeRef.current;
+    if (!ensureSized(canvas)) return;
+    const next = { width: canvas.clientWidth, height: canvas.clientHeight };
+    const sizeChanged = previous.width > 0 && previous.height > 0 && (previous.width !== next.width || previous.height !== next.height);
+    if (sizeChanged) {
+      const scale = Math.min(next.width / previous.width, next.height / previous.height);
+      const offsetX = (next.width - previous.width * scale) / 2;
+      const offsetY = (next.height - previous.height * scale) / 2;
+      strokesRef.current = strokesRef.current.map((stroke) =>
+        stroke.map((p) => ({ x: p.x * scale + offsetX, y: p.y * scale + offsetY })),
+      );
+    }
+    sizeRef.current = next;
+    redrawStrokes(canvas);
+    if (sizeChanged && strokesRef.current.some((s) => s.length > 0)) {
+      setDataUrl(canvas.toDataURL("image/png"));
+    }
   }, []);
 
-  // Entering/leaving full screen changes the canvas's CSS size, which resets
-  // its bitmap — repaint whatever was already signed so switching modes
-  // mid-signature doesn't lose the stroke.
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    ensureSized(canvas);
-    if (!dataUrlRef.current) return;
-    const img = new Image();
-    img.onload = () => {
-      canvasRef.current?.getContext("2d")?.drawImage(img, 0, 0, canvas.clientWidth, canvas.clientHeight);
-    };
-    img.src = dataUrlRef.current;
-  }, [isFullscreen]);
+    resizeAndRedraw();
+  }, [resizeAndRedraw, isFullscreen]);
+
+  // Catches device rotation / viewport changes even without toggling full screen.
+  useEffect(() => {
+    window.addEventListener("resize", resizeAndRedraw);
+    return () => window.removeEventListener("resize", resizeAndRedraw);
+  }, [resizeAndRedraw]);
 
   // Keeps the page from scrolling behind the overlay while signing full screen.
   useEffect(() => {
@@ -77,7 +110,7 @@ export default function SignaturePad({ name, label }: { name: string; label: str
   function start(e: React.PointerEvent<HTMLCanvasElement>) {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    ensureSized(canvas);
+    resizeAndRedraw();
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     e.preventDefault();
@@ -88,17 +121,19 @@ export default function SignaturePad({ name, label }: { name: string; label: str
     // onPointerLeave-ends-the-stroke behavior this replaces).
     canvas.setPointerCapture(e.pointerId);
     drawing.current = true;
-    const { x, y } = pointFromEvent(e);
+    const point = pointFromEvent(e);
+    strokesRef.current.push([point]);
     ctx.beginPath();
-    ctx.moveTo(x, y);
+    ctx.moveTo(point.x, point.y);
   }
   function move(e: React.PointerEvent<HTMLCanvasElement>) {
     if (!drawing.current) return;
     e.preventDefault();
     const ctx = canvasRef.current?.getContext("2d");
     if (!ctx) return;
-    const { x, y } = pointFromEvent(e);
-    ctx.lineTo(x, y);
+    const point = pointFromEvent(e);
+    strokesRef.current[strokesRef.current.length - 1]?.push(point);
+    ctx.lineTo(point.x, point.y);
     ctx.stroke();
     setHasDrawn(true);
   }
@@ -113,6 +148,7 @@ export default function SignaturePad({ name, label }: { name: string; label: str
     const ctx = canvas?.getContext("2d");
     if (!canvas || !ctx) return;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+    strokesRef.current = [];
     setDataUrl("");
     setHasDrawn(false);
   }
