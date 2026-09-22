@@ -337,6 +337,11 @@ export async function createBranch(formData: FormData) {
     str(formData, "contactNumber"),
   ]);
   revalidatePath("/admin/branches");
+  // Branch name/address/contact number is shown across the public site — the
+  // footer (every page, via the (site) layout), the Branches page, Contact
+  // page, and every service-mode form's branch picker — so a branch edit
+  // needs the whole public route group revalidated, not just /admin/branches.
+  revalidatePath("/", "layout");
 }
 
 export async function updateBranch(formData: FormData) {
@@ -350,12 +355,14 @@ export async function updateBranch(formData: FormData) {
     branchId,
   ]);
   revalidatePath("/admin/branches");
+  revalidatePath("/", "layout");
 }
 
 export async function toggleBranchActive(formData: FormData) {
   const branchId = str(formData, "id");
   await query("update branches set active = not active where id=$1", [branchId]);
   revalidatePath("/admin/branches");
+  revalidatePath("/", "layout");
 }
 
 // ---------- Technicians ----------
