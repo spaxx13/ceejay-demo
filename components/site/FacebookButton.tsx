@@ -1,8 +1,6 @@
-// Floating "Message us on Facebook" button shown on every public page —
-// bottom-left, since the Tawk.to live chat bubble ((site)/layout.tsx)
-// already occupies the bottom-right corner. url comes from
-// site_content.facebook_url (Admin > Landing Page); blank hides the button
-// entirely rather than linking nowhere.
+// Floating "Message us on Facebook" button shown on every public page,
+// bottom-left. url comes from site_content.facebook_url (Admin > Landing
+// Page); blank hides the button entirely rather than linking nowhere.
 export default function FacebookButton({ url }: { url: string }) {
   if (!url) return null;
 
