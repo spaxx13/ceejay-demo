@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { getRequests, getRiders, getTechnicians, getLookups, canManageHomeServiceRequests, isBranchHidden, pickupDeliveryStage } from "@/lib/db";
+import { getRequests, getRiders, getTechnicians, getBranches, getLookups, canManageHomeServiceRequests, isBranchHidden, pickupDeliveryStage } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import PickupDeliveryBoard from "@/components/PickupDeliveryBoard";
 
@@ -7,7 +7,13 @@ export default async function PickupDeliveryPage() {
   const user = await getCurrentUser();
   if (!canManageHomeServiceRequests(user)) redirect("/admin");
 
-  const [allRequests, riders, technicians, lookups] = await Promise.all([getRequests(), getRiders(), getTechnicians(), getLookups()]);
+  const [allRequests, riders, technicians, branches, lookups] = await Promise.all([
+    getRequests(),
+    getRiders(),
+    getTechnicians(),
+    getBranches(),
+    getLookups(),
+  ]);
   const statuses = lookups.filter((l) => l.kind === "request_status");
 
   const jobs = allRequests
@@ -17,6 +23,7 @@ export default async function PickupDeliveryPage() {
       const technician = technicians.find((t) => t.id === r.assignedTechnicianId);
       const pickupRider = riders.find((rd) => rd.id === r.pickupRiderId);
       const deliveryRider = riders.find((rd) => rd.id === r.deliveryRiderId);
+      const deliveredBranch = branches.find((b) => b.id === r.deliveredBranchId);
       return {
         id: r.id,
         reference: r.reference,
@@ -38,6 +45,8 @@ export default async function PickupDeliveryPage() {
         receivedAtShopAt: r.receivedAtShopAt,
         outForDeliveryAt: r.outForDeliveryAt,
         deliveredAt: r.deliveredAt,
+        pickupPhotoDataUrl: r.pickupPhotoDataUrl,
+        deliveredBranchName: deliveredBranch?.name ?? null,
         createdAt: r.createdAt,
       };
     })

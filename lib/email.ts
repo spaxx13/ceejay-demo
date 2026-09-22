@@ -368,3 +368,44 @@ export async function sendCancellationEmail(to: string, opts: { customerName: st
   });
   if (error) throw new Error(error.message);
 }
+
+// Sent twice per Pickup & Delivery pickup leg — once when the rider marks
+// "On The Way" (heading to the customer), again when they mark "On The Way
+// to Branch" (heading to the shop with the device) — each time pointing at
+// the same /track page, which shows whichever leg is actually live right
+// now rather than needing two different URLs.
+export async function sendTrackingLinkEmail(
+  to: string,
+  opts: { customerName: string; reference: string; phone: string; stage: "heading_to_pickup" | "heading_to_shop" }
+) {
+  const client = getClient();
+  const trackingUrl = `${SITE_URL}/track?reference=${encodeURIComponent(opts.reference)}&phone=${encodeURIComponent(opts.phone)}`;
+  const heading =
+    opts.stage === "heading_to_pickup" ? "Your rider is on the way!" : "Your device is on its way to the shop!";
+  const body =
+    opts.stage === "heading_to_pickup"
+      ? "A rider is heading to your address now to pick up your device. You can follow their live location on the tracking page below."
+      : "Your rider has your device and is on the way to the shop. You can follow their live location on the tracking page below.";
+
+  const { error } = await client.emails.send({
+    from: FROM,
+    to,
+    subject: `${heading} — ${opts.reference}`,
+    html: `
+      <div style="font-family: -apple-system, sans-serif; max-width: 480px; margin: 0 auto; color: #1e293b;">
+        <p style="font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8;">Ceejay Cellphone Repair Shop</p>
+        <h2 style="margin: 4px 0 16px;">${heading}</h2>
+        <p style="font-size: 14px; line-height: 1.5;">
+          Hi ${opts.customerName}, ${body}
+        </p>
+        <p style="margin: 20px 0;">
+          <a href="${trackingUrl}" style="display: inline-block; background: #0071e3; color: #fff; padding: 10px 20px; border-radius: 999px; text-decoration: none; font-size: 14px; font-weight: 600;">
+            Track My Request
+          </a>
+        </p>
+        <p style="font-size: 13px; color: #64748b;">Reference: <strong>${opts.reference}</strong></p>
+      </div>
+    `,
+  });
+  if (error) throw new Error(error.message);
+}

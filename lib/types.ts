@@ -375,6 +375,15 @@ export type HomeServiceRequest = {
   deliveredAt: string | null; // rider handed the device to the customer — delivery leg complete
   pickupSignatureDataUrl: string | null;
   deliverySignatureDataUrl: string | null;
+  // Live location, pinged by the rider's own browser (Geolocation API) while
+  // the pickup leg is "On The Way" or "On The Way to Branch" — see
+  // components/RiderLocationReporter.tsx and app/api/rider/location. Stale
+  // once the leg moves past those two stages; not cleared, just ignored.
+  riderLat: number | null;
+  riderLng: number | null;
+  riderLocationUpdatedAt: string | null;
+  pickupPhotoDataUrl: string | null; // required proof-of-pickup photo, captured when the rider marks "Picked Up"
+  deliveredBranchId: string | null; // which branch the rider actually dropped the device off at ("Delivered to Branch")
 };
 
 export type SaleLineItem = {

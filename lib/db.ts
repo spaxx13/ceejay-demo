@@ -287,6 +287,8 @@ type RequestRow = {
   pickup_started_at: Date | null; picked_up_at: Date | null; heading_to_shop_at: Date | null; received_at_shop_at: Date | null;
   out_for_delivery_at: Date | null; delivered_at: Date | null;
   pickup_signature_data_url: string | null; delivery_signature_data_url: string | null;
+  rider_lat: number | string | null; rider_lng: number | string | null; rider_location_updated_at: Date | null;
+  pickup_photo_data_url: string | null; delivered_branch_id: string | null;
 };
 function mapRequest(r: RequestRow): HomeServiceRequest {
   return {
@@ -308,7 +310,23 @@ function mapRequest(r: RequestRow): HomeServiceRequest {
     receivedAtShopAt: toIsoOrNull(r.received_at_shop_at),
     outForDeliveryAt: toIsoOrNull(r.out_for_delivery_at), deliveredAt: toIsoOrNull(r.delivered_at),
     pickupSignatureDataUrl: r.pickup_signature_data_url, deliverySignatureDataUrl: r.delivery_signature_data_url,
+    riderLat: r.rider_lat === null ? null : Number(r.rider_lat), riderLng: r.rider_lng === null ? null : Number(r.rider_lng),
+    riderLocationUpdatedAt: toIsoOrNull(r.rider_location_updated_at),
+    pickupPhotoDataUrl: r.pickup_photo_data_url, deliveredBranchId: r.delivered_branch_id,
   };
+}
+
+// Pinged by the rider's own browser (components/RiderLocationReporter.tsx,
+// via app/api/rider/location) roughly every 10-15s while a leg is "On The
+// Way" — a plain UPDATE rather than going through the full request-mapping
+// machinery above, since this fires far more often than any other write in
+// the app and only ever touches these three columns.
+export async function updateRiderLiveLocation(requestId: string, lat: number, lng: number) {
+  await query("update home_service_requests set rider_lat=$1, rider_lng=$2, rider_location_updated_at=now() where id=$3", [
+    lat,
+    lng,
+    requestId,
+  ]);
 }
 
 // Every field the two-leg Pickup & Delivery lifecycle needs to derive a

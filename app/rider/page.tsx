@@ -1,13 +1,14 @@
 import { getCurrentUser } from "@/lib/auth";
-import { getRequests } from "@/lib/db";
+import { getRequests, getBranches } from "@/lib/db";
 import { riderUpdatePickupStatus, riderUpdateDeliveryStatus } from "@/lib/actions";
 import RiderStatusUpdateForm from "@/components/RiderStatusUpdateForm";
+import RiderLocationReporter from "@/components/RiderLocationReporter";
 
 const PICKUP_STATUS_OPTIONS = [
   { value: "on_the_way", label: "On The Way" },
-  { value: "picked_up", label: "Picked Up", needsSignature: true },
+  { value: "picked_up", label: "Picked Up", needsSignature: true, needsPhoto: true },
   { value: "heading_to_shop", label: "On The Way to Branch" },
-  { value: "delivered_to_branch", label: "Delivered to Branch" },
+  { value: "delivered_to_branch", label: "Delivered to Branch", needsBranch: true },
 ];
 
 const DELIVERY_STATUS_OPTIONS = [
@@ -19,7 +20,8 @@ export default async function RiderPage() {
   const user = await getCurrentUser();
   const riderId = user?.riderId ?? null;
 
-  const allRequests = riderId ? await getRequests() : [];
+  const [allRequests, allBranches] = await Promise.all([riderId ? getRequests() : Promise.resolve([]), getBranches()]);
+  const branches = allBranches.filter((b) => b.active).map((b) => ({ id: b.id, name: b.name }));
   // The pickup leg isn't done until the device is actually at the shop, not
   // just once it leaves the customer's hands.
   const myPickups = allRequests
@@ -76,7 +78,16 @@ export default async function RiderPage() {
                   Call {r.phone}
                 </a>
               )}
-              <RiderStatusUpdateForm action={riderUpdatePickupStatus} requestId={r.id} options={PICKUP_STATUS_OPTIONS} defaultValue={defaultStatus} />
+              {((r.pickupStartedAt && !r.pickedUpAt) || (r.headingToShopAt && !r.receivedAtShopAt)) && (
+                <RiderLocationReporter requestId={r.id} />
+              )}
+              <RiderStatusUpdateForm
+                action={riderUpdatePickupStatus}
+                requestId={r.id}
+                options={PICKUP_STATUS_OPTIONS}
+                defaultValue={defaultStatus}
+                branches={branches}
+              />
             </div>
           );
         })}

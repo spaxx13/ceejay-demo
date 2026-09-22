@@ -1,5 +1,6 @@
-import { getRequestByReference, getRiders, getTechnicians, getLookups, pickupDeliveryStage, PICKUP_DELIVERY_STAGE_LABELS } from "@/lib/db";
+import { getRequestByReference, getRiders, getTechnicians, getBranches, getLookups, pickupDeliveryStage, PICKUP_DELIVERY_STAGE_LABELS } from "@/lib/db";
 import type { PickupDeliveryStage } from "@/lib/db";
+import TrackingLiveMap from "@/components/TrackingLiveMap";
 
 function normalizePhone(p: string) {
   return p.replace(/[\s-]/g, "").replace(/^\+63/, "0");
@@ -50,7 +51,13 @@ export default async function TrackPage({ searchParams }: { searchParams: Promis
     );
   }
 
-  const [req, riders, technicians, lookups] = await Promise.all([getRequestByReference(reference), getRiders(), getTechnicians(), getLookups()]);
+  const [req, riders, technicians, branches, lookups] = await Promise.all([
+    getRequestByReference(reference),
+    getRiders(),
+    getTechnicians(),
+    getBranches(),
+    getLookups(),
+  ]);
   const matches = req && normalizePhone(req.phone) === normalizePhone(phone);
 
   if (!req || !matches) {
@@ -91,6 +98,8 @@ export default async function TrackPage({ searchParams }: { searchParams: Promis
   const pickupRider = riders.find((r) => r.id === req.pickupRiderId);
   const deliveryRider = riders.find((r) => r.id === req.deliveryRiderId);
   const technician = technicians.find((t) => t.id === req.assignedTechnicianId);
+  const deliveredBranch = branches.find((b) => b.id === req.deliveredBranchId);
+  const isLiveStage = stage === "pickup_started" || stage === "heading_to_shop";
   const activeRider =
     stage === "out_for_delivery" || stage === "delivery_assigned"
       ? deliveryRider
@@ -120,20 +129,28 @@ export default async function TrackPage({ searchParams }: { searchParams: Promis
               Rider: <span className="font-medium text-slate-800">{activeRider.name}</span>
             </p>
           )}
-          {(stage === "picked_up" || stage === "heading_to_shop") && (
-            <p className="text-sm text-slate-600">Your device is on its way to the shop.</p>
-          )}
+          {isLiveStage && <TrackingLiveMap lat={req.riderLat} lng={req.riderLng} updatedAt={req.riderLocationUpdatedAt} />}
+          {stage === "picked_up" && <p className="text-sm text-slate-600">Your device is on its way to the shop.</p>}
           {stage === "at_shop" && (
-            <p className="text-sm text-slate-600">
-              At the shop{technician ? <> — technician <span className="font-medium text-slate-800">{technician.name}</span></> : ""}.
-            </p>
+            <div className="space-y-1">
+              <p className="text-sm font-medium text-green-700">
+                Delivered{deliveredBranch ? <> to our <span className="font-semibold">{deliveredBranch.name}</span> branch</> : " to the shop"}.
+              </p>
+              {technician && (
+                <p className="text-sm text-slate-600">
+                  Technician: <span className="font-medium text-slate-800">{technician.name}</span>
+                </p>
+              )}
+            </div>
           )}
           {stage === "ready_for_delivery" && <p className="text-sm text-slate-600">Repaired and ready — waiting for a delivery rider to be assigned.</p>}
           {stage === "delivered" && <p className="text-sm font-medium text-green-700">Delivered — this request is complete.</p>}
         </div>
 
         <p className="text-center text-xs text-slate-400">
-          This page shows the request&apos;s current status, not a live map — refresh anytime for the latest update.
+          {isLiveStage
+            ? "This map updates automatically every few seconds."
+            : "This page shows the request's current status — refresh anytime for the latest update."}
         </p>
       </div>
     </main>

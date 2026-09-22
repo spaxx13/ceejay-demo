@@ -23,6 +23,8 @@ type Job = {
   receivedAtShopAt: string | null;
   outForDeliveryAt: string | null;
   deliveredAt: string | null;
+  pickupPhotoDataUrl: string | null;
+  deliveredBranchName: string | null;
   createdAt: string;
 };
 type Rider = { id: string; name: string };
@@ -122,9 +124,15 @@ export default function PickupDeliveryBoard({ jobs, riders }: { jobs: Job[]; rid
                   )}
 
                   {job.stage === "picked_up" && (
-                    <p className="text-xs text-slate-500">
-                      Rider <span className="font-medium text-slate-700">{job.pickupRiderName}</span> has the device.
-                    </p>
+                    <div className="space-y-1.5">
+                      <p className="text-xs text-slate-500">
+                        Rider <span className="font-medium text-slate-700">{job.pickupRiderName}</span> has the device.
+                      </p>
+                      {job.pickupPhotoDataUrl && (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={job.pickupPhotoDataUrl} alt="Unit picked up" className="h-20 w-20 rounded-lg border border-slate-200 object-cover" />
+                      )}
+                    </div>
                   )}
 
                   {job.stage === "heading_to_shop" && (
@@ -134,12 +142,23 @@ export default function PickupDeliveryBoard({ jobs, riders }: { jobs: Job[]; rid
                   )}
 
                   {job.stage === "at_shop" && (
-                    <div className="space-y-0.5 text-xs text-slate-500">
-                      <p>
-                        Picked up by <span className="font-medium text-slate-700">{job.pickupRiderName}</span>
-                        {job.receivedAtShopAt ? ` — at the shop since ${formatDateTime(job.receivedAtShopAt)}` : ""}
-                      </p>
-                      <p>Technician: {job.technicianName ? <span className="font-medium text-slate-700">{job.technicianName}</span> : "Not yet assigned"}</p>
+                    <div className="space-y-1.5">
+                      <div className="space-y-0.5 text-xs text-slate-500">
+                        <p>
+                          Picked up by <span className="font-medium text-slate-700">{job.pickupRiderName}</span>
+                          {job.receivedAtShopAt ? ` — at the shop since ${formatDateTime(job.receivedAtShopAt)}` : ""}
+                        </p>
+                        {job.deliveredBranchName && (
+                          <p>
+                            Delivered to: <span className="font-medium text-slate-700">{job.deliveredBranchName}</span>
+                          </p>
+                        )}
+                        <p>Technician: {job.technicianName ? <span className="font-medium text-slate-700">{job.technicianName}</span> : "Not yet assigned"}</p>
+                      </div>
+                      {job.pickupPhotoDataUrl && (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={job.pickupPhotoDataUrl} alt="Unit picked up" className="h-20 w-20 rounded-lg border border-slate-200 object-cover" />
+                      )}
                     </div>
                   )}
 

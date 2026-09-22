@@ -53,7 +53,7 @@ import {
   getTodayCheckIn,
 } from "./db";
 import { getCurrentUser, setSession, clearSession, requireRole } from "./auth";
-import { sendRepairReceiptEmail, sendCancellationEmail, sendQuotationEmail, sendLeadReplyEmail, sendBroadcastEmail, sendWalkInOtpEmail, sendPublicQuoteEmail, emailConfigured } from "./email";
+import { sendRepairReceiptEmail, sendCancellationEmail, sendQuotationEmail, sendLeadReplyEmail, sendBroadcastEmail, sendWalkInOtpEmail, sendPublicQuoteEmail, sendTrackingLinkEmail, emailConfigured } from "./email";
 import { sendSms, sendOtpSms, smsConfigured, normalizePhone, getAccountStatus, type SmsAccountStatus } from "./sms";
 import { SUNDAY_ONLY_PROVINCES, DOWNPAYMENT_PROVINCES, serviceFeeAmount } from "./homeServiceFees";
 import { getRepairQuote } from "./servicePricing";
@@ -556,38 +556,61 @@ export async function assignDeliveryRider(formData: FormData) {
 // rather than erasing a later one.
 
 export type PickupRiderStatus = "on_the_way" | "picked_up" | "heading_to_shop" | "delivered_to_branch";
+export type RiderStatusResult = { ok: true } | { ok: false; error: string };
 
-export async function riderUpdatePickupStatus(formData: FormData) {
+export async function riderUpdatePickupStatus(_prev: RiderStatusResult | undefined, formData: FormData): Promise<RiderStatusResult> {
   const user = await getCurrentUser();
-  if (!user || user.role !== "rider" || !user.riderId) return;
+  if (!user || user.role !== "rider" || !user.riderId) return { ok: false, error: "Not signed in as a rider." };
 
   const requestId = str(formData, "requestId");
   const status = str(formData, "status") as PickupRiderStatus;
   const req = await getRequestById(requestId);
-  if (!req || req.pickupRiderId !== user.riderId) return;
+  if (!req || req.pickupRiderId !== user.riderId) return { ok: false, error: "This job isn't assigned to you." };
 
   switch (status) {
-    case "on_the_way":
-      if (req.pickupStartedAt) return;
+    case "on_the_way": {
+      if (req.pickupStartedAt) break;
       await query("update home_service_requests set pickup_started_at=now() where id=$1", [requestId]);
       await logActivity("home_service_request", requestId, `Rider ${user.name} is on the way to pick up the device`, user.name);
+      if (req.email && emailConfigured()) {
+        try {
+          await sendTrackingLinkEmail(req.email, { customerName: req.customerName, reference: req.reference, phone: req.phone, stage: "heading_to_pickup" });
+        } catch {
+          // Best-effort — never blocks the rider's status update.
+        }
+      }
       break;
-    case "picked_up":
-      if (req.pickedUpAt) return;
-      await query("update home_service_requests set picked_up_at=now(), pickup_signature_data_url=$1 where id=$2", [
+    }
+    case "picked_up": {
+      if (req.pickedUpAt) break;
+      const photoDataUrl = str(formData, "photoDataUrl");
+      if (!photoDataUrl) return { ok: false, error: "Please take a photo of the unit before marking it picked up." };
+      await query("update home_service_requests set picked_up_at=now(), pickup_signature_data_url=$1, pickup_photo_data_url=$2 where id=$3", [
         str(formData, "signatureDataUrl") || null,
+        photoDataUrl,
         requestId,
       ]);
       await logActivity("home_service_request", requestId, `Picked up by rider ${user.name}`, user.name);
       break;
-    case "heading_to_shop":
-      if (req.headingToShopAt) return;
+    }
+    case "heading_to_shop": {
+      if (req.headingToShopAt) break;
       await query("update home_service_requests set heading_to_shop_at=now() where id=$1", [requestId]);
       await logActivity("home_service_request", requestId, `Rider ${user.name} is on the way to the branch with the device`, user.name);
+      if (req.email && emailConfigured()) {
+        try {
+          await sendTrackingLinkEmail(req.email, { customerName: req.customerName, reference: req.reference, phone: req.phone, stage: "heading_to_shop" });
+        } catch {
+          // Best-effort — never blocks the rider's status update.
+        }
+      }
       break;
-    case "delivered_to_branch":
-      if (req.receivedAtShopAt) return;
-      await query("update home_service_requests set received_at_shop_at=now() where id=$1", [requestId]);
+    }
+    case "delivered_to_branch": {
+      if (req.receivedAtShopAt) break;
+      const deliveredBranchId = str(formData, "deliveredBranchId");
+      if (!deliveredBranchId) return { ok: false, error: "Please select which branch you delivered the device to." };
+      await query("update home_service_requests set received_at_shop_at=now(), delivered_branch_id=$1 where id=$2", [deliveredBranchId, requestId]);
       await logActivity("home_service_request", requestId, `Device delivered to the shop by rider ${user.name}`, user.name);
       await notifyAdmins(
         "request_in_progress",
@@ -595,33 +618,35 @@ export async function riderUpdatePickupStatus(formData: FormData) {
         `${user.name} brought ${req.reference} (${req.customerName}) to the shop — ready to assign a technician.`
       );
       break;
+    }
     default:
-      return;
+      return { ok: false, error: "Invalid status." };
   }
   revalidatePath("/rider");
   revalidatePath("/admin/pickup-delivery");
   revalidatePath(`/admin/requests/${requestId}`);
+  return { ok: true };
 }
 
 export type DeliveryRiderStatus = "on_the_way" | "delivered";
 
-export async function riderUpdateDeliveryStatus(formData: FormData) {
+export async function riderUpdateDeliveryStatus(_prev: RiderStatusResult | undefined, formData: FormData): Promise<RiderStatusResult> {
   const user = await getCurrentUser();
-  if (!user || user.role !== "rider" || !user.riderId) return;
+  if (!user || user.role !== "rider" || !user.riderId) return { ok: false, error: "Not signed in as a rider." };
 
   const requestId = str(formData, "requestId");
   const status = str(formData, "status") as DeliveryRiderStatus;
   const req = await getRequestById(requestId);
-  if (!req || req.deliveryRiderId !== user.riderId) return;
+  if (!req || req.deliveryRiderId !== user.riderId) return { ok: false, error: "This job isn't assigned to you." };
 
   switch (status) {
     case "on_the_way":
-      if (req.outForDeliveryAt) return;
+      if (req.outForDeliveryAt) break;
       await query("update home_service_requests set out_for_delivery_at=now() where id=$1", [requestId]);
       await logActivity("home_service_request", requestId, `Rider ${user.name} is on the way to deliver the device`, user.name);
       break;
     case "delivered":
-      if (req.deliveredAt) return;
+      if (req.deliveredAt) break;
       await query("update home_service_requests set delivered_at=now(), delivery_signature_data_url=$1 where id=$2", [
         str(formData, "signatureDataUrl") || null,
         requestId,
@@ -630,11 +655,12 @@ export async function riderUpdateDeliveryStatus(formData: FormData) {
       await notifyAdmins("request_in_progress", requestId, `${user.name} delivered ${req.reference} (${req.customerName}) to the customer.`);
       break;
     default:
-      return;
+      return { ok: false, error: "Invalid status." };
   }
   revalidatePath("/rider");
   revalidatePath("/admin/pickup-delivery");
   revalidatePath(`/admin/requests/${requestId}`);
+  return { ok: true };
 }
 
 // ---------- Device Brands / Models ----------
