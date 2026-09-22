@@ -7,8 +7,9 @@ import { useRouter } from "next/navigation";
 // and local rather than a global Window augmentation, same convention as
 // MapPinPicker.tsx.
 type LatLngLiteral = { lat: number; lng: number };
-type GMap = { setCenter: (pos: LatLngLiteral) => void; setZoom: (z: number) => void };
+type GMap = { setCenter: (pos: LatLngLiteral) => void; setZoom: (z: number) => void; fitBounds: (bounds: GBounds, padding?: number) => void };
 type GMarker = { setPosition: (pos: LatLngLiteral) => void; setMap: (map: GMap | null) => void };
+type GBounds = { extend: (pos: LatLngLiteral) => void };
 type GDirectionsRenderer = { setMap: (map: GMap | null) => void; setDirections: (result: unknown) => void };
 type GDirectionsService = {
   route: (request: Record<string, unknown>, callback: (result: unknown, status: string) => void) => void;
@@ -17,6 +18,7 @@ type GoogleMapsNamespace = {
   maps: {
     Map: new (el: HTMLElement, opts: Record<string, unknown>) => GMap;
     Marker: new (opts: Record<string, unknown>) => GMarker;
+    LatLngBounds: new () => GBounds;
     DirectionsService: new () => GDirectionsService;
     DirectionsRenderer: new (opts?: Record<string, unknown>) => GDirectionsRenderer;
     TravelMode: { DRIVING: string };
@@ -84,6 +86,7 @@ export default function TrackingLiveMap({
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<GMap | null>(null);
   const markerRef = useRef<GMarker | null>(null);
+  const destMarkerRef = useRef<GMarker | null>(null);
   const directionsRendererRef = useRef<GDirectionsRenderer | null>(null);
 
   useEffect(() => {
@@ -114,8 +117,8 @@ export default function TrackingLiveMap({
     if (!ready || !mapContainerRef.current || lat === null || lng === null) return;
     const g = (window as unknown as { google: GoogleMapsNamespace }).google;
     const origin = { lat, lng };
-    const destination =
-      destinationLat != null && destinationLng != null ? { lat: destinationLat, lng: destinationLng } : (destinationAddress ?? null);
+    const destinationCoords = destinationLat != null && destinationLng != null ? { lat: destinationLat, lng: destinationLng } : null;
+    const destination = destinationCoords ?? destinationAddress ?? null;
 
     if (!mapRef.current) {
       mapRef.current = new g.maps.Map(mapContainerRef.current, {
@@ -128,28 +131,56 @@ export default function TrackingLiveMap({
     }
     const map = mapRef.current;
 
-    if (destination) {
-      if (markerRef.current) {
-        markerRef.current.setMap(null);
-        markerRef.current = null;
+    // Markers are placed ourselves (rather than relying on
+    // DirectionsRenderer's default A/B pins) so the rider's and the
+    // destination's positions stay visible on the map even if the
+    // directions request below fails — a blank map with no polyline and no
+    // pins is confusing, a map with pins but no route is still useful.
+    if (markerRef.current) {
+      markerRef.current.setPosition(origin);
+    } else {
+      markerRef.current = new g.maps.Marker({
+        position: origin,
+        map,
+        icon: "https://maps.google.com/mapfiles/ms/icons/blue-dot.png",
+        title: "Rider",
+      });
+    }
+
+    if (destinationCoords) {
+      if (destMarkerRef.current) {
+        destMarkerRef.current.setPosition(destinationCoords);
+      } else {
+        destMarkerRef.current = new g.maps.Marker({ position: destinationCoords, map, title: "Destination" });
       }
+      const bounds = new g.maps.LatLngBounds();
+      bounds.extend(origin);
+      bounds.extend(destinationCoords);
+      map.fitBounds(bounds, 56);
+    } else {
+      if (destMarkerRef.current) {
+        destMarkerRef.current.setMap(null);
+        destMarkerRef.current = null;
+      }
+      map.setCenter(origin);
+      map.setZoom(15);
+    }
+
+    if (destination) {
       if (!directionsRendererRef.current) {
-        directionsRendererRef.current = new g.maps.DirectionsRenderer({ suppressInfoWindows: true });
+        directionsRendererRef.current = new g.maps.DirectionsRenderer({ suppressInfoWindows: true, suppressMarkers: true });
       }
       const renderer = directionsRendererRef.current;
       renderer.setMap(map);
       new g.maps.DirectionsService().route({ origin, destination, travelMode: g.maps.TravelMode.DRIVING }, (result, status) => {
-        if (status === "OK" && result) renderer.setDirections(result);
+        if (status === "OK" && result) {
+          renderer.setDirections(result);
+        } else {
+          console.error("TrackingLiveMap: directions request failed", status);
+        }
       });
-    } else {
-      if (directionsRendererRef.current) directionsRendererRef.current.setMap(null);
-      map.setCenter(origin);
-      map.setZoom(15);
-      if (markerRef.current) {
-        markerRef.current.setPosition(origin);
-      } else {
-        markerRef.current = new g.maps.Marker({ position: origin, map });
-      }
+    } else if (directionsRendererRef.current) {
+      directionsRendererRef.current.setMap(null);
     }
   }, [ready, lat, lng, destinationAddress, destinationLat, destinationLng]);
 
