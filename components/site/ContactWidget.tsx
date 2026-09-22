@@ -8,25 +8,16 @@ type MenuItem = { label: string; href: string; internal?: boolean };
 // Floating "contact us" widget shown on every public page, bottom-right —
 // mimics a live-chat launcher (Tawk.to, which this replaced): a round
 // button that expands into a short menu instead of jumping straight to one
-// destination. Each contact number comes from its matching branch row
-// (Admin > Branches); a blank number just drops that menu item instead of
-// linking nowhere. "Our Branches" always shows since it needs no config.
-export default function ContactWidget({
-  facebookUrl,
-  homeServiceNumber,
-  homeServiceOtherProvincesNumber,
-}: {
-  facebookUrl: string;
-  homeServiceNumber: string;
-  homeServiceOtherProvincesNumber: string;
-}) {
+// destination. "Our Branches" and "Home Service" always show since they're
+// internal links needing no config; "Inquiries" (Facebook) drops out if no
+// Page URL is set (Admin > Landing Page) instead of linking nowhere.
+export default function ContactWidget({ facebookUrl }: { facebookUrl: string }) {
   const [open, setOpen] = useState(false);
 
   const items: MenuItem[] = [
     { label: "Our Branches", href: "/branches", internal: true },
+    { label: "Home Service", href: "/request", internal: true },
     ...(facebookUrl ? [{ label: "Inquiries", href: facebookUrl }] : []),
-    ...(homeServiceNumber ? [{ label: "Home Service", href: `tel:${homeServiceNumber}` }] : []),
-    ...(homeServiceOtherProvincesNumber ? [{ label: "Home Service (Other Provinces)", href: `tel:${homeServiceOtherProvincesNumber}` }] : []),
   ];
 
   return (
@@ -50,8 +41,8 @@ export default function ContactWidget({
                   <li key={item.label}>
                     <a
                       href={item.href}
-                      target={item.href.startsWith("tel:") ? undefined : "_blank"}
-                      rel={item.href.startsWith("tel:") ? undefined : "noopener noreferrer"}
+                      target="_blank"
+                      rel="noopener noreferrer"
                       onClick={() => setOpen(false)}
                       className="block px-4 py-3 text-sm text-slate-700 hover:bg-slate-50"
                     >
