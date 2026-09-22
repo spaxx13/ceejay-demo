@@ -5,19 +5,34 @@ import { useState } from "react";
 
 type MenuItem = { label: string; href: string; internal?: boolean };
 
+// A Page URL (facebook.com/<slug>) and its Messenger deep link (m.me/<slug>)
+// share the same slug for every normal Facebook Page — so this derives the
+// direct-to-Messenger link from the one URL already configured (Admin >
+// Landing Page) instead of needing a second field for it. Falls back to the
+// Page URL itself if it can't be parsed as a normal facebook.com URL.
+function toMessengerUrl(facebookUrl: string): string {
+  try {
+    const slug = new URL(facebookUrl).pathname.replace(/^\/+|\/+$/g, "").split("/")[0];
+    return slug ? `https://m.me/${slug}` : facebookUrl;
+  } catch {
+    return facebookUrl;
+  }
+}
+
 // Floating "contact us" widget shown on every public page, bottom-right —
 // mimics a live-chat launcher (Tawk.to, which this replaced): a round
 // button that expands into a short menu instead of jumping straight to one
 // destination. "Our Branches" and "Home Service" always show since they're
-// internal links needing no config; "Inquiries" (Facebook) drops out if no
-// Page URL is set (Admin > Landing Page) instead of linking nowhere.
+// internal links needing no config; "Inquiries" (straight into a Messenger
+// chat with the Page) drops out if no Page URL is set instead of linking
+// nowhere.
 export default function ContactWidget({ facebookUrl }: { facebookUrl: string }) {
   const [open, setOpen] = useState(false);
 
   const items: MenuItem[] = [
     { label: "Our Branches", href: "/branches", internal: true },
     { label: "Home Service", href: "/request", internal: true },
-    ...(facebookUrl ? [{ label: "Inquiries", href: facebookUrl }] : []),
+    ...(facebookUrl ? [{ label: "Inquiries", href: toMessengerUrl(facebookUrl) }] : []),
   ];
 
   return (
