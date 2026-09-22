@@ -126,12 +126,14 @@ export default async function TrackPage({ searchParams }: { searchParams: Promis
 
         <div className="card space-y-3">
           <p className="text-sm font-semibold text-slate-800">{PICKUP_DELIVERY_STAGE_LABELS[stage]}</p>
-          <div className="flex items-center gap-1">
-            {STAGE_ORDER.map((s, i) => (
-              <span key={s} className={`h-1.5 flex-1 rounded-full ${i <= stageIndex ? "bg-blue-500" : "bg-slate-200"}`} />
-            ))}
-          </div>
-          {activeRider && (
+          {!isLiveStage && (
+            <div className="flex items-center gap-1">
+              {STAGE_ORDER.map((s, i) => (
+                <span key={s} className={`h-1.5 flex-1 rounded-full ${i <= stageIndex ? "bg-blue-500" : "bg-slate-200"}`} />
+              ))}
+            </div>
+          )}
+          {activeRider && !isLiveStage && (
             <p className="text-sm text-slate-600">
               Rider: <span className="font-medium text-slate-800">{activeRider.name}</span>
             </p>
