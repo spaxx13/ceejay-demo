@@ -70,6 +70,17 @@ export default async function SiteContentPage() {
           </div>
         </div>
 
+        <div className="card space-y-4">
+          <h3 className="text-sm font-semibold text-slate-800">Facebook Button</h3>
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-slate-500">Facebook Page URL</label>
+            <input name="facebookUrl" defaultValue={sc.facebookUrl} placeholder="https://facebook.com/YourPage" className="input" />
+            <p className="text-[11px] text-slate-400">
+              Shows a floating &quot;Message us on Facebook&quot; button on every public page, linking here. Leave blank to hide the button.
+            </p>
+          </div>
+        </div>
+
         <button type="submit" className="btn-primary">
           Save Changes
         </button>

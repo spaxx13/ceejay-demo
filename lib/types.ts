@@ -61,6 +61,7 @@ export type SiteContent = {
   ctaBannerTitle: string;
   ctaBannerSubtitle: string;
   ctaBannerButtonLabel: string;
+  facebookUrl: string; // backs the floating "Message us on Facebook" button shown on every public page — blank hides the button
 };
 
 // Singleton record backing the copy on the public Home Service Request form
