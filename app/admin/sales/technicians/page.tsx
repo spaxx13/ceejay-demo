@@ -6,7 +6,7 @@ import SalesTabs from "@/components/SalesTabs";
 const peso = (n: number) => `₱${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const pct = (n: number) => `${n.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`;
 
-export default async function TechnicianSalesPage({ searchParams }: { searchParams: Promise<{ from?: string; to?: string }> }) {
+export default async function TechnicianSalesPage({ searchParams }: { searchParams: Promise<{ from?: string; to?: string; technician?: string }> }) {
   const sp = await searchParams;
   const [user, repairRecords, expenses, technicians] = await Promise.all([
     getCurrentUser(),
@@ -112,7 +112,10 @@ export default async function TechnicianSalesPage({ searchParams }: { searchPara
       if (a.name === "Unassigned") return 1;
       if (b.name === "Unassigned") return -1;
       return b.totalSales - a.totalSales;
-    });
+    })
+    .filter((r) => !sp.technician || r.name === sp.technician);
+
+  const technicianOptions = [...technicians].filter((t) => t.active).sort((a, b) => a.name.localeCompare(b.name));
 
   const grandTotal = rows.reduce(
     (acc, r) => ({
@@ -175,6 +178,17 @@ export default async function TechnicianSalesPage({ searchParams }: { searchPara
           <label className="text-xs font-medium text-slate-500">To</label>
           <input type="date" name="to" defaultValue={to ?? ""} className="input w-44" />
         </div>
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium text-slate-500">Technician</label>
+          <select name="technician" defaultValue={sp.technician ?? ""} className="input w-44">
+            <option value="">All Technicians</option>
+            {technicianOptions.map((t) => (
+              <option key={t.id} value={t.name}>
+                {t.name}
+              </option>
+            ))}
+          </select>
+        </div>
         <button type="submit" className="btn-secondary">
           Filter
         </button>
@@ -182,7 +196,9 @@ export default async function TechnicianSalesPage({ searchParams }: { searchPara
           Reset to Today
         </Link>
       </form>
-      {!hasFilter && <p className="-mt-3 text-xs text-slate-400">Showing today&apos;s sales ({today}). Set a date range above to see other days.</p>}
+      {!hasFilter && !sp.technician && (
+        <p className="-mt-3 text-xs text-slate-400">Showing today&apos;s sales ({today}). Set a date range or technician above to see other days/people.</p>
+      )}
 
       <div className="card overflow-x-auto">
         <table className="w-full text-left text-sm">
