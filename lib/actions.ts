@@ -546,113 +546,92 @@ export async function assignDeliveryRider(formData: FormData) {
   revalidatePath(`/admin/requests/${requestId}`);
 }
 
-// The rider's own actions (app/rider) — each only allowed on a job actually
-// assigned to the signed-in rider, for the leg it belongs to. Each leg has
-// three steps: On The Way -> Picked Up/Out For Delivery (has the device) ->
-// arrived (shop or customer) — mirrors a normal courier app instead of one
-// single "done" button.
+// The rider's own actions (app/rider) — a single dropdown per leg (see
+// RiderStatusUpdateForm) instead of one button per step, so the rider picks
+// a status directly rather than clicking through steps in order. Each leg
+// still moves through the same checkpoints — On The Way -> has the device ->
+// arrived (shop or customer) — just settable in any order the rider picks;
+// each branch below only writes its own timestamp, and only if not already
+// set, so re-selecting an earlier status from the dropdown is a harmless no-op
+// rather than erasing a later one.
 
-export async function riderMarkPickupStarted(formData: FormData) {
+export type PickupRiderStatus = "on_the_way" | "picked_up" | "heading_to_shop" | "delivered_to_branch";
+
+export async function riderUpdatePickupStatus(formData: FormData) {
   const user = await getCurrentUser();
   if (!user || user.role !== "rider" || !user.riderId) return;
 
   const requestId = str(formData, "requestId");
+  const status = str(formData, "status") as PickupRiderStatus;
   const req = await getRequestById(requestId);
-  if (!req || req.pickupRiderId !== user.riderId || req.pickupStartedAt) return;
+  if (!req || req.pickupRiderId !== user.riderId) return;
 
-  await query("update home_service_requests set pickup_started_at=now() where id=$1", [requestId]);
-  await logActivity("home_service_request", requestId, `Rider ${user.name} is on the way to pick up the device`, user.name);
+  switch (status) {
+    case "on_the_way":
+      if (req.pickupStartedAt) return;
+      await query("update home_service_requests set pickup_started_at=now() where id=$1", [requestId]);
+      await logActivity("home_service_request", requestId, `Rider ${user.name} is on the way to pick up the device`, user.name);
+      break;
+    case "picked_up":
+      if (req.pickedUpAt) return;
+      await query("update home_service_requests set picked_up_at=now(), pickup_signature_data_url=$1 where id=$2", [
+        str(formData, "signatureDataUrl") || null,
+        requestId,
+      ]);
+      await logActivity("home_service_request", requestId, `Picked up by rider ${user.name}`, user.name);
+      break;
+    case "heading_to_shop":
+      if (req.headingToShopAt) return;
+      await query("update home_service_requests set heading_to_shop_at=now() where id=$1", [requestId]);
+      await logActivity("home_service_request", requestId, `Rider ${user.name} is on the way to the branch with the device`, user.name);
+      break;
+    case "delivered_to_branch":
+      if (req.receivedAtShopAt) return;
+      await query("update home_service_requests set received_at_shop_at=now() where id=$1", [requestId]);
+      await logActivity("home_service_request", requestId, `Device delivered to the shop by rider ${user.name}`, user.name);
+      await notifyAdmins(
+        "request_in_progress",
+        requestId,
+        `${user.name} brought ${req.reference} (${req.customerName}) to the shop — ready to assign a technician.`
+      );
+      break;
+    default:
+      return;
+  }
   revalidatePath("/rider");
   revalidatePath("/admin/pickup-delivery");
   revalidatePath(`/admin/requests/${requestId}`);
 }
 
-export async function riderMarkPickedUp(formData: FormData) {
+export type DeliveryRiderStatus = "on_the_way" | "delivered";
+
+export async function riderUpdateDeliveryStatus(formData: FormData) {
   const user = await getCurrentUser();
   if (!user || user.role !== "rider" || !user.riderId) return;
 
   const requestId = str(formData, "requestId");
+  const status = str(formData, "status") as DeliveryRiderStatus;
   const req = await getRequestById(requestId);
-  if (!req || req.pickupRiderId !== user.riderId || req.pickedUpAt) return;
+  if (!req || req.deliveryRiderId !== user.riderId) return;
 
-  await query("update home_service_requests set picked_up_at=now(), pickup_signature_data_url=$1 where id=$2", [
-    str(formData, "signatureDataUrl") || null,
-    requestId,
-  ]);
-  await logActivity("home_service_request", requestId, `Picked up by rider ${user.name}`, user.name);
-  revalidatePath("/rider");
-  revalidatePath("/admin/pickup-delivery");
-  revalidatePath(`/admin/requests/${requestId}`);
-}
-
-// Completes the pickup leg — the rider has physically handed the device off
-// at the shop. Distinct from riderMarkPickedUp (which only means the rider
-// took it from the customer) so admins can tell "has the device, in transit"
-// apart from "device is actually here now."
-export async function riderMarkHeadingToShop(formData: FormData) {
-  const user = await getCurrentUser();
-  if (!user || user.role !== "rider" || !user.riderId) return;
-
-  const requestId = str(formData, "requestId");
-  const req = await getRequestById(requestId);
-  if (!req || req.pickupRiderId !== user.riderId || !req.pickedUpAt || req.headingToShopAt) return;
-
-  await query("update home_service_requests set heading_to_shop_at=now() where id=$1", [requestId]);
-  await logActivity("home_service_request", requestId, `Rider ${user.name} is on the way to the branch with the device`, user.name);
-  revalidatePath("/rider");
-  revalidatePath("/admin/pickup-delivery");
-  revalidatePath(`/admin/requests/${requestId}`);
-}
-
-export async function riderMarkReceivedAtShop(formData: FormData) {
-  const user = await getCurrentUser();
-  if (!user || user.role !== "rider" || !user.riderId) return;
-
-  const requestId = str(formData, "requestId");
-  const req = await getRequestById(requestId);
-  if (!req || req.pickupRiderId !== user.riderId || !req.pickedUpAt || req.receivedAtShopAt) return;
-
-  await query("update home_service_requests set received_at_shop_at=now() where id=$1", [requestId]);
-  await logActivity("home_service_request", requestId, `Device delivered to the shop by rider ${user.name}`, user.name);
-  await notifyAdmins(
-    "request_in_progress",
-    requestId,
-    `${user.name} brought ${req.reference} (${req.customerName}) to the shop — ready to assign a technician.`
-  );
-  revalidatePath("/rider");
-  revalidatePath("/admin/pickup-delivery");
-  revalidatePath(`/admin/requests/${requestId}`);
-}
-
-export async function riderMarkOutForDelivery(formData: FormData) {
-  const user = await getCurrentUser();
-  if (!user || user.role !== "rider" || !user.riderId) return;
-
-  const requestId = str(formData, "requestId");
-  const req = await getRequestById(requestId);
-  if (!req || req.deliveryRiderId !== user.riderId || req.outForDeliveryAt) return;
-
-  await query("update home_service_requests set out_for_delivery_at=now() where id=$1", [requestId]);
-  await logActivity("home_service_request", requestId, `Rider ${user.name} is on the way to deliver the device`, user.name);
-  revalidatePath("/rider");
-  revalidatePath("/admin/pickup-delivery");
-  revalidatePath(`/admin/requests/${requestId}`);
-}
-
-export async function riderMarkDelivered(formData: FormData) {
-  const user = await getCurrentUser();
-  if (!user || user.role !== "rider" || !user.riderId) return;
-
-  const requestId = str(formData, "requestId");
-  const req = await getRequestById(requestId);
-  if (!req || req.deliveryRiderId !== user.riderId || req.deliveredAt) return;
-
-  await query("update home_service_requests set delivered_at=now(), delivery_signature_data_url=$1 where id=$2", [
-    str(formData, "signatureDataUrl") || null,
-    requestId,
-  ]);
-  await logActivity("home_service_request", requestId, `Delivered by rider ${user.name}`, user.name);
-  await notifyAdmins("request_in_progress", requestId, `${user.name} delivered ${req.reference} (${req.customerName}) to the customer.`);
+  switch (status) {
+    case "on_the_way":
+      if (req.outForDeliveryAt) return;
+      await query("update home_service_requests set out_for_delivery_at=now() where id=$1", [requestId]);
+      await logActivity("home_service_request", requestId, `Rider ${user.name} is on the way to deliver the device`, user.name);
+      break;
+    case "delivered":
+      if (req.deliveredAt) return;
+      await query("update home_service_requests set delivered_at=now(), delivery_signature_data_url=$1 where id=$2", [
+        str(formData, "signatureDataUrl") || null,
+        requestId,
+      ]);
+      await logActivity("home_service_request", requestId, `Delivered by rider ${user.name}`, user.name);
+      await notifyAdmins("request_in_progress", requestId, `${user.name} delivered ${req.reference} (${req.customerName}) to the customer.`);
+      break;
+    default:
+      return;
+  }
   revalidatePath("/rider");
   revalidatePath("/admin/pickup-delivery");
   revalidatePath(`/admin/requests/${requestId}`);

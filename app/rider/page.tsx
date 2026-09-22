@@ -1,14 +1,19 @@
 import { getCurrentUser } from "@/lib/auth";
 import { getRequests } from "@/lib/db";
-import {
-  riderMarkPickupStarted,
-  riderMarkPickedUp,
-  riderMarkHeadingToShop,
-  riderMarkReceivedAtShop,
-  riderMarkOutForDelivery,
-  riderMarkDelivered,
-} from "@/lib/actions";
-import SignaturePad from "@/components/SignaturePad";
+import { riderUpdatePickupStatus, riderUpdateDeliveryStatus } from "@/lib/actions";
+import RiderStatusUpdateForm from "@/components/RiderStatusUpdateForm";
+
+const PICKUP_STATUS_OPTIONS = [
+  { value: "on_the_way", label: "On The Way" },
+  { value: "picked_up", label: "Picked Up", needsSignature: true },
+  { value: "heading_to_shop", label: "On The Way to Branch" },
+  { value: "delivered_to_branch", label: "Delivered to Branch" },
+];
+
+const DELIVERY_STATUS_OPTIONS = [
+  { value: "on_the_way", label: "On The Way" },
+  { value: "delivered", label: "Mark Delivered", needsSignature: true },
+];
 
 export default async function RiderPage() {
   const user = await getCurrentUser();
@@ -36,117 +41,75 @@ export default async function RiderPage() {
       <section className="space-y-3">
         <h2 className="text-sm font-semibold text-slate-700">Pickups ({myPickups.length})</h2>
         {myPickups.length === 0 && <p className="card text-center text-sm text-slate-400">No pickups assigned to you right now.</p>}
-        {myPickups.map((r) => (
-          <div key={r.id} className="card space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="font-mono text-xs text-slate-400">{r.reference}</span>
-              <span className="badge border border-blue-200 bg-blue-50 text-blue-300">
-                {r.headingToShopAt
-                  ? "Heading to branch"
-                  : r.pickedUpAt
-                    ? "Has device"
-                    : r.pickupStartedAt
-                      ? "On the way"
-                      : "Pickup"}
-              </span>
+        {myPickups.map((r) => {
+          const defaultStatus = r.headingToShopAt
+            ? "delivered_to_branch"
+            : r.pickedUpAt
+              ? "heading_to_shop"
+              : r.pickupStartedAt
+                ? "picked_up"
+                : "on_the_way";
+          return (
+            <div key={r.id} className="card space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="font-mono text-xs text-slate-400">{r.reference}</span>
+                <span className="badge border border-blue-200 bg-blue-50 text-blue-300">
+                  {r.headingToShopAt
+                    ? "Heading to branch"
+                    : r.pickedUpAt
+                      ? "Has device"
+                      : r.pickupStartedAt
+                        ? "On the way"
+                        : "Pickup"}
+                </span>
+              </div>
+              <p className="text-base font-semibold text-slate-900">{r.customerName}</p>
+              <p className="text-sm text-slate-600">
+                {r.street}, {r.barangay ? `${r.barangay}, ` : ""}
+                {r.city}
+                {r.province ? `, ${r.province}` : ""}
+              </p>
+              {r.landmark && <p className="text-xs text-slate-400">Landmark: {r.landmark}</p>}
+              <p className="text-sm text-slate-600">{r.deviceOther || "Device not specified"}</p>
+              {r.phone && (
+                <a href={`tel:${r.phone}`} className="btn-secondary inline-block !px-3 !py-1.5 text-xs">
+                  Call {r.phone}
+                </a>
+              )}
+              <RiderStatusUpdateForm action={riderUpdatePickupStatus} requestId={r.id} options={PICKUP_STATUS_OPTIONS} defaultValue={defaultStatus} />
             </div>
-            <p className="text-base font-semibold text-slate-900">{r.customerName}</p>
-            <p className="text-sm text-slate-600">
-              {r.street}, {r.barangay ? `${r.barangay}, ` : ""}
-              {r.city}
-              {r.province ? `, ${r.province}` : ""}
-            </p>
-            {r.landmark && <p className="text-xs text-slate-400">Landmark: {r.landmark}</p>}
-            <p className="text-sm text-slate-600">{r.deviceOther || "Device not specified"}</p>
-            {r.phone && (
-              <a href={`tel:${r.phone}`} className="btn-secondary inline-block !px-3 !py-1.5 text-xs">
-                Call {r.phone}
-              </a>
-            )}
-
-            {!r.pickupStartedAt && (
-              <form action={riderMarkPickupStarted} className="border-t border-slate-200 pt-3">
-                <input type="hidden" name="requestId" value={r.id} />
-                <button type="submit" className="btn-primary w-full">
-                  On The Way
-                </button>
-              </form>
-            )}
-
-            {r.pickupStartedAt && !r.pickedUpAt && (
-              <form action={riderMarkPickedUp} className="space-y-3 border-t border-slate-200 pt-3">
-                <input type="hidden" name="requestId" value={r.id} />
-                <SignaturePad name="signatureDataUrl" label="Customer Signature (optional)" />
-                <button type="submit" className="btn-primary w-full">
-                  Mark Picked Up
-                </button>
-              </form>
-            )}
-
-            {r.pickedUpAt && !r.headingToShopAt && (
-              <form action={riderMarkHeadingToShop} className="border-t border-slate-200 pt-3">
-                <input type="hidden" name="requestId" value={r.id} />
-                <button type="submit" className="btn-primary w-full">
-                  On The Way to Branch
-                </button>
-              </form>
-            )}
-
-            {r.headingToShopAt && (
-              <form action={riderMarkReceivedAtShop} className="border-t border-slate-200 pt-3">
-                <input type="hidden" name="requestId" value={r.id} />
-                <button type="submit" className="btn-primary w-full">
-                  Delivered to Branch
-                </button>
-              </form>
-            )}
-          </div>
-        ))}
+          );
+        })}
       </section>
 
       <section className="space-y-3">
         <h2 className="text-sm font-semibold text-slate-700">Deliveries ({myDeliveries.length})</h2>
         {myDeliveries.length === 0 && <p className="card text-center text-sm text-slate-400">No deliveries assigned to you right now.</p>}
-        {myDeliveries.map((r) => (
-          <div key={r.id} className="card space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="font-mono text-xs text-slate-400">{r.reference}</span>
-              <span className="badge border border-green-200 bg-green-50 text-green-700">{r.outForDeliveryAt ? "On the way" : "Delivery"}</span>
+        {myDeliveries.map((r) => {
+          const defaultStatus = r.outForDeliveryAt ? "delivered" : "on_the_way";
+          return (
+            <div key={r.id} className="card space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="font-mono text-xs text-slate-400">{r.reference}</span>
+                <span className="badge border border-green-200 bg-green-50 text-green-700">{r.outForDeliveryAt ? "On the way" : "Delivery"}</span>
+              </div>
+              <p className="text-base font-semibold text-slate-900">{r.customerName}</p>
+              <p className="text-sm text-slate-600">
+                {r.street}, {r.barangay ? `${r.barangay}, ` : ""}
+                {r.city}
+                {r.province ? `, ${r.province}` : ""}
+              </p>
+              {r.landmark && <p className="text-xs text-slate-400">Landmark: {r.landmark}</p>}
+              <p className="text-sm text-slate-600">{r.deviceOther || "Device not specified"} — repaired, ready for delivery</p>
+              {r.phone && (
+                <a href={`tel:${r.phone}`} className="btn-secondary inline-block !px-3 !py-1.5 text-xs">
+                  Call {r.phone}
+                </a>
+              )}
+              <RiderStatusUpdateForm action={riderUpdateDeliveryStatus} requestId={r.id} options={DELIVERY_STATUS_OPTIONS} defaultValue={defaultStatus} />
             </div>
-            <p className="text-base font-semibold text-slate-900">{r.customerName}</p>
-            <p className="text-sm text-slate-600">
-              {r.street}, {r.barangay ? `${r.barangay}, ` : ""}
-              {r.city}
-              {r.province ? `, ${r.province}` : ""}
-            </p>
-            {r.landmark && <p className="text-xs text-slate-400">Landmark: {r.landmark}</p>}
-            <p className="text-sm text-slate-600">{r.deviceOther || "Device not specified"} — repaired, ready for delivery</p>
-            {r.phone && (
-              <a href={`tel:${r.phone}`} className="btn-secondary inline-block !px-3 !py-1.5 text-xs">
-                Call {r.phone}
-              </a>
-            )}
-
-            {!r.outForDeliveryAt && (
-              <form action={riderMarkOutForDelivery} className="border-t border-slate-200 pt-3">
-                <input type="hidden" name="requestId" value={r.id} />
-                <button type="submit" className="btn-primary w-full">
-                  On The Way
-                </button>
-              </form>
-            )}
-
-            {r.outForDeliveryAt && (
-              <form action={riderMarkDelivered} className="space-y-3 border-t border-slate-200 pt-3">
-                <input type="hidden" name="requestId" value={r.id} />
-                <SignaturePad name="signatureDataUrl" label="Customer Signature (optional)" />
-                <button type="submit" className="btn-primary w-full">
-                  Mark Delivered
-                </button>
-              </form>
-            )}
-          </div>
-        ))}
+          );
+        })}
       </section>
     </div>
   );
