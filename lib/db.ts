@@ -284,7 +284,7 @@ type RequestRow = {
   downpayment_required: boolean; downpayment_amount: string | number | null; downpayment_status: HomeServiceRequest["downpaymentStatus"];
   paymongo_checkout_session_id: string | null; paymongo_checkout_url: string | null; paymongo_payment_id: string | null; downpayment_paid_at: Date | null;
   fulfillment_mode: HomeServiceRequest["fulfillmentMode"]; pickup_rider_id: string | null; delivery_rider_id: string | null;
-  pickup_started_at: Date | null; picked_up_at: Date | null; received_at_shop_at: Date | null;
+  pickup_started_at: Date | null; picked_up_at: Date | null; heading_to_shop_at: Date | null; received_at_shop_at: Date | null;
   out_for_delivery_at: Date | null; delivered_at: Date | null;
   pickup_signature_data_url: string | null; delivery_signature_data_url: string | null;
 };
@@ -304,7 +304,8 @@ function mapRequest(r: RequestRow): HomeServiceRequest {
     downpaymentStatus: r.downpayment_status, paymongoCheckoutSessionId: r.paymongo_checkout_session_id, paymongoCheckoutUrl: r.paymongo_checkout_url,
     paymongoPaymentId: r.paymongo_payment_id, downpaymentPaidAt: toIsoOrNull(r.downpayment_paid_at),
     fulfillmentMode: r.fulfillment_mode, pickupRiderId: r.pickup_rider_id, deliveryRiderId: r.delivery_rider_id,
-    pickupStartedAt: toIsoOrNull(r.pickup_started_at), pickedUpAt: toIsoOrNull(r.picked_up_at), receivedAtShopAt: toIsoOrNull(r.received_at_shop_at),
+    pickupStartedAt: toIsoOrNull(r.pickup_started_at), pickedUpAt: toIsoOrNull(r.picked_up_at), headingToShopAt: toIsoOrNull(r.heading_to_shop_at),
+    receivedAtShopAt: toIsoOrNull(r.received_at_shop_at),
     outForDeliveryAt: toIsoOrNull(r.out_for_delivery_at), deliveredAt: toIsoOrNull(r.delivered_at),
     pickupSignatureDataUrl: r.pickup_signature_data_url, deliverySignatureDataUrl: r.delivery_signature_data_url,
   };
@@ -319,6 +320,7 @@ export type PickupDeliveryStage =
   | "pickup_assigned"
   | "pickup_started"
   | "picked_up"
+  | "heading_to_shop"
   | "at_shop"
   | "ready_for_delivery"
   | "delivery_assigned"
@@ -328,7 +330,15 @@ export type PickupDeliveryStage =
 export function pickupDeliveryStage(
   r: Pick<
     HomeServiceRequest,
-    "fulfillmentMode" | "pickupRiderId" | "pickupStartedAt" | "pickedUpAt" | "receivedAtShopAt" | "deliveryRiderId" | "outForDeliveryAt" | "deliveredAt"
+    | "fulfillmentMode"
+    | "pickupRiderId"
+    | "pickupStartedAt"
+    | "pickedUpAt"
+    | "headingToShopAt"
+    | "receivedAtShopAt"
+    | "deliveryRiderId"
+    | "outForDeliveryAt"
+    | "deliveredAt"
   >,
   statusLabel: string | undefined
 ): PickupDeliveryStage | null {
@@ -338,6 +348,7 @@ export function pickupDeliveryStage(
   if (r.deliveryRiderId) return "delivery_assigned";
   if (statusLabel === "Completed") return "ready_for_delivery";
   if (r.receivedAtShopAt) return "at_shop";
+  if (r.headingToShopAt) return "heading_to_shop";
   if (r.pickedUpAt) return "picked_up";
   if (r.pickupStartedAt) return "pickup_started";
   if (r.pickupRiderId) return "pickup_assigned";
@@ -348,7 +359,8 @@ export const PICKUP_DELIVERY_STAGE_LABELS: Record<PickupDeliveryStage, string> =
   requested: "Requested",
   pickup_assigned: "Pickup Assigned",
   pickup_started: "Rider On The Way (Pickup)",
-  picked_up: "Picked Up — In Transit to Shop",
+  picked_up: "Picked Up",
+  heading_to_shop: "Rider On The Way to Branch",
   at_shop: "At Shop",
   ready_for_delivery: "Ready for Delivery",
   delivery_assigned: "Delivery Assigned",

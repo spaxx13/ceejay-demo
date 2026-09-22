@@ -1,6 +1,13 @@
 import { getCurrentUser } from "@/lib/auth";
 import { getRequests } from "@/lib/db";
-import { riderMarkPickupStarted, riderMarkPickedUp, riderMarkReceivedAtShop, riderMarkOutForDelivery, riderMarkDelivered } from "@/lib/actions";
+import {
+  riderMarkPickupStarted,
+  riderMarkPickedUp,
+  riderMarkHeadingToShop,
+  riderMarkReceivedAtShop,
+  riderMarkOutForDelivery,
+  riderMarkDelivered,
+} from "@/lib/actions";
 import SignaturePad from "@/components/SignaturePad";
 
 export default async function RiderPage() {
@@ -34,7 +41,13 @@ export default async function RiderPage() {
             <div className="flex items-center justify-between">
               <span className="font-mono text-xs text-slate-400">{r.reference}</span>
               <span className="badge border border-blue-200 bg-blue-50 text-blue-300">
-                {r.pickedUpAt ? "Has device — heading to shop" : r.pickupStartedAt ? "On the way" : "Pickup"}
+                {r.headingToShopAt
+                  ? "Heading to branch"
+                  : r.pickedUpAt
+                    ? "Has device"
+                    : r.pickupStartedAt
+                      ? "On the way"
+                      : "Pickup"}
               </span>
             </div>
             <p className="text-base font-semibold text-slate-900">{r.customerName}</p>
@@ -70,7 +83,16 @@ export default async function RiderPage() {
               </form>
             )}
 
-            {r.pickedUpAt && (
+            {r.pickedUpAt && !r.headingToShopAt && (
+              <form action={riderMarkHeadingToShop} className="border-t border-slate-200 pt-3">
+                <input type="hidden" name="requestId" value={r.id} />
+                <button type="submit" className="btn-primary w-full">
+                  On The Way to Branch
+                </button>
+              </form>
+            )}
+
+            {r.headingToShopAt && (
               <form action={riderMarkReceivedAtShop} className="border-t border-slate-200 pt-3">
                 <input type="hidden" name="requestId" value={r.id} />
                 <button type="submit" className="btn-primary w-full">

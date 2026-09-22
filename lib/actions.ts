@@ -589,6 +589,21 @@ export async function riderMarkPickedUp(formData: FormData) {
 // at the shop. Distinct from riderMarkPickedUp (which only means the rider
 // took it from the customer) so admins can tell "has the device, in transit"
 // apart from "device is actually here now."
+export async function riderMarkHeadingToShop(formData: FormData) {
+  const user = await getCurrentUser();
+  if (!user || user.role !== "rider" || !user.riderId) return;
+
+  const requestId = str(formData, "requestId");
+  const req = await getRequestById(requestId);
+  if (!req || req.pickupRiderId !== user.riderId || !req.pickedUpAt || req.headingToShopAt) return;
+
+  await query("update home_service_requests set heading_to_shop_at=now() where id=$1", [requestId]);
+  await logActivity("home_service_request", requestId, `Rider ${user.name} is on the way to the branch with the device`, user.name);
+  revalidatePath("/rider");
+  revalidatePath("/admin/pickup-delivery");
+  revalidatePath(`/admin/requests/${requestId}`);
+}
+
 export async function riderMarkReceivedAtShop(formData: FormData) {
   const user = await getCurrentUser();
   if (!user || user.role !== "rider" || !user.riderId) return;

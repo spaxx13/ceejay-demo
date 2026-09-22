@@ -34,6 +34,7 @@ export default async function PickupDeliveryPage() {
         deliveryRiderName: deliveryRider?.name ?? null,
         pickupStartedAt: r.pickupStartedAt,
         pickedUpAt: r.pickedUpAt,
+        headingToShopAt: r.headingToShopAt,
         receivedAtShopAt: r.receivedAtShopAt,
         outForDeliveryAt: r.outForDeliveryAt,
         deliveredAt: r.deliveredAt,

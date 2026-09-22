@@ -19,6 +19,7 @@ type Job = {
   deliveryRiderName: string | null;
   pickupStartedAt: string | null;
   pickedUpAt: string | null;
+  headingToShopAt: string | null;
   receivedAtShopAt: string | null;
   outForDeliveryAt: string | null;
   deliveredAt: string | null;
@@ -27,7 +28,7 @@ type Job = {
 type Rider = { id: string; name: string };
 
 const COLUMNS: { key: string; label: string; stages: PickupDeliveryStage[] }[] = [
-  { key: "awaiting_pickup", label: "Awaiting Pickup", stages: ["requested", "pickup_assigned", "pickup_started", "picked_up"] },
+  { key: "awaiting_pickup", label: "Awaiting Pickup", stages: ["requested", "pickup_assigned", "pickup_started", "picked_up", "heading_to_shop"] },
   { key: "at_shop", label: "At Shop", stages: ["at_shop"] },
   { key: "awaiting_delivery", label: "Awaiting Delivery", stages: ["ready_for_delivery", "delivery_assigned", "out_for_delivery"] },
   { key: "completed", label: "Completed", stages: ["delivered"] },
@@ -122,7 +123,13 @@ export default function PickupDeliveryBoard({ jobs, riders }: { jobs: Job[]; rid
 
                   {job.stage === "picked_up" && (
                     <p className="text-xs text-slate-500">
-                      Rider <span className="font-medium text-slate-700">{job.pickupRiderName}</span> has the device, heading to the shop.
+                      Rider <span className="font-medium text-slate-700">{job.pickupRiderName}</span> has the device.
+                    </p>
+                  )}
+
+                  {job.stage === "heading_to_shop" && (
+                    <p className="text-xs text-slate-500">
+                      Rider <span className="font-medium text-slate-700">{job.pickupRiderName}</span> is on the way to the branch with the device.
                     </p>
                   )}
 

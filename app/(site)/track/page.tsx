@@ -10,6 +10,7 @@ const STAGE_ORDER: PickupDeliveryStage[] = [
   "pickup_assigned",
   "pickup_started",
   "picked_up",
+  "heading_to_shop",
   "at_shop",
   "ready_for_delivery",
   "delivery_assigned",
@@ -93,7 +94,7 @@ export default async function TrackPage({ searchParams }: { searchParams: Promis
   const activeRider =
     stage === "out_for_delivery" || stage === "delivery_assigned"
       ? deliveryRider
-      : stage === "pickup_assigned" || stage === "pickup_started" || stage === "picked_up"
+      : stage === "pickup_assigned" || stage === "pickup_started" || stage === "picked_up" || stage === "heading_to_shop"
         ? pickupRider
         : null;
   const stageIndex = STAGE_ORDER.indexOf(stage);
@@ -119,7 +120,9 @@ export default async function TrackPage({ searchParams }: { searchParams: Promis
               Rider: <span className="font-medium text-slate-800">{activeRider.name}</span>
             </p>
           )}
-          {stage === "picked_up" && <p className="text-sm text-slate-600">Your device is on its way to the shop.</p>}
+          {(stage === "picked_up" || stage === "heading_to_shop") && (
+            <p className="text-sm text-slate-600">Your device is on its way to the shop.</p>
+          )}
           {stage === "at_shop" && (
             <p className="text-sm text-slate-600">
               At the shop{technician ? <> — technician <span className="font-medium text-slate-800">{technician.name}</span></> : ""}.

@@ -368,7 +368,8 @@ export type HomeServiceRequest = {
   pickupRiderId: string | null;
   deliveryRiderId: string | null; // can differ from pickupRiderId — assigned separately, once the repair is done
   pickupStartedAt: string | null; // rider marked "on the way" to the customer for pickup
-  pickedUpAt: string | null; // rider has the device, heading to the shop
+  pickedUpAt: string | null; // rider has the device, in hand at the customer's address
+  headingToShopAt: string | null; // rider marked "on the way" to the branch with the device
   receivedAtShopAt: string | null; // rider handed the device off at the shop — pickup leg complete
   outForDeliveryAt: string | null; // rider marked "on the way" to the customer for delivery
   deliveredAt: string | null; // rider handed the device to the customer — delivery leg complete
