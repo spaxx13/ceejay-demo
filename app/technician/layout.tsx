@@ -6,6 +6,7 @@ import { getUnstartedJobCount } from "@/lib/db";
 import Logo from "@/components/Logo";
 import PushSubscribe from "@/components/PushSubscribe";
 import AppBadgeSync from "@/components/AppBadgeSync";
+import RefreshButton from "@/components/RefreshButton";
 
 export default async function TechnicianLayout({ children }: { children: React.ReactNode }) {
   const user = await getCurrentUser();
@@ -46,6 +47,7 @@ export default async function TechnicianLayout({ children }: { children: React.R
         </div>
       </div>
       <main className="mx-auto max-w-2xl px-4 py-6 print:p-0">{children}</main>
+      <RefreshButton />
     </div>
   );
 }

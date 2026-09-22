@@ -4,6 +4,7 @@ import { getNotifications, canManageHomeServiceRequests, canManageWalkIns, canAc
 import AdminNav from "@/components/AdminNav";
 import PwaNotificationBar from "@/components/PwaNotificationBar";
 import AppBadgeSync from "@/components/AppBadgeSync";
+import RefreshButton from "@/components/RefreshButton";
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const user = await getCurrentUser();
@@ -31,6 +32,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           <div className="mx-auto max-w-6xl print:max-w-none">{children}</div>
         </main>
       </div>
+      <RefreshButton />
     </>
   );
 }
