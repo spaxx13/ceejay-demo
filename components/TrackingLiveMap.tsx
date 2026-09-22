@@ -76,7 +76,7 @@ export default function TrackingLiveMap({
   return (
     <div className="space-y-1.5">
       {GOOGLE_MAPS_KEY ? (
-        <iframe title="Rider's live location" className="h-56 w-full rounded-xl border border-slate-200" loading="lazy" referrerPolicy="no-referrer-when-downgrade" src={mapsUrl} />
+        <iframe title="Rider's live location" className="h-80 w-full rounded-xl border border-slate-200 sm:h-96" loading="lazy" referrerPolicy="no-referrer-when-downgrade" src={mapsUrl} />
       ) : (
         <a href={openUrl} target="_blank" rel="noreferrer" className="card block text-center text-sm text-blue-500 hover:underline">
           {destination ? "Open the rider's route in Google Maps →" : "Open the rider's live location in Google Maps →"}
