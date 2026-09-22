@@ -346,12 +346,14 @@ function mapRepairRecord(r: RepairRecordRow): RepairRecord {
 type SiteContentRow = {
   hero_kicker: string; hero_headline_prefix: string; hero_headline_highlight: string; hero_headline_suffix: string; hero_subtext: string;
   primary_cta_label: string; secondary_cta_label: string; cta_banner_title: string; cta_banner_subtitle: string; cta_banner_button_label: string;
+  facebook_url: string;
 };
 function mapSiteContent(r: SiteContentRow): SiteContent {
   return {
     heroKicker: r.hero_kicker, heroHeadlinePrefix: r.hero_headline_prefix, heroHeadlineHighlight: r.hero_headline_highlight, heroHeadlineSuffix: r.hero_headline_suffix,
     heroSubtext: r.hero_subtext, primaryCtaLabel: r.primary_cta_label, secondaryCtaLabel: r.secondary_cta_label,
     ctaBannerTitle: r.cta_banner_title, ctaBannerSubtitle: r.cta_banner_subtitle, ctaBannerButtonLabel: r.cta_banner_button_label,
+    facebookUrl: r.facebook_url,
   };
 }
 

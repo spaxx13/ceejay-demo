@@ -596,7 +596,8 @@ export async function updateSiteContent(formData: FormData) {
       secondary_cta_label = coalesce(nullif($7,''), secondary_cta_label),
       cta_banner_title = $8,
       cta_banner_subtitle = $9,
-      cta_banner_button_label = coalesce(nullif($10,''), cta_banner_button_label)
+      cta_banner_button_label = coalesce(nullif($10,''), cta_banner_button_label),
+      facebook_url = $11
      where id = 1`,
     [
       str(formData, "heroKicker"),
@@ -609,9 +610,13 @@ export async function updateSiteContent(formData: FormData) {
       str(formData, "ctaBannerTitle"),
       str(formData, "ctaBannerSubtitle"),
       str(formData, "ctaBannerButtonLabel"),
+      str(formData, "facebookUrl"),
     ]
   );
-  revalidatePath("/");
+  // facebookUrl backs a button in the (site) layout, shown on every public
+  // page, not just "/" — revalidate the whole public route group so a
+  // changed link takes effect everywhere immediately.
+  revalidatePath("/", "layout");
   revalidatePath("/admin/site-content");
 }
 
