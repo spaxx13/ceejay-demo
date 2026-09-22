@@ -14,6 +14,42 @@ const PING_INTERVAL_MS = 12000;
 export default function RiderLocationReporter({ requestId }: { requestId: string }) {
   const [status, setStatus] = useState<"idle" | "sharing" | "denied" | "unsupported">("idle");
 
+  // Keeps the rider's screen from auto-locking while this trip is active —
+  // location updates stop once the screen locks or the tab is backgrounded,
+  // since mobile browsers suspend JS timers then. Best-effort: silently
+  // does nothing on browsers without the API, and the lock is released
+  // automatically by the browser whenever the tab is hidden, so it's
+  // re-requested on visibilitychange rather than tracked as a hard failure.
+  useEffect(() => {
+    if (!("wakeLock" in navigator)) return;
+
+    let lock: WakeLockSentinel | null = null;
+    let cancelled = false;
+
+    async function acquire() {
+      try {
+        lock = await navigator.wakeLock.request("screen");
+      } catch {
+        // Ignored — e.g. low battery or an unsupported context. The rider
+        // keeps their location working as long as the screen stays on
+        // some other way; this is a nice-to-have, not a requirement.
+      }
+    }
+
+    acquire();
+
+    function handleVisibilityChange() {
+      if (document.visibilityState === "visible" && !cancelled) acquire();
+    }
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      cancelled = true;
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      lock?.release().catch(() => {});
+    };
+  }, []);
+
   useEffect(() => {
     if (!("geolocation" in navigator)) {
       const id = setTimeout(() => setStatus("unsupported"), 0);
