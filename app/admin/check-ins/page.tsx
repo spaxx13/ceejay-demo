@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCheckIns, isBranchHidden } from "@/lib/db";
 import { getCurrentUser, requireRole } from "@/lib/auth";
-import { formatDateTime } from "@/lib/format";
+import { formatDateTime, todayDateStr } from "@/lib/format";
 import type { CheckIn, Role } from "@/lib/types";
 
 const ROLE_LABELS: Record<Role, string> = {
@@ -27,16 +27,24 @@ export default async function CheckInsPage({ searchParams }: { searchParams: Pro
   const sp = await searchParams;
   const allCheckIns = (await getCheckIns()).filter((c) => !isBranchHidden(user, c.branchId));
 
+  // Default to today (Asia/Manila) so the page always opens on the most
+  // current check-ins instead of every check-in ever recorded — an explicit
+  // From/To filter (even a partial one) overrides this, same convention as
+  // the Sales pages.
+  const today = todayDateStr();
+  const hasFilter = !!(sp.from || sp.to);
+  const from = hasFilter ? sp.from : today;
+  const to = hasFilter ? sp.to : today;
+
   let checkIns = [...allCheckIns];
   if (sp.role) checkIns = checkIns.filter((c) => c.role === sp.role);
-  if (sp.from) checkIns = checkIns.filter((c) => c.checkedInAt.slice(0, 10) >= sp.from!);
-  if (sp.to) checkIns = checkIns.filter((c) => c.checkedInAt.slice(0, 10) <= sp.to!);
+  if (from) checkIns = checkIns.filter((c) => c.checkedInAt.slice(0, 10) >= from);
+  if (to) checkIns = checkIns.filter((c) => c.checkedInAt.slice(0, 10) <= to);
   if (sp.q) {
     const q = sp.q.toLowerCase();
     checkIns = checkIns.filter((c) => c.userName.toLowerCase().includes(q) || c.branchName.toLowerCase().includes(q));
   }
 
-  const today = new Date().toISOString().slice(0, 10);
   const todayCheckIns = allCheckIns.filter((c) => c.checkedInAt.slice(0, 10) === today);
 
   const homeServiceCheckIns = checkIns.filter((c) => c.branchName === "Home Service").sort(byCheckedInAsc);
@@ -77,19 +85,20 @@ export default async function CheckInsPage({ searchParams }: { searchParams: Pro
         </div>
         <div className="w-full space-y-1.5 sm:w-auto">
           <label className="text-xs font-medium text-slate-500">From</label>
-          <input type="date" name="from" defaultValue={sp.from ?? ""} className="input w-full sm:w-44" />
+          <input type="date" name="from" defaultValue={from ?? ""} className="input w-full sm:w-44" />
         </div>
         <div className="w-full space-y-1.5 sm:w-auto">
           <label className="text-xs font-medium text-slate-500">To</label>
-          <input type="date" name="to" defaultValue={sp.to ?? ""} className="input w-full sm:w-44" />
+          <input type="date" name="to" defaultValue={to ?? ""} className="input w-full sm:w-44" />
         </div>
         <button type="submit" className="btn-secondary flex-1 sm:flex-none">
           Filter
         </button>
         <Link href="/admin/check-ins" className="btn-secondary flex-1 text-center sm:flex-none">
-          Clear
+          Reset to Today
         </Link>
       </form>
+      {!hasFilter && <p className="-mt-3 text-xs text-slate-400">Showing today&apos;s check-ins ({today}). Set a date range above to see other days.</p>}
 
       <CheckInGroup title="Branch" checkIns={branchCheckIns} />
       <CheckInGroup title="Home Service" checkIns={homeServiceCheckIns} />
