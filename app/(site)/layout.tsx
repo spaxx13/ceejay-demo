@@ -1,6 +1,6 @@
 import SiteHeader from "@/components/site/SiteHeader";
 import SiteFooter from "@/components/site/SiteFooter";
-import FacebookButton from "@/components/site/FacebookButton";
+import ContactWidget from "@/components/site/ContactWidget";
 import { getSiteContent } from "@/lib/db";
 
 export default async function SiteLayout({ children }: { children: React.ReactNode }) {
@@ -11,7 +11,7 @@ export default async function SiteLayout({ children }: { children: React.ReactNo
       <SiteHeader />
       <div className="flex-1">{children}</div>
       <SiteFooter />
-      <FacebookButton url={facebookUrl} />
+      <ContactWidget facebookUrl={facebookUrl} />
     </div>
   );
 }
