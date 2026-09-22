@@ -79,6 +79,7 @@ export type RequestFormContent = {
   successBody: string;
   nearAreaEnabled: boolean; // whether "near" (Metro Manila/Laguna/Batangas/Rizal/Bulacan/Cavite/Pampanga) is offered on the area picker
   farAreaEnabled: boolean; // whether "far" (Other Provinces) is offered on the area picker
+  farAreaContactNumber: string; // PH mobile number (e.g. 09xxxxxxxxx) — "far" has no online booking form, so picking it shows WhatsApp/Viber links built from this instead
 };
 
 // The 13 fields the form ships with. Each has bespoke rendering (device

@@ -60,6 +60,13 @@ export default async function RequestFormContentPage() {
             <input type="checkbox" name="farAreaEnabled" defaultChecked={rc.farAreaEnabled} className="h-4 w-4" />
             Other Provinces
           </label>
+          <div className="space-y-1.5 pl-6">
+            <label className="text-xs font-medium text-slate-500">Other Provinces — WhatsApp / Viber number</label>
+            <input name="farAreaContactNumber" defaultValue={rc.farAreaContactNumber} placeholder="09xxxxxxxxx" className="input max-w-xs" />
+            <p className="text-[11px] text-slate-400">
+              Other Provinces has no online booking form — picking it shows WhatsApp and Viber buttons to this number instead.
+            </p>
+          </div>
         </div>
 
         <div className="card space-y-4">

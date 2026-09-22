@@ -48,3 +48,15 @@ export function isCheckInOpen(now: Date = new Date()): boolean {
   const hour = Number(new Intl.DateTimeFormat("en-US", { timeZone: TIME_ZONE, hour: "numeric", hourCycle: "h23" }).format(now));
   return hour >= CHECK_IN_OPEN_HOUR;
 }
+
+// Admin enters a local PH mobile number ("09xxxxxxxxx"), but WhatsApp
+// (wa.me) and Viber deep links both need it in international form with no
+// leading zero ("639xxxxxxxxx"). Strips everything but digits first so a
+// number typed with spaces/dashes, or already in "+639..."/"639..." form,
+// still comes out right.
+export function toPhInternational(localNumber: string): string {
+  const digits = localNumber.replace(/\D/g, "");
+  if (digits.startsWith("63")) return digits;
+  if (digits.startsWith("0")) return `63${digits.slice(1)}`;
+  return `63${digits}`;
+}

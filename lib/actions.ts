@@ -632,7 +632,8 @@ export async function updateRequestFormContent(formData: FormData) {
       success_title = coalesce(nullif($5,''), success_title),
       success_body = $6,
       near_area_enabled = $7,
-      far_area_enabled = $8
+      far_area_enabled = $8,
+      far_area_contact_number = $9
      where id = 1`,
     [
       str(formData, "pageKicker"),
@@ -643,6 +644,7 @@ export async function updateRequestFormContent(formData: FormData) {
       str(formData, "successBody"),
       formData.get("nearAreaEnabled") === "on",
       formData.get("farAreaEnabled") === "on",
+      str(formData, "farAreaContactNumber"),
     ]
   );
   revalidatePath("/request");
