@@ -13,6 +13,7 @@ import {
 } from "@/lib/homeServiceFees";
 import PhotoUpload from "./PhotoUpload";
 import DynamicFormField from "./DynamicFormField";
+import MapPinPicker from "./MapPinPicker";
 import type { RequestFormContent, CustomFormField, HomeServiceQueue } from "@/lib/types";
 
 // Shared styling for every customer-facing note/reminder on this form —
@@ -511,6 +512,17 @@ export default function HomeServiceForm({
                 ))}
               </select>
             </div>
+            {mode === "pickup_delivery" && (
+              <MapPinPicker
+                defaultLat={lat ?? undefined}
+                defaultLng={lng ?? undefined}
+                label="Pin your exact pickup location — this is what the rider follows"
+                onChange={(pickedLat, pickedLng) => {
+                  setLat(pickedLat);
+                  setLng(pickedLng);
+                }}
+              />
+            )}
           </div>
         );
       }
