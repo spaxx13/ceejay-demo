@@ -54,13 +54,12 @@ export default function ContactWidget({ facebookUrl }: { facebookUrl: string }) 
                   </li>
                 ) : (
                   <li key={item.label}>
-                    <a
-                      href={item.href}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={() => setOpen(false)}
-                      className="block px-4 py-3 text-sm text-slate-700 hover:bg-slate-50"
-                    >
+                    {/* No target="_blank" — on iOS Safari a new-tab link can
+                        suppress the universal-link handoff that opens m.me
+                        straight in the Messenger app; same-tab works
+                        reliably and still falls back to messenger web if
+                        the app isn't installed. */}
+                    <a href={item.href} onClick={() => setOpen(false)} className="block px-4 py-3 text-sm text-slate-700 hover:bg-slate-50">
                       {item.label}
                     </a>
                   </li>
