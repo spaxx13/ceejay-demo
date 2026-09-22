@@ -119,6 +119,16 @@ export default function ContactWidget({ facebookUrl }: { facebookUrl: string }) 
           </div>
         </>
       )}
+      {/* Pulsing halo behind the button, on top of its own bounce — the
+          combination reads as "look here" much more than either alone,
+          which matters for the first few seconds before a new visitor has
+          scanned the page. Purely decorative, so it's aria-hidden. */}
+      {attention && (
+        <span
+          aria-hidden="true"
+          className="fixed bottom-4 right-4 z-40 h-14 w-14 animate-ping rounded-full bg-orange-400 opacity-60 print:hidden"
+        />
+      )}
       <button
         type="button"
         aria-label={open ? "Close contact menu" : "Contact us"}
@@ -128,18 +138,18 @@ export default function ContactWidget({ facebookUrl }: { facebookUrl: string }) 
           setAttention(false);
           setOpen((o) => !o);
         }}
-        className={`fixed bottom-4 right-4 z-50 flex h-12 w-12 items-center justify-center rounded-full bg-[#1877F2] text-white shadow-lg transition-transform hover:scale-105 active:scale-95 print:hidden ${
-          attention ? "animate-bounce" : ""
-        }`}
+        className={`fixed bottom-4 right-4 z-50 flex h-14 w-14 items-center justify-center overflow-hidden rounded-full text-white shadow-lg transition-transform hover:scale-105 active:scale-95 print:hidden ${
+          open ? "bg-[#1877F2]" : ""
+        } ${attention ? "animate-bounce" : ""}`}
       >
         {open ? (
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
             <path d="M18 6 6 18M6 6l12 12" />
           </svg>
         ) : (
-          <svg viewBox="0 0 24 24" fill="currentColor" className="h-6 w-6">
-            <path d="M22 12.06C22 6.5 17.52 2 12 2S2 6.5 2 12.06c0 5.02 3.66 9.18 8.44 9.94v-7.03H7.9v-2.91h2.54V9.85c0-2.51 1.49-3.9 3.77-3.9 1.09 0 2.24.2 2.24.2v2.46h-1.26c-1.24 0-1.63.77-1.63 1.56v1.89h2.78l-.45 2.91h-2.33V22c4.78-.76 8.44-4.92 8.44-9.94Z" />
-          </svg>
+          // Fixed local asset in public/, not worth next/image's config for a 48px icon
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src="/contact-widget-icon.png" alt="Contact us" className="h-full w-full object-cover" />
         )}
       </button>
     </>
