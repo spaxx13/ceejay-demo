@@ -1,8 +1,7 @@
 import { redirect } from "next/navigation";
-import { getLookups, getDeviceModels, getServicePrices } from "@/lib/db";
-import { requireRole } from "@/lib/auth";
+import { getLookups, getDeviceModels, getServicePrices, canManageRepairPricing } from "@/lib/db";
+import { getCurrentUser } from "@/lib/auth";
 import { saveServicePrices, createDeviceModel } from "@/lib/actions";
-import SettingsTabs from "@/components/SettingsTabs";
 
 const COLUMNS = [
   { field: "battery", label: "Battery" },
@@ -17,7 +16,8 @@ const COLUMNS = [
 ] as const;
 
 export default async function ServicePricesPage() {
-  if (!(await requireRole("owner_admin"))) redirect("/admin");
+  const user = await getCurrentUser();
+  if (!canManageRepairPricing(user)) redirect("/admin");
 
   const [lookups, allModels, prices] = await Promise.all([getLookups(), getDeviceModels(), getServicePrices()]);
   const brands = lookups.filter((l) => l.kind === "device_brand" && l.active).sort((a, b) => a.order - b.order);
@@ -49,7 +49,6 @@ export default async function ServicePricesPage() {
           &quot;Back Camera&quot; covers both Camera service type labels — one price applies to both.
         </p>
       </div>
-      <SettingsTabs />
 
       <form action={createDeviceModel} className="card flex flex-wrap items-end gap-3">
         <div className="space-y-1.5">

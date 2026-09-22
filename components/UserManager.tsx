@@ -19,6 +19,7 @@ type UserRow = {
   canAccessCrm: boolean;
   canManageWalkIns: boolean;
   canWaiveServiceFee: boolean;
+  canManageRepairPricing: boolean;
   phone: string;
   active: boolean;
 };
@@ -354,6 +355,23 @@ export default function UserManager({
               <p className="text-[11px] text-slate-400">
                 Off by default — independent of &quot;Can Manage Requests&quot; above. Check this to let it waive/restore a specific Home
                 Service request&apos;s Service Fee from the request&apos;s detail page.
+              </p>
+            </div>
+          )}
+          {role === "branch_admin" && (
+            <div className="space-y-1.5">
+              <label className="flex items-center gap-1.5 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  name="canManageRepairPricing"
+                  defaultChecked={editing?.canManageRepairPricing ?? false}
+                  className="h-4 w-4 rounded border-slate-300"
+                />
+                Can access Repair Pricing
+              </label>
+              <p className="text-[11px] text-slate-400">
+                Off by default — independent of every other permission above. Check this to let it view/edit the repair prices used to
+                compute automatic Home Service quotations.
               </p>
             </div>
           )}

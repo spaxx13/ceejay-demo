@@ -90,6 +90,7 @@ type UserRow = {
   can_access_crm: boolean;
   can_manage_walkins: boolean;
   can_waive_service_fee: boolean;
+  can_manage_repair_pricing: boolean;
   phone: string;
   active: boolean;
 };
@@ -107,6 +108,7 @@ function mapUser(r: UserRow): User {
     canAccessCrm: r.can_access_crm,
     canManageWalkIns: r.can_manage_walkins,
     canWaiveServiceFee: r.can_waive_service_fee,
+    canManageRepairPricing: r.can_manage_repair_pricing,
     phone: r.phone,
     active: r.active,
   };
@@ -202,6 +204,15 @@ export function canManageWalkIns(user: Pick<User, "role" | "canManageWalkIns"> |
 export function canWaiveServiceFee(user: Pick<User, "role" | "canWaiveServiceFee"> | null) {
   if (!user) return false;
   return user.role === "owner_admin" || (user.role === "branch_admin" && user.canWaiveServiceFee);
+}
+
+// True when this account is allowed to access Repair Pricing. Owner admins
+// always can; branch admins are scoped by canManageRepairPricing —
+// deliberately independent of every other flag, same convention as
+// canWaiveServiceFee.
+export function canManageRepairPricing(user: Pick<User, "role" | "canManageRepairPricing"> | null) {
+  if (!user) return false;
+  return user.role === "owner_admin" || (user.role === "branch_admin" && user.canManageRepairPricing);
 }
 
 type BranchRow = { id: string; name: string; address: string; contact_number: string; home_service_queue: Branch["homeServiceQueue"]; active: boolean };

@@ -37,6 +37,7 @@ import {
   canAccessCrm,
   canManageWalkIns,
   canWaiveServiceFee,
+  canManageRepairPricing,
   getIcloudCheckById,
   createIcloudCheck,
   markIcloudCheckPaymentPending,
@@ -153,6 +154,7 @@ export async function createUser(formData: FormData) {
   const canAccessCrmFlag = role === "branch_admin" ? formData.get("canAccessCrm") === "on" : true;
   const canManageWalkInsFlag = role === "branch_admin" ? formData.get("canManageWalkIns") === "on" : true;
   const canWaiveServiceFeeFlag = role === "branch_admin" ? formData.get("canWaiveServiceFee") === "on" : true;
+  const canManageRepairPricingFlag = role === "branch_admin" ? formData.get("canManageRepairPricing") === "on" : true;
   const phone = str(formData, "phone");
   if (!name || !email || !password || !role) return;
 
@@ -175,7 +177,7 @@ export async function createUser(formData: FormData) {
 
   const passwordHash = await bcrypt.hash(password, 10);
   await query(
-    "insert into users (name, email, password_hash, role, technician_id, assigned_branch_ids, can_manage_requests, can_delete_requests, can_view_all_branches, can_access_crm, can_manage_walkins, can_waive_service_fee, phone) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)",
+    "insert into users (name, email, password_hash, role, technician_id, assigned_branch_ids, can_manage_requests, can_delete_requests, can_view_all_branches, can_access_crm, can_manage_walkins, can_waive_service_fee, can_manage_repair_pricing, phone) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)",
     [
       name,
       email,
@@ -189,6 +191,7 @@ export async function createUser(formData: FormData) {
       canAccessCrmFlag,
       canManageWalkInsFlag,
       canWaiveServiceFeeFlag,
+      canManageRepairPricingFlag,
       phone,
     ]
   );
@@ -222,6 +225,7 @@ export async function updateUser(formData: FormData) {
   const canAccessCrmFlag = role === "branch_admin" ? formData.get("canAccessCrm") === "on" : true;
   const canManageWalkInsFlag = role === "branch_admin" ? formData.get("canManageWalkIns") === "on" : true;
   const canWaiveServiceFeeFlag = role === "branch_admin" ? formData.get("canWaiveServiceFee") === "on" : true;
+  const canManageRepairPricingFlag = role === "branch_admin" ? formData.get("canManageRepairPricing") === "on" : true;
   const phone = formData.has("phone") ? str(formData, "phone") : user.phone;
 
   if (role === "technician") {
@@ -250,7 +254,7 @@ export async function updateUser(formData: FormData) {
   if (password) {
     const passwordHash = await bcrypt.hash(password, 10);
     await query(
-      "update users set name=$1, email=$2, password_hash=$3, role=$4, technician_id=$5, assigned_branch_ids=$6, can_manage_requests=$7, can_delete_requests=$8, can_view_all_branches=$9, can_access_crm=$10, can_manage_walkins=$11, can_waive_service_fee=$12, phone=$13 where id=$14",
+      "update users set name=$1, email=$2, password_hash=$3, role=$4, technician_id=$5, assigned_branch_ids=$6, can_manage_requests=$7, can_delete_requests=$8, can_view_all_branches=$9, can_access_crm=$10, can_manage_walkins=$11, can_waive_service_fee=$12, can_manage_repair_pricing=$13, phone=$14 where id=$15",
       [
         name,
         email || user.email,
@@ -264,13 +268,14 @@ export async function updateUser(formData: FormData) {
         canAccessCrmFlag,
         canManageWalkInsFlag,
         canWaiveServiceFeeFlag,
+        canManageRepairPricingFlag,
         phone,
         userId,
       ]
     );
   } else {
     await query(
-      "update users set name=$1, email=$2, role=$3, technician_id=$4, assigned_branch_ids=$5, can_manage_requests=$6, can_delete_requests=$7, can_view_all_branches=$8, can_access_crm=$9, can_manage_walkins=$10, can_waive_service_fee=$11, phone=$12 where id=$13",
+      "update users set name=$1, email=$2, role=$3, technician_id=$4, assigned_branch_ids=$5, can_manage_requests=$6, can_delete_requests=$7, can_view_all_branches=$8, can_access_crm=$9, can_manage_walkins=$10, can_waive_service_fee=$11, can_manage_repair_pricing=$12, phone=$13 where id=$14",
       [
         name,
         email || user.email,
@@ -283,6 +288,7 @@ export async function updateUser(formData: FormData) {
         canAccessCrmFlag,
         canManageWalkInsFlag,
         canWaiveServiceFeeFlag,
+        canManageRepairPricingFlag,
         phone,
         userId,
       ]
@@ -467,6 +473,8 @@ export async function updateLookupLabel(formData: FormData) {
 }
 
 export async function createDeviceModel(formData: FormData) {
+  const user = await getCurrentUser();
+  if (!canManageRepairPricing(user)) return;
   const name = str(formData, "name");
   const brandId = str(formData, "brandId");
   if (!name || !brandId) return;
@@ -510,7 +518,8 @@ const PRICE_CELLS = [
 ] as const;
 
 export async function saveServicePrices(formData: FormData) {
-  if (!(await requireRole("owner_admin"))) return;
+  const user = await getCurrentUser();
+  if (!canManageRepairPricing(user)) return;
 
   const [models, existing] = await Promise.all([getDeviceModels(), getServicePrices()]);
   const existingKey = (category: string, deviceModelId: string, quality: string) => `${category}|${deviceModelId}|${quality}`;
