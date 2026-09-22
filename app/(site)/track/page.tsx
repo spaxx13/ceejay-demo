@@ -102,6 +102,11 @@ export default async function TrackPage({ searchParams }: { searchParams: Promis
   const isLiveStage = stage === "pickup_started" || stage === "heading_to_shop";
   const customerAddress = [req.street, req.barangay, req.city, req.province].filter(Boolean).join(", ");
   const destinationAddress = stage === "pickup_started" ? customerAddress : stage === "heading_to_shop" ? deliveredBranch?.address : undefined;
+  // Exact pin, when one's on file — the customer's own geocoded address
+  // (captured at booking time via Places Autocomplete) or the branch's pin
+  // set in Admin > Branches. Preferred over the address text on the map.
+  const destinationLat = stage === "pickup_started" ? req.lat : stage === "heading_to_shop" ? (deliveredBranch?.lat ?? null) : null;
+  const destinationLng = stage === "pickup_started" ? req.lng : stage === "heading_to_shop" ? (deliveredBranch?.lng ?? null) : null;
   const activeRider =
     stage === "out_for_delivery" || stage === "delivery_assigned"
       ? deliveryRider
@@ -132,7 +137,14 @@ export default async function TrackPage({ searchParams }: { searchParams: Promis
             </p>
           )}
           {isLiveStage && (
-            <TrackingLiveMap lat={req.riderLat} lng={req.riderLng} updatedAt={req.riderLocationUpdatedAt} destinationAddress={destinationAddress} />
+            <TrackingLiveMap
+              lat={req.riderLat}
+              lng={req.riderLng}
+              updatedAt={req.riderLocationUpdatedAt}
+              destinationAddress={destinationAddress}
+              destinationLat={destinationLat}
+              destinationLng={destinationLng}
+            />
           )}
           {stage === "picked_up" && <p className="text-sm text-slate-600">Your device is on its way to the shop.</p>}
           {stage === "at_shop" && (

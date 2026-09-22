@@ -146,6 +146,12 @@ export type Branch = {
   contactNumber: string;
   homeServiceQueue: HomeServiceQueue | null;
   active: boolean;
+  // Optional exact pin, copied from Google Maps (Admin > Branches) — used
+  // instead of geocoding `address` for the live tracking map on /track,
+  // since a plain address string sometimes resolves to the wrong nearby
+  // landmark for informal local place names.
+  lat: number | null;
+  lng: number | null;
 };
 
 export type EmploymentStatus = "full_time" | "part_time" | "contractor";

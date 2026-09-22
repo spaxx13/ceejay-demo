@@ -337,13 +337,24 @@ export async function deleteUser(formData: FormData) {
 
 // ---------- Branches ----------
 
+// Parses an optional decimal-coordinate field (lat or lng) — blank means
+// "no exact pin set, fall back to geocoding the address text."
+function floatOrNull(fd: FormData, key: string): number | null {
+  const raw = str(fd, key);
+  if (!raw) return null;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : null;
+}
+
 export async function createBranch(formData: FormData) {
   const name = str(formData, "name");
   if (!name) return;
-  await query("insert into branches (name, address, contact_number) values ($1,$2,$3)", [
+  await query("insert into branches (name, address, contact_number, lat, lng) values ($1,$2,$3,$4,$5)", [
     name,
     str(formData, "address"),
     str(formData, "contactNumber"),
+    floatOrNull(formData, "lat"),
+    floatOrNull(formData, "lng"),
   ]);
   revalidatePath("/admin/branches");
   // Branch name/address/contact number is shown across the public site — the
@@ -357,10 +368,12 @@ export async function updateBranch(formData: FormData) {
   const branchId = str(formData, "id");
   const name = str(formData, "name");
   if (!name) return;
-  await query("update branches set name=$1, address=$2, contact_number=$3 where id=$4", [
+  await query("update branches set name=$1, address=$2, contact_number=$3, lat=$4, lng=$5 where id=$6", [
     name,
     str(formData, "address"),
     str(formData, "contactNumber"),
+    floatOrNull(formData, "lat"),
+    floatOrNull(formData, "lng"),
     branchId,
   ]);
   revalidatePath("/admin/branches");

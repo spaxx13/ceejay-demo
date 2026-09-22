@@ -218,9 +218,15 @@ export function canManageRepairPricing(user: Pick<User, "role" | "canManageRepai
   return user.role === "owner_admin" || (user.role === "branch_admin" && user.canManageRepairPricing);
 }
 
-type BranchRow = { id: string; name: string; address: string; contact_number: string; home_service_queue: Branch["homeServiceQueue"]; active: boolean };
+type BranchRow = {
+  id: string; name: string; address: string; contact_number: string; home_service_queue: Branch["homeServiceQueue"]; active: boolean;
+  lat: number | string | null; lng: number | string | null;
+};
 function mapBranch(r: BranchRow): Branch {
-  return { id: r.id, name: r.name, address: r.address, contactNumber: r.contact_number, homeServiceQueue: r.home_service_queue, active: r.active };
+  return {
+    id: r.id, name: r.name, address: r.address, contactNumber: r.contact_number, homeServiceQueue: r.home_service_queue, active: r.active,
+    lat: r.lat === null ? null : Number(r.lat), lng: r.lng === null ? null : Number(r.lng),
+  };
 }
 
 type TechnicianRow = {

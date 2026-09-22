@@ -17,6 +17,8 @@ export default function TrackingLiveMap({
   lng,
   updatedAt,
   destinationAddress,
+  destinationLat,
+  destinationLng,
 }: {
   lat: number | null;
   lng: number | null;
@@ -25,6 +27,12 @@ export default function TrackingLiveMap({
   // branch's address ("On The Way to Branch"). When set, the map shows the
   // route to it instead of just the rider's bare position.
   destinationAddress?: string;
+  // Exact coordinates for that same destination, when known (a branch with
+  // its pin set in Admin > Branches, or a customer address geocoded at
+  // booking time) — preferred over the address text, since geocoding a
+  // plain string can resolve to the wrong nearby landmark.
+  destinationLat?: number | null;
+  destinationLng?: number | null;
 }) {
   const router = useRouter();
   const [staleness, setStaleness] = useState("");
@@ -53,13 +61,16 @@ export default function TrackingLiveMap({
   }
 
   const origin = `${lat},${lng}`;
-  // Google's embed API geocodes a plain address string for us — no need to
-  // store lat/lng on every branch just to plot it here.
-  const mapsUrl = destinationAddress
-    ? `https://www.google.com/maps/embed/v1/directions?key=${GOOGLE_MAPS_KEY}&origin=${origin}&destination=${encodeURIComponent(destinationAddress)}&mode=driving`
+  // Prefer an exact pin over geocoding the address text — a plain string
+  // (e.g. "Farmers Plaza, Cubao") can resolve to the wrong, more prominent
+  // nearby landmark (e.g. Gateway Mall next door).
+  const destination =
+    destinationLat != null && destinationLng != null ? `${destinationLat},${destinationLng}` : destinationAddress ? destinationAddress : null;
+  const mapsUrl = destination
+    ? `https://www.google.com/maps/embed/v1/directions?key=${GOOGLE_MAPS_KEY}&origin=${origin}&destination=${encodeURIComponent(destination)}&mode=driving`
     : `https://www.google.com/maps/embed/v1/view?key=${GOOGLE_MAPS_KEY}&center=${origin}&zoom=15`;
-  const openUrl = destinationAddress
-    ? `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${encodeURIComponent(destinationAddress)}&travelmode=driving`
+  const openUrl = destination
+    ? `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${encodeURIComponent(destination)}&travelmode=driving`
     : `https://www.google.com/maps?q=${origin}`;
 
   return (
@@ -68,7 +79,7 @@ export default function TrackingLiveMap({
         <iframe title="Rider's live location" className="h-56 w-full rounded-xl border border-slate-200" loading="lazy" referrerPolicy="no-referrer-when-downgrade" src={mapsUrl} />
       ) : (
         <a href={openUrl} target="_blank" rel="noreferrer" className="card block text-center text-sm text-blue-500 hover:underline">
-          {destinationAddress ? "Open the rider's route in Google Maps →" : "Open the rider's live location in Google Maps →"}
+          {destination ? "Open the rider's route in Google Maps →" : "Open the rider's live location in Google Maps →"}
         </a>
       )}
       {staleness && <p className="text-right text-[11px] text-slate-400">{staleness}</p>}

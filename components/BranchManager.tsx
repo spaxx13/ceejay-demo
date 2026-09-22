@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import { createBranch, updateBranch, toggleBranchActive } from "@/lib/actions";
 
-type Branch = { id: string; name: string; address: string; contactNumber: string; active: boolean };
+type Branch = { id: string; name: string; address: string; contactNumber: string; active: boolean; lat: number | null; lng: number | null };
 
 export default function BranchManager({ branches }: { branches: Branch[] }) {
   const formRef = useRef<HTMLFormElement>(null);
@@ -46,6 +46,35 @@ export default function BranchManager({ branches }: { branches: Branch[] }) {
               <input name="contactNumber" defaultValue={editing?.contactNumber ?? ""} className="input" placeholder="0917-100-0001" />
             </div>
           </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-slate-500">Exact Pin — Latitude</label>
+              <input
+                name="lat"
+                type="number"
+                step="any"
+                defaultValue={editing?.lat ?? ""}
+                className="input"
+                placeholder="e.g. 14.6197"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-slate-500">Exact Pin — Longitude</label>
+              <input
+                name="lng"
+                type="number"
+                step="any"
+                defaultValue={editing?.lng ?? ""}
+                className="input"
+                placeholder="e.g. 121.0529"
+              />
+            </div>
+          </div>
+          <p className="text-[11px] text-slate-400">
+            Optional, but recommended for Pickup &amp; Delivery&apos;s live tracking map — a plain address can geocode to the wrong nearby
+            landmark. On Google Maps, right-click the branch&apos;s exact spot → click the coordinates shown at the top to copy them, then
+            paste the two numbers above (separated by the comma) into Latitude and Longitude.
+          </p>
           <div className="flex gap-2">
             <button type="submit" className="btn-primary">
               {editingId ? "Save Changes" : "Add Branch"}
