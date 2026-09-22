@@ -99,7 +99,7 @@ export default async function TrackPage({ searchParams }: { searchParams: Promis
   const deliveryRider = riders.find((r) => r.id === req.deliveryRiderId);
   const technician = technicians.find((t) => t.id === req.assignedTechnicianId);
   const deliveredBranch = branches.find((b) => b.id === req.deliveredBranchId);
-  const isLiveStage = stage === "pickup_started" || stage === "heading_to_shop";
+  const isLiveStage = stage === "pickup_started" || stage === "picked_up" || stage === "heading_to_shop";
   const customerAddress = [req.street, req.barangay, req.city, req.province].filter(Boolean).join(", ");
   const destinationAddress = stage === "pickup_started" ? customerAddress : stage === "heading_to_shop" ? deliveredBranch?.address : undefined;
   // Exact pin, when one's on file — the customer's own geocoded address

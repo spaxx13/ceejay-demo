@@ -79,9 +79,7 @@ export default async function RiderPage() {
                   Call {r.phone}
                 </a>
               )}
-              {((r.pickupStartedAt && !r.pickedUpAt) || (r.headingToShopAt && !r.receivedAtShopAt)) && (
-                <RiderLocationReporter requestId={r.id} />
-              )}
+              {r.pickupStartedAt && !r.receivedAtShopAt && <RiderLocationReporter requestId={r.id} />}
               {r.headingToShopAt && !r.receivedAtShopAt && (
                 <RiderBranchRedirectForm
                   action={riderUpdateDestinationBranch}
