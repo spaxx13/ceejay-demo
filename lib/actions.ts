@@ -633,6 +633,38 @@ export async function riderUpdatePickupStatus(_prev: RiderStatusResult | undefin
   return { ok: true };
 }
 
+// Lets the rider redirect to a different branch mid-trip — e.g. told to
+// bring it to Greenhills instead of Cubao after already leaving. Separate
+// from the "On The Way to Branch" step in riderUpdatePickupStatus above,
+// which only writes delivered_branch_id the first time (it no-ops once
+// heading_to_shop_at is set); this one is always available for as long as
+// the rider is actually still heading there, and never touches the
+// timestamps. /track and the admin board both read delivered_branch_id
+// fresh on every load, so the change shows up immediately — no new link,
+// no extra email, same tracking page the customer already has.
+export async function riderUpdateDestinationBranch(_prev: RiderStatusResult | undefined, formData: FormData): Promise<RiderStatusResult> {
+  const user = await getCurrentUser();
+  if (!user || user.role !== "rider" || !user.riderId) return { ok: false, error: "Not signed in as a rider." };
+
+  const requestId = str(formData, "requestId");
+  const deliveredBranchId = str(formData, "deliveredBranchId");
+  if (!deliveredBranchId) return { ok: false, error: "Please select a branch." };
+
+  const req = await getRequestById(requestId);
+  if (!req || req.pickupRiderId !== user.riderId) return { ok: false, error: "This job isn't assigned to you." };
+  if (!req.headingToShopAt || req.receivedAtShopAt) {
+    return { ok: false, error: "You can only change the destination branch while this trip is in progress." };
+  }
+  if (deliveredBranchId === req.deliveredBranchId) return { ok: true };
+
+  await query("update home_service_requests set delivered_branch_id=$1 where id=$2", [deliveredBranchId, requestId]);
+  await logActivity("home_service_request", requestId, `Rider ${user.name} redirected to a different branch mid-trip`, user.name);
+  revalidatePath("/rider");
+  revalidatePath("/admin/pickup-delivery");
+  revalidatePath(`/admin/requests/${requestId}`);
+  return { ok: true };
+}
+
 export type DeliveryRiderStatus = "on_the_way" | "delivered";
 
 export async function riderUpdateDeliveryStatus(_prev: RiderStatusResult | undefined, formData: FormData): Promise<RiderStatusResult> {

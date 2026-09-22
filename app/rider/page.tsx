@@ -1,8 +1,9 @@
 import { getCurrentUser } from "@/lib/auth";
 import { getRequests, getBranches } from "@/lib/db";
-import { riderUpdatePickupStatus, riderUpdateDeliveryStatus } from "@/lib/actions";
+import { riderUpdatePickupStatus, riderUpdateDeliveryStatus, riderUpdateDestinationBranch } from "@/lib/actions";
 import RiderStatusUpdateForm from "@/components/RiderStatusUpdateForm";
 import RiderLocationReporter from "@/components/RiderLocationReporter";
+import RiderBranchRedirectForm from "@/components/RiderBranchRedirectForm";
 
 const PICKUP_STATUS_OPTIONS = [
   { value: "on_the_way", label: "On The Way" },
@@ -80,6 +81,14 @@ export default async function RiderPage() {
               )}
               {((r.pickupStartedAt && !r.pickedUpAt) || (r.headingToShopAt && !r.receivedAtShopAt)) && (
                 <RiderLocationReporter requestId={r.id} />
+              )}
+              {r.headingToShopAt && !r.receivedAtShopAt && (
+                <RiderBranchRedirectForm
+                  action={riderUpdateDestinationBranch}
+                  requestId={r.id}
+                  branches={branches}
+                  currentBranchId={r.deliveredBranchId}
+                />
               )}
               <RiderStatusUpdateForm
                 action={riderUpdatePickupStatus}
