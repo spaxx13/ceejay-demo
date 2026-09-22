@@ -17,6 +17,7 @@ import { getCurrentUser } from "@/lib/auth";
 import StatusBadge from "@/components/StatusBadge";
 import DeleteButton from "@/components/DeleteButton";
 import BarBreakdownChart from "@/components/BarBreakdownChart";
+import RequestsFilterForm from "@/components/RequestsFilterForm";
 import { deleteHomeServiceRequest } from "@/lib/actions";
 import { formatDate, todayDateStr } from "@/lib/format";
 
@@ -234,39 +235,7 @@ export default async function RequestsPage({
         )}
       </div>
 
-      <form className="card flex flex-wrap gap-3">
-        <select name="status" defaultValue={sp.status ?? ""} className="input w-full sm:w-44">
-          <option value="">All statuses</option>
-          {statuses.map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.label}
-            </option>
-          ))}
-        </select>
-        <select name="technician" defaultValue={sp.technician ?? ""} className="input w-full sm:w-44">
-          <option value="">All technicians</option>
-          {homeServiceTechnicians.map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.name}
-            </option>
-          ))}
-        </select>
-        <input type="date" name="date" defaultValue={sp.date ?? ""} className="input w-full sm:w-44" />
-        <select name="province" defaultValue={sp.province ?? ""} className="input w-full sm:w-44">
-          <option value="">All provinces</option>
-          {provinceOptions.map((p) => (
-            <option key={p} value={p}>
-              {p}
-            </option>
-          ))}
-        </select>
-        <button type="submit" className="btn-secondary flex-1 sm:flex-none">
-          Filter
-        </button>
-        <Link href="/admin/requests" className="btn-secondary flex-1 text-center sm:flex-none">
-          Clear
-        </Link>
-      </form>
+      <RequestsFilterForm statuses={statuses} technicians={homeServiceTechnicians} provinces={provinceOptions} current={sp} />
 
       {(sp.date || sp.province || sp.status || sp.technician || sp.unassigned === "1") && (
         <div className="card">
