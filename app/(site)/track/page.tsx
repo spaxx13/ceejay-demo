@@ -100,6 +100,8 @@ export default async function TrackPage({ searchParams }: { searchParams: Promis
   const technician = technicians.find((t) => t.id === req.assignedTechnicianId);
   const deliveredBranch = branches.find((b) => b.id === req.deliveredBranchId);
   const isLiveStage = stage === "pickup_started" || stage === "heading_to_shop";
+  const customerAddress = [req.street, req.barangay, req.city, req.province].filter(Boolean).join(", ");
+  const destinationAddress = stage === "pickup_started" ? customerAddress : stage === "heading_to_shop" ? deliveredBranch?.address : undefined;
   const activeRider =
     stage === "out_for_delivery" || stage === "delivery_assigned"
       ? deliveryRider
@@ -129,7 +131,9 @@ export default async function TrackPage({ searchParams }: { searchParams: Promis
               Rider: <span className="font-medium text-slate-800">{activeRider.name}</span>
             </p>
           )}
-          {isLiveStage && <TrackingLiveMap lat={req.riderLat} lng={req.riderLng} updatedAt={req.riderLocationUpdatedAt} />}
+          {isLiveStage && (
+            <TrackingLiveMap lat={req.riderLat} lng={req.riderLng} updatedAt={req.riderLocationUpdatedAt} destinationAddress={destinationAddress} />
+          )}
           {stage === "picked_up" && <p className="text-sm text-slate-600">Your device is on its way to the shop.</p>}
           {stage === "at_shop" && (
             <div className="space-y-1">

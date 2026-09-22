@@ -595,7 +595,12 @@ export async function riderUpdatePickupStatus(_prev: RiderStatusResult | undefin
     }
     case "heading_to_shop": {
       if (req.headingToShopAt) break;
-      await query("update home_service_requests set heading_to_shop_at=now() where id=$1", [requestId]);
+      const destinationBranchId = str(formData, "deliveredBranchId");
+      if (!destinationBranchId) return { ok: false, error: "Please select which branch you're heading to." };
+      await query("update home_service_requests set heading_to_shop_at=now(), delivered_branch_id=$1 where id=$2", [
+        destinationBranchId,
+        requestId,
+      ]);
       await logActivity("home_service_request", requestId, `Rider ${user.name} is on the way to the branch with the device`, user.name);
       if (req.email && emailConfigured()) {
         try {

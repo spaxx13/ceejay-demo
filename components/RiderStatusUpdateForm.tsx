@@ -18,12 +18,14 @@ export default function RiderStatusUpdateForm({
   options,
   defaultValue,
   branches,
+  defaultBranchId,
 }: {
   action: (prev: RiderStatusResult | undefined, formData: FormData) => Promise<RiderStatusResult>;
   requestId: string;
   options: Option[];
   defaultValue: string;
   branches?: Branch[];
+  defaultBranchId?: string;
 }) {
   const [status, setStatus] = useState(defaultValue);
   const [state, formAction, pending] = useActionState(action, undefined);
@@ -46,9 +48,9 @@ export default function RiderStatusUpdateForm({
       {selected?.needsBranch && (
         <div className="space-y-1.5">
           <label className="text-xs font-medium text-slate-500">
-            Delivered to Branch <span className="text-red-600">*</span>
+            Which Branch <span className="text-red-600">*</span>
           </label>
-          <select name="deliveredBranchId" required defaultValue="" className="input">
+          <select name="deliveredBranchId" required defaultValue={defaultBranchId ?? ""} className="input">
             <option value="" disabled>
               Select branch...
             </option>

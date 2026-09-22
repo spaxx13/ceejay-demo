@@ -12,7 +12,20 @@ const REFRESH_INTERVAL_MS = 10000;
 // row lookup) rather than a client-side socket. Each refresh re-renders this
 // with fresh lat/lng from the DB, which is enough to keep the embedded map
 // centered on the rider's latest ping.
-export default function TrackingLiveMap({ lat, lng, updatedAt }: { lat: number | null; lng: number | null; updatedAt: string | null }) {
+export default function TrackingLiveMap({
+  lat,
+  lng,
+  updatedAt,
+  destinationAddress,
+}: {
+  lat: number | null;
+  lng: number | null;
+  updatedAt: string | null;
+  // Where the rider is headed — the customer's address ("On The Way") or the
+  // branch's address ("On The Way to Branch"). When set, the map shows the
+  // route to it instead of just the rider's bare position.
+  destinationAddress?: string;
+}) {
   const router = useRouter();
   const [staleness, setStaleness] = useState("");
 
@@ -39,24 +52,23 @@ export default function TrackingLiveMap({ lat, lng, updatedAt }: { lat: number |
     return <p className="text-sm text-slate-400">Waiting for the rider&apos;s location — this updates automatically once they start sharing it.</p>;
   }
 
+  const origin = `${lat},${lng}`;
+  // Google's embed API geocodes a plain address string for us — no need to
+  // store lat/lng on every branch just to plot it here.
+  const mapsUrl = destinationAddress
+    ? `https://www.google.com/maps/embed/v1/directions?key=${GOOGLE_MAPS_KEY}&origin=${origin}&destination=${encodeURIComponent(destinationAddress)}&mode=driving`
+    : `https://www.google.com/maps/embed/v1/view?key=${GOOGLE_MAPS_KEY}&center=${origin}&zoom=15`;
+  const openUrl = destinationAddress
+    ? `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${encodeURIComponent(destinationAddress)}&travelmode=driving`
+    : `https://www.google.com/maps?q=${origin}`;
+
   return (
     <div className="space-y-1.5">
       {GOOGLE_MAPS_KEY ? (
-        <iframe
-          title="Rider's live location"
-          className="h-56 w-full rounded-xl border border-slate-200"
-          loading="lazy"
-          referrerPolicy="no-referrer-when-downgrade"
-          src={`https://www.google.com/maps/embed/v1/view?key=${GOOGLE_MAPS_KEY}&center=${lat},${lng}&zoom=15`}
-        />
+        <iframe title="Rider's live location" className="h-56 w-full rounded-xl border border-slate-200" loading="lazy" referrerPolicy="no-referrer-when-downgrade" src={mapsUrl} />
       ) : (
-        <a
-          href={`https://www.google.com/maps?q=${lat},${lng}`}
-          target="_blank"
-          rel="noreferrer"
-          className="card block text-center text-sm text-blue-500 hover:underline"
-        >
-          Open the rider&apos;s live location in Google Maps →
+        <a href={openUrl} target="_blank" rel="noreferrer" className="card block text-center text-sm text-blue-500 hover:underline">
+          {destinationAddress ? "Open the rider's route in Google Maps →" : "Open the rider's live location in Google Maps →"}
         </a>
       )}
       {staleness && <p className="text-right text-[11px] text-slate-400">{staleness}</p>}

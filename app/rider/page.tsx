@@ -7,7 +7,7 @@ import RiderLocationReporter from "@/components/RiderLocationReporter";
 const PICKUP_STATUS_OPTIONS = [
   { value: "on_the_way", label: "On The Way" },
   { value: "picked_up", label: "Picked Up", needsSignature: true, needsPhoto: true },
-  { value: "heading_to_shop", label: "On The Way to Branch" },
+  { value: "heading_to_shop", label: "On The Way to Branch", needsBranch: true },
   { value: "delivered_to_branch", label: "Delivered to Branch", needsBranch: true },
 ];
 
@@ -87,6 +87,7 @@ export default async function RiderPage() {
                 options={PICKUP_STATUS_OPTIONS}
                 defaultValue={defaultStatus}
                 branches={branches}
+                defaultBranchId={r.deliveredBranchId ?? undefined}
               />
             </div>
           );
