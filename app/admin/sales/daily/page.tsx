@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getRepairRecords, getTechnicians, isBranchHidden, technicianSharePercent } from "@/lib/db";
+import { getRepairRecords, getTechnicians, isBranchHidden, technicianSharePercent, canonicalTechnicianName } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import SalesTabs from "@/components/SalesTabs";
 
@@ -22,7 +22,7 @@ export default async function DailySalesPage({ searchParams }: { searchParams: P
   type TechBucket = { name: string; revenue: number; jobCost: number };
   const dayTechs = new Map<string, Map<string, TechBucket>>();
   const ensureTech = (date: string, rawName: string) => {
-    const name = rawName.trim() || "Unassigned";
+    const name = canonicalTechnicianName(rawName, technicians) || "Unassigned";
     if (!dayTechs.has(date)) dayTechs.set(date, new Map());
     const dayMap = dayTechs.get(date)!;
     if (!dayMap.has(name)) dayMap.set(name, { name, revenue: 0, jobCost: 0 });

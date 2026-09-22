@@ -1,12 +1,12 @@
 import Link from "next/link";
-import { getServiceAgreements, getRequests, homeServiceSalesByTechnician, sumHomeServiceSales } from "@/lib/db";
+import { getServiceAgreements, getRequests, getTechnicians, homeServiceSalesByTechnician, sumHomeServiceSales } from "@/lib/db";
 import SalesTabs from "@/components/SalesTabs";
 
 const peso = (n: number) => `₱${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 export default async function HomeServiceSalesPage({ searchParams }: { searchParams: Promise<{ from?: string; to?: string }> }) {
   const sp = await searchParams;
-  const [agreements, requests] = await Promise.all([getServiceAgreements(), getRequests()]);
+  const [agreements, requests, technicians] = await Promise.all([getServiceAgreements(), getRequests(), getTechnicians()]);
 
   // Default to today so the page always opens on the most current sales —
   // an explicit From/To filter (even a partial one) overrides this.
@@ -32,7 +32,7 @@ export default async function HomeServiceSalesPage({ searchParams }: { searchPar
   // branch tag is incidental (whichever branch the technician was
   // dispatched from), not a meaningful visibility boundary — every account
   // that can open Sales sees all of it.
-  const rows = homeServiceSalesByTechnician(agreements, inRange, requests);
+  const rows = homeServiceSalesByTechnician(agreements, inRange, requests, technicians);
   const grandTotal = sumHomeServiceSales(rows);
 
   return (

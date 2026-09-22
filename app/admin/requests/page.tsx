@@ -115,7 +115,7 @@ export default async function RequestsPage({
   // Same 30/70 split as Sales > Home Service, scoped to today only — a
   // quick "how are we doing" summary so this page doesn't need its own
   // date-range picker; the full breakdown is still one click away there.
-  const salesRows = homeServiceSalesByTechnician(agreements, (date) => date === todayStr, allRequests);
+  const salesRows = homeServiceSalesByTechnician(agreements, (date) => date === todayStr, allRequests, technicians);
   const salesTotal = sumHomeServiceSales(salesRows);
 
   function labelFor(id: string | null, list: { id: string; label?: string; name?: string }[]) {
