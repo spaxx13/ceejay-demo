@@ -4,6 +4,7 @@ import type {
   User,
   Branch,
   Technician,
+  Rider,
   Customer,
   LookupItem,
   DeviceModel,
@@ -83,6 +84,7 @@ type UserRow = {
   password_hash: string;
   role: User["role"];
   technician_id: string | null;
+  rider_id: string | null;
   assigned_branch_ids: string[];
   can_manage_requests: boolean;
   can_delete_requests: boolean;
@@ -101,6 +103,7 @@ function mapUser(r: UserRow): User {
     email: r.email,
     role: r.role,
     technicianId: r.technician_id,
+    riderId: r.rider_id,
     assignedBranchIds: r.assigned_branch_ids ?? [],
     canManageRequests: r.can_manage_requests,
     canDeleteRequests: r.can_delete_requests,
@@ -231,6 +234,11 @@ function mapTechnician(r: TechnicianRow): Technician {
   };
 }
 
+type RiderRow = { id: string; name: string; contact_number: string; email: string; branch_id: string | null; vehicle: Rider["vehicle"]; active: boolean };
+function mapRider(r: RiderRow): Rider {
+  return { id: r.id, name: r.name, contactNumber: r.contact_number, email: r.email, branchId: r.branch_id, vehicle: r.vehicle, active: r.active };
+}
+
 type CustomerRow = { id: string; name: string; phone: string; email: string; street: string; province: string; landmark: string; source: string; notes: string; created_at: Date };
 function mapCustomer(r: CustomerRow): Customer {
   return { id: r.id, name: r.name, phone: r.phone, email: r.email, street: r.street, province: r.province, landmark: r.landmark, source: r.source, notes: r.notes, createdAt: toIso(r.created_at) };
@@ -275,6 +283,9 @@ type RequestRow = {
   deleted_at: Date | null; service_fee_waived: boolean;
   downpayment_required: boolean; downpayment_amount: string | number | null; downpayment_status: HomeServiceRequest["downpaymentStatus"];
   paymongo_checkout_session_id: string | null; paymongo_checkout_url: string | null; paymongo_payment_id: string | null; downpayment_paid_at: Date | null;
+  fulfillment_mode: HomeServiceRequest["fulfillmentMode"]; pickup_rider_id: string | null; delivery_rider_id: string | null;
+  picked_up_at: Date | null; out_for_delivery_at: Date | null; delivered_at: Date | null;
+  pickup_signature_data_url: string | null; delivery_signature_data_url: string | null;
 };
 function mapRequest(r: RequestRow): HomeServiceRequest {
   return {
@@ -291,8 +302,48 @@ function mapRequest(r: RequestRow): HomeServiceRequest {
     downpaymentRequired: r.downpayment_required, downpaymentAmount: r.downpayment_amount === null ? null : Number(r.downpayment_amount),
     downpaymentStatus: r.downpayment_status, paymongoCheckoutSessionId: r.paymongo_checkout_session_id, paymongoCheckoutUrl: r.paymongo_checkout_url,
     paymongoPaymentId: r.paymongo_payment_id, downpaymentPaidAt: toIsoOrNull(r.downpayment_paid_at),
+    fulfillmentMode: r.fulfillment_mode, pickupRiderId: r.pickup_rider_id, deliveryRiderId: r.delivery_rider_id,
+    pickedUpAt: toIsoOrNull(r.picked_up_at), outForDeliveryAt: toIsoOrNull(r.out_for_delivery_at), deliveredAt: toIsoOrNull(r.delivered_at),
+    pickupSignatureDataUrl: r.pickup_signature_data_url, deliverySignatureDataUrl: r.delivery_signature_data_url,
   };
 }
+
+// Every field the two-leg Pickup & Delivery lifecycle needs to derive a
+// single display stage from — no separate status machine, just this
+// request's own rider/timestamp columns plus its existing (shared with
+// on-site jobs) statusId label for the "at shop" leg in the middle.
+export type PickupDeliveryStage =
+  | "requested"
+  | "pickup_assigned"
+  | "picked_up"
+  | "ready_for_delivery"
+  | "delivery_assigned"
+  | "out_for_delivery"
+  | "delivered";
+
+export function pickupDeliveryStage(
+  r: Pick<HomeServiceRequest, "fulfillmentMode" | "pickupRiderId" | "pickedUpAt" | "deliveryRiderId" | "outForDeliveryAt" | "deliveredAt">,
+  statusLabel: string | undefined
+): PickupDeliveryStage | null {
+  if (r.fulfillmentMode !== "pickup_delivery") return null;
+  if (r.deliveredAt) return "delivered";
+  if (r.outForDeliveryAt) return "out_for_delivery";
+  if (r.deliveryRiderId) return "delivery_assigned";
+  if (statusLabel === "Completed") return "ready_for_delivery";
+  if (r.pickedUpAt) return "picked_up";
+  if (r.pickupRiderId) return "pickup_assigned";
+  return "requested";
+}
+
+export const PICKUP_DELIVERY_STAGE_LABELS: Record<PickupDeliveryStage, string> = {
+  requested: "Requested",
+  pickup_assigned: "Pickup Assigned",
+  picked_up: "Picked Up — At Shop",
+  ready_for_delivery: "Ready for Delivery",
+  delivery_assigned: "Delivery Assigned",
+  out_for_delivery: "Out for Delivery",
+  delivered: "Delivered",
+};
 
 type ActivityRow = { id: string; entity_type: ActivityLog["entityType"]; entity_id: string; message: string; actor: string; at: Date };
 function mapActivity(r: ActivityRow): ActivityLog {
@@ -470,6 +521,13 @@ export async function getBranches() {
 export async function getTechnicians() {
   return (await query<TechnicianRow>("select * from technicians order by name")).map(mapTechnician);
 }
+export async function getRiders() {
+  return (await query<RiderRow>("select * from riders order by name")).map(mapRider);
+}
+export async function getRiderById(id: string) {
+  const row = await queryOne<RiderRow>("select * from riders where id = $1", [id]);
+  return row ? mapRider(row) : null;
+}
 export async function getCustomers() {
   return (await query<CustomerRow>("select * from customers order by created_at desc")).map(mapCustomer);
 }
@@ -548,6 +606,12 @@ export async function getDeletedRequests() {
 }
 export async function getRequestById(id: string) {
   const row = await queryOne<RequestRow>("select * from home_service_requests where id = $1", [id]);
+  return row ? mapRequest(row) : null;
+}
+// Public lookup for the Track Your Request page (app/(site)/track) — the
+// reference number is the only thing a customer has on hand, no login.
+export async function getRequestByReference(reference: string) {
+  const row = await queryOne<RequestRow>("select * from home_service_requests where reference = $1", [reference]);
   return row ? mapRequest(row) : null;
 }
 // A multi-device booking shares one confirmation_token across every
@@ -1119,6 +1183,28 @@ export async function notifyTechnician(technicianId: string, message: string, ur
     // closed. See getUnstartedJobCount below.
     const badgeCount = await getUnstartedJobCount(technicianId);
     const { expiredEndpoints } = await sendPushToUsers(subs, { title: "Ceejay", body: message, url, badgeCount });
+    if (expiredEndpoints.length > 0) {
+      await query("delete from push_subscriptions where endpoint = any($1)", [expiredEndpoints]);
+    }
+  } catch {
+    // Best-effort — see notifyAdmins above.
+  }
+}
+
+// Web push to one rider's own device(s) — a new pickup/delivery assignment.
+// Mirrors notifyTechnician exactly, just keyed off rider_id instead of
+// technician_id. No badge count (unlike a technician's unstarted-job count)
+// — riders only ever have a handful of jobs open at once, not worth a
+// dedicated counter yet.
+export async function notifyRider(riderId: string, message: string, url: string) {
+  try {
+    const riderUser = await queryOne<{ id: string }>("select id from users where rider_id = $1 and active", [riderId]);
+    if (!riderUser) return;
+
+    const subs = (await getPushSubscriptions()).filter((s) => s.userId === riderUser.id);
+    if (subs.length === 0) return;
+
+    const { expiredEndpoints } = await sendPushToUsers(subs, { title: "Ceejay", body: message, url });
     if (expiredEndpoints.length > 0) {
       await query("delete from push_subscriptions where endpoint = any($1)", [expiredEndpoints]);
     }

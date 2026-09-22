@@ -10,6 +10,7 @@ const ROLE_LABELS: Record<Role, string> = {
   owner_admin: "Owner Admin",
   branch_admin: "Branch Admin",
   technician: "Technician",
+  rider: "Rider",
 };
 
 export default async function LoginLogsPage({ searchParams }: { searchParams: Promise<{ q?: string; role?: string; from?: string; to?: string }> }) {

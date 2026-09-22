@@ -5,6 +5,7 @@ import { createUser, updateUser, toggleUserActive, deleteUser } from "@/lib/acti
 import type { Role } from "@/lib/types";
 
 type Technician = { id: string; name: string; branchIds: string[] };
+type RiderOpt = { id: string; name: string };
 type Branch = { id: string; name: string };
 type UserRow = {
   id: string;
@@ -12,6 +13,7 @@ type UserRow = {
   email: string;
   role: Role;
   technicianId: string | null;
+  riderId: string | null;
   assignedBranchIds: string[];
   canManageRequests: boolean;
   canDeleteRequests: boolean;
@@ -28,16 +30,19 @@ const ROLE_LABELS: Record<Role, string> = {
   owner_admin: "Owner Admin",
   branch_admin: "Branch Admin",
   technician: "Technician",
+  rider: "Rider",
 };
 
 export default function UserManager({
   users,
   technicians,
+  riders,
   branches,
   currentUserId,
 }: {
   users: UserRow[];
   technicians: Technician[];
+  riders: RiderOpt[];
   branches: Branch[];
   currentUserId: string;
 }) {
@@ -48,6 +53,7 @@ export default function UserManager({
   const [technicianBranchSel, setTechnicianBranchSel] = useState<string[]>([]);
   const [technicianLinkMode, setTechnicianLinkMode] = useState<"new" | "existing">("new");
   const [linkedTechnicianId, setLinkedTechnicianId] = useState("");
+  const [linkedRiderId, setLinkedRiderId] = useState("");
   const editing = users.find((u) => u.id === editingId);
 
   // A technician already linked to a different staff account shouldn't be
@@ -56,6 +62,8 @@ export default function UserManager({
   const linkableTechnicians = technicians.filter(
     (t) => t.id === editing?.technicianId || !users.some((u) => u.technicianId === t.id && u.id !== editingId)
   );
+  // Same one-login-per-record rule as technicians, for riders.
+  const linkableRiders = riders.filter((r) => r.id === editing?.riderId || !users.some((u) => u.riderId === r.id && u.id !== editingId));
 
   function startEdit(u: UserRow) {
     setEditingId(u.id);
@@ -63,6 +71,7 @@ export default function UserManager({
     setTechnicianBranchSel(technicians.find((t) => t.id === u.technicianId)?.branchIds ?? []);
     setTechnicianLinkMode(u.technicianId ? "existing" : "new");
     setLinkedTechnicianId(u.technicianId ?? "");
+    setLinkedRiderId(u.riderId ?? "");
   }
   function reset() {
     setEditingId(null);
@@ -71,6 +80,7 @@ export default function UserManager({
     setTechnicianBranchSel([]);
     setTechnicianLinkMode("new");
     setLinkedTechnicianId("");
+    setLinkedRiderId("");
     formRef.current?.reset();
   }
 
@@ -142,6 +152,7 @@ export default function UserManager({
                 <option value="owner_admin">Owner Admin</option>
                 <option value="branch_admin">Branch Admin</option>
                 <option value="technician">Technician</option>
+                <option value="rider">Rider</option>
               </select>
             </div>
           </div>
@@ -231,6 +242,29 @@ export default function UserManager({
                   <p className="text-[11px] text-slate-400">Creates a new linked Technician record with these branch(es).</p>
                 </div>
               )}
+            </div>
+          )}
+          {role === "rider" && (
+            <div className="space-y-1.5">
+              <input type="hidden" name="riderId" value={linkedRiderId} />
+              <label className="text-xs font-medium text-slate-500">Rider *</label>
+              <select value={linkedRiderId} onChange={(e) => setLinkedRiderId(e.target.value)} required className="input">
+                <option value="" disabled>
+                  Select rider...
+                </option>
+                {linkableRiders.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.name}
+                  </option>
+                ))}
+              </select>
+              {linkableRiders.length === 0 && (
+                <p className="text-[11px] text-amber-700">
+                  No unlinked riders available — every existing rider already has a login, or none exist yet. Add one from Settings &gt;
+                  Riders first.
+                </p>
+              )}
+              <p className="text-[11px] text-slate-400">Links this login to that Rider record — manage their details from Settings &gt; Riders.</p>
             </div>
           )}
           {role === "branch_admin" && (

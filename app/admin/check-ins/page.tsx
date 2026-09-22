@@ -9,6 +9,7 @@ const ROLE_LABELS: Record<Role, string> = {
   owner_admin: "Owner Admin",
   branch_admin: "Branch Admin",
   technician: "Technician",
+  rider: "Rider",
 };
 
 // "Home Service" is the address-less pseudo-branch home-service technicians

@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import bcrypt from "bcryptjs";
-import { OTP_GATE_ENABLED, MAX_PRICE_EDITS, SITE_URL, BOOKING_CONFIRMATION_WINDOW_HOURS, ICLOUD_CHECK_PRICE_PESOS } from "@/lib/config";
+import { OTP_GATE_ENABLED, MAX_PRICE_EDITS, SITE_URL, BOOKING_CONFIRMATION_WINDOW_HOURS, ICLOUD_CHECK_PRICE_PESOS, PICKUP_DELIVERY_PUBLIC_ENABLED } from "@/lib/config";
 import { CHECKLIST_TEMPLATE } from "./checklist";
 import {
   query,
@@ -32,6 +32,7 @@ import {
   notifyAdmins,
   notifyAdminsAboutWalkIn,
   notifyTechnician,
+  notifyRider,
   canManageHomeServiceRequests,
   canDeleteHomeServiceRequests,
   canAccessCrm,
@@ -93,7 +94,7 @@ export async function loginAction(_prev: { error?: string } | undefined, formDat
   }
   await setSession(user.id, formData.get("remember") === "on");
   await query("insert into login_logs (user_id, user_name, user_email, role) values ($1,$2,$3,$4)", [user.id, user.name, user.email, user.role]);
-  redirect(user.role === "technician" ? "/technician" : "/admin");
+  redirect(user.role === "technician" ? "/technician" : user.role === "rider" ? "/rider" : "/admin");
 }
 
 export async function logoutAction() {
@@ -147,6 +148,7 @@ export async function createUser(formData: FormData) {
   const password = str(formData, "password");
   const role = str(formData, "role") as Role;
   let technicianId = str(formData, "technicianId") || null;
+  const riderId = role === "rider" ? str(formData, "riderId") || null : null;
   const assignedBranchIds = role === "branch_admin" ? formData.getAll("assignedBranchIds").map(String) : [];
   const canManageRequests = role === "branch_admin" ? formData.get("canManageRequests") === "on" : true;
   const canDeleteRequests = role === "branch_admin" ? formData.get("canDeleteRequests") === "on" : true;
@@ -157,6 +159,7 @@ export async function createUser(formData: FormData) {
   const canManageRepairPricingFlag = role === "branch_admin" ? formData.get("canManageRepairPricing") === "on" : true;
   const phone = str(formData, "phone");
   if (!name || !email || !password || !role) return;
+  if (role === "rider" && !riderId) return; // must link to an existing Rider record (Settings > Riders)
 
   const existing = await getUserAuthByEmail(email);
   if (existing) return;
@@ -177,13 +180,14 @@ export async function createUser(formData: FormData) {
 
   const passwordHash = await bcrypt.hash(password, 10);
   await query(
-    "insert into users (name, email, password_hash, role, technician_id, assigned_branch_ids, can_manage_requests, can_delete_requests, can_view_all_branches, can_access_crm, can_manage_walkins, can_waive_service_fee, can_manage_repair_pricing, phone) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)",
+    "insert into users (name, email, password_hash, role, technician_id, rider_id, assigned_branch_ids, can_manage_requests, can_delete_requests, can_view_all_branches, can_access_crm, can_manage_walkins, can_waive_service_fee, can_manage_repair_pricing, phone) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)",
     [
       name,
       email,
       passwordHash,
       role,
       role === "technician" ? technicianId : null,
+      riderId,
       assignedBranchIds,
       canManageRequests,
       canDeleteRequests,
@@ -197,6 +201,7 @@ export async function createUser(formData: FormData) {
   );
   revalidatePath("/admin/users");
   revalidatePath("/admin/technicians");
+  revalidatePath("/admin/riders");
 }
 
 export async function updateUser(formData: FormData) {
@@ -217,6 +222,7 @@ export async function updateUser(formData: FormData) {
   const name = str(formData, "name") || user.name;
   const role = (str(formData, "role") || user.role) as Role;
   let technicianId = str(formData, "technicianId") || null;
+  const riderId = role === "rider" ? str(formData, "riderId") || user.riderId : null;
   const password = str(formData, "password");
   const assignedBranchIds = role === "branch_admin" ? formData.getAll("assignedBranchIds").map(String) : [];
   const canManageRequests = role === "branch_admin" ? formData.get("canManageRequests") === "on" : true;
@@ -254,13 +260,14 @@ export async function updateUser(formData: FormData) {
   if (password) {
     const passwordHash = await bcrypt.hash(password, 10);
     await query(
-      "update users set name=$1, email=$2, password_hash=$3, role=$4, technician_id=$5, assigned_branch_ids=$6, can_manage_requests=$7, can_delete_requests=$8, can_view_all_branches=$9, can_access_crm=$10, can_manage_walkins=$11, can_waive_service_fee=$12, can_manage_repair_pricing=$13, phone=$14 where id=$15",
+      "update users set name=$1, email=$2, password_hash=$3, role=$4, technician_id=$5, rider_id=$6, assigned_branch_ids=$7, can_manage_requests=$8, can_delete_requests=$9, can_view_all_branches=$10, can_access_crm=$11, can_manage_walkins=$12, can_waive_service_fee=$13, can_manage_repair_pricing=$14, phone=$15 where id=$16",
       [
         name,
         email || user.email,
         passwordHash,
         role,
         role === "technician" ? technicianId : null,
+        riderId,
         assignedBranchIds,
         canManageRequests,
         canDeleteRequests,
@@ -275,12 +282,13 @@ export async function updateUser(formData: FormData) {
     );
   } else {
     await query(
-      "update users set name=$1, email=$2, role=$3, technician_id=$4, assigned_branch_ids=$5, can_manage_requests=$6, can_delete_requests=$7, can_view_all_branches=$8, can_access_crm=$9, can_manage_walkins=$10, can_waive_service_fee=$11, can_manage_repair_pricing=$12, phone=$13 where id=$14",
+      "update users set name=$1, email=$2, role=$3, technician_id=$4, rider_id=$5, assigned_branch_ids=$6, can_manage_requests=$7, can_delete_requests=$8, can_view_all_branches=$9, can_access_crm=$10, can_manage_walkins=$11, can_waive_service_fee=$12, can_manage_repair_pricing=$13, phone=$14 where id=$15",
       [
         name,
         email || user.email,
         role,
         role === "technician" ? technicianId : null,
+        riderId,
         assignedBranchIds,
         canManageRequests,
         canDeleteRequests,
@@ -296,6 +304,7 @@ export async function updateUser(formData: FormData) {
   }
   revalidatePath("/admin/users");
   revalidatePath("/admin/technicians");
+  revalidatePath("/admin/riders");
 }
 
 export async function toggleUserActive(formData: FormData) {
@@ -436,6 +445,145 @@ export async function deleteTechnician(formData: FormData) {
   await query("delete from technicians where id=$1", [techId]);
   revalidatePath("/admin/technicians");
   revalidatePath("/admin/users");
+}
+
+// ---------- Riders (Pickup & Delivery couriers — separate role from Technician) ----------
+
+export async function createRider(formData: FormData) {
+  const name = str(formData, "name");
+  if (!name) return;
+  await query("insert into riders (name, contact_number, email, branch_id, vehicle) values ($1,$2,$3,$4,$5)", [
+    name,
+    str(formData, "contactNumber"),
+    str(formData, "email"),
+    str(formData, "branchId") || null,
+    str(formData, "vehicle") || "motorcycle",
+  ]);
+  revalidatePath("/admin/riders");
+}
+
+export async function updateRider(formData: FormData) {
+  const riderId = str(formData, "id");
+  const name = str(formData, "name");
+  if (!name) return;
+  await query("update riders set name=$1, contact_number=$2, email=$3, branch_id=$4, vehicle=$5 where id=$6", [
+    name,
+    str(formData, "contactNumber"),
+    str(formData, "email"),
+    str(formData, "branchId") || null,
+    str(formData, "vehicle") || "motorcycle",
+    riderId,
+  ]);
+  revalidatePath("/admin/riders");
+}
+
+export async function toggleRiderActive(formData: FormData) {
+  const riderId = str(formData, "id");
+  await query("update riders set active = not active where id=$1", [riderId]);
+  revalidatePath("/admin/riders");
+}
+
+export async function deleteRider(formData: FormData) {
+  const actor = await requireRole("owner_admin");
+  if (!actor) return;
+
+  const riderId = str(formData, "id");
+
+  // Block deleting a rider still assigned to an in-flight pickup or delivery
+  // leg — same reasoning as deleteTechnician: reassign first rather than
+  // silently leaving a job's rider field pointing nowhere.
+  const requests = await getRequests();
+  const hasOpenLeg = requests.some(
+    (r) =>
+      r.fulfillmentMode === "pickup_delivery" &&
+      ((r.pickupRiderId === riderId && !r.pickedUpAt) || (r.deliveryRiderId === riderId && !r.deliveredAt))
+  );
+  if (hasOpenLeg) return;
+
+  await query("delete from riders where id=$1", [riderId]);
+  revalidatePath("/admin/riders");
+  revalidatePath("/admin/users");
+}
+
+// Admin assigns (or reassigns) a rider to a request's pickup leg — manual,
+// branch-wide (any active rider, not scoped to the request's own branch),
+// per how Ceejay wants dispatch to work for now.
+export async function assignPickupRider(formData: FormData) {
+  const user = await getCurrentUser();
+  if (!canManageHomeServiceRequests(user)) return;
+
+  const requestId = str(formData, "requestId");
+  const riderId = str(formData, "riderId");
+  const req = await getRequestById(requestId);
+  if (!req || req.fulfillmentMode !== "pickup_delivery" || !riderId) return;
+
+  await query("update home_service_requests set pickup_rider_id=$1 where id=$2", [riderId, requestId]);
+  const riderRow = await queryOne<{ name: string }>("select name from riders where id=$1", [riderId]);
+  await logActivity("home_service_request", requestId, `Pickup rider assigned: ${riderRow?.name ?? riderId} (by ${user?.name ?? ""})`, user?.name ?? "Admin");
+  await notifyRider(riderId, `New pickup: ${req.reference} — ${req.customerName}, ${req.street}, ${req.city}`, `/rider`);
+  revalidatePath("/admin/pickup-delivery");
+  revalidatePath(`/admin/requests/${requestId}`);
+}
+
+// Same as assignPickupRider, but only meaningful once the repair itself is
+// done (pickupDeliveryStage === "ready_for_delivery") — enforced in the UI,
+// not re-checked here, since an admin correcting an early assignment isn't
+// harmful.
+export async function assignDeliveryRider(formData: FormData) {
+  const user = await getCurrentUser();
+  if (!canManageHomeServiceRequests(user)) return;
+
+  const requestId = str(formData, "requestId");
+  const riderId = str(formData, "riderId");
+  const req = await getRequestById(requestId);
+  if (!req || req.fulfillmentMode !== "pickup_delivery" || !riderId) return;
+
+  await query("update home_service_requests set delivery_rider_id=$1 where id=$2", [riderId, requestId]);
+  const riderRow = await queryOne<{ name: string }>("select name from riders where id=$1", [riderId]);
+  await logActivity("home_service_request", requestId, `Delivery rider assigned: ${riderRow?.name ?? riderId} (by ${user?.name ?? ""})`, user?.name ?? "Admin");
+  await notifyRider(riderId, `New delivery: ${req.reference} — ${req.customerName}, ${req.street}, ${req.city}`, `/rider`);
+  revalidatePath("/admin/pickup-delivery");
+  revalidatePath(`/admin/requests/${requestId}`);
+}
+
+// The rider's own two actions (app/rider) — each only allowed on a job
+// actually assigned to the signed-in rider, for the leg it belongs to.
+export async function riderMarkPickedUp(formData: FormData) {
+  const user = await getCurrentUser();
+  if (!user || user.role !== "rider" || !user.riderId) return;
+
+  const requestId = str(formData, "requestId");
+  const req = await getRequestById(requestId);
+  if (!req || req.pickupRiderId !== user.riderId || req.pickedUpAt) return;
+
+  await query("update home_service_requests set picked_up_at=now(), pickup_signature_data_url=$1 where id=$2", [
+    str(formData, "signatureDataUrl") || null,
+    requestId,
+  ]);
+  await logActivity("home_service_request", requestId, `Picked up by rider ${user.name}`, user.name);
+  await notifyAdmins("request_in_progress", requestId, `${user.name} picked up ${req.reference} (${req.customerName}) — on the way to the shop.`);
+  revalidatePath("/rider");
+  revalidatePath("/admin/pickup-delivery");
+  revalidatePath(`/admin/requests/${requestId}`);
+}
+
+export async function riderMarkDelivered(formData: FormData) {
+  const user = await getCurrentUser();
+  if (!user || user.role !== "rider" || !user.riderId) return;
+
+  const requestId = str(formData, "requestId");
+  const req = await getRequestById(requestId);
+  if (!req || req.deliveryRiderId !== user.riderId || req.deliveredAt) return;
+
+  await query("update home_service_requests set delivered_at=now(), delivery_signature_data_url=$1 where id=$2", [
+    str(formData, "signatureDataUrl") || null,
+    requestId,
+  ]);
+  await logActivity("home_service_request", requestId, `Delivered by rider ${user.name}`, user.name);
+  await notifyAdmins("request_in_progress", requestId, `${user.name} delivered ${req.reference} (${req.customerName}) to the customer.`);
+  revalidatePath("/rider");
+  revalidatePath("/admin/pickup-delivery");
+  revalidatePath(`/admin/requests/${requestId}`);
 }
 
 // ---------- Device Brands / Models ----------
@@ -1143,6 +1291,14 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
   const branches = await getBranches();
   const queueBranch = branches.find((b) => b.homeServiceQueue === serviceArea);
 
+  // The public form only ever renders "Pickup & Delivery" as selectable once
+  // PICKUP_DELIVERY_PUBLIC_ENABLED is on (see HomeServiceForm.tsx's "Soon"
+  // gate) — re-checked here too, so a hand-crafted submission can't get a
+  // pickup_delivery row past a production site that still has it off.
+  const requestedFulfillmentMode = str(formData, "fulfillmentMode");
+  const fulfillmentMode: "on_site" | "pickup_delivery" =
+    requestedFulfillmentMode === "pickup_delivery" && PICKUP_DELIVERY_PUBLIC_ENABLED ? "pickup_delivery" : "on_site";
+
   const name = str(formData, "name");
   const phone = str(formData, "phone");
   const street = str(formData, "street");
@@ -1404,8 +1560,8 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
             issue_description, photo_data_url, street, landmark, province, city, barangay, lat, lng, preferred_datetime,
             status_id, status_history, custom_fields, vlog_consent, vlog_blur_preference, screen_quality, back_housing_color,
             assigned_technician_id, auto_assigned, branch_id, queue_branch_id, confirmation_token, confirmation_expires_at, booking_group_id,
-            downpayment_required, downpayment_amount, downpayment_status
-          ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36)
+            downpayment_required, downpayment_amount, downpayment_status, fulfillment_mode
+          ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37)
           returning id`,
           [
             reference,
@@ -1444,6 +1600,7 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
             downpaymentActive,
             downpaymentAmount,
             downpaymentActive ? "pending" : "not_required",
+            fulfillmentMode,
           ]
         );
         break;

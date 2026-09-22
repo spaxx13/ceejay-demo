@@ -1,4 +1,4 @@
-export type Role = "owner_admin" | "branch_admin" | "technician";
+export type Role = "owner_admin" | "branch_admin" | "technician" | "rider";
 
 export type User = {
   id: string;
@@ -6,6 +6,7 @@ export type User = {
   email: string;
   role: Role;
   technicianId: string | null; // set when role === "technician"
+  riderId: string | null; // set when role === "rider"
   assignedBranchIds: string[]; // branches this account is allowed to access (branch_admin scoping) — empty means no restriction, sees all
   canManageRequests: boolean; // whether this account can access/manage Home Service Requests (branch_admin scoping)
   canDeleteRequests: boolean; // whether this account can permanently delete Home Service Requests (branch_admin scoping) — owner_admin always can regardless
@@ -164,6 +165,22 @@ export type Technician = {
   // Falls back to 50 for a technician name with no matching record (e.g. a
   // typo, or a name no longer in the system).
   earningsSharePercent: number;
+};
+
+// A courier who handles the pickup/delivery legs of a Pickup & Delivery
+// request — a separate role from Technician, who only ever does the repair
+// itself. `branchId` is just where the rider is based for display/roster
+// purposes; assignment is branch-wide and manual (Admin > Pickup & Delivery),
+// not restricted to that branch's own requests.
+export type VehicleType = "motorcycle" | "car" | "bicycle";
+export type Rider = {
+  id: string;
+  name: string;
+  contactNumber: string;
+  email: string;
+  branchId: string | null;
+  vehicle: VehicleType;
+  active: boolean;
 };
 
 export type CustomerSource = string; // admin-addable lookup value ("Walk-in", "Home Service", "Referral", ...)
@@ -341,6 +358,20 @@ export type HomeServiceRequest = {
   downpaymentPaidAt: string | null;
   deletedAt: string | null; // set when moved to Trash — null again once restored
   serviceFeeWaived: boolean; // set by a staff account with canWaiveServiceFee — treats the province-computed visit fee (lib/homeServiceFees.ts) as ₱0 wherever it's quoted/displayed, without changing the underlying province fee table
+  // Pickup & Delivery — a second fulfillment mode alongside the default
+  // "on_site" (technician visits the address). "pickup_delivery" reuses this
+  // same request row and the same technician assignment/status machinery for
+  // the repair itself; only the rider legs are new. See
+  // lib/db.ts's pickupDeliveryStage() for how these fields (plus the
+  // request's own statusId) collapse into one display stage.
+  fulfillmentMode: "on_site" | "pickup_delivery";
+  pickupRiderId: string | null;
+  deliveryRiderId: string | null; // can differ from pickupRiderId — assigned separately, once the repair is done
+  pickedUpAt: string | null;
+  outForDeliveryAt: string | null;
+  deliveredAt: string | null;
+  pickupSignatureDataUrl: string | null;
+  deliverySignatureDataUrl: string | null;
 };
 
 export type SaleLineItem = {

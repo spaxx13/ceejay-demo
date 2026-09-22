@@ -8,7 +8,7 @@ export default async function LoginPage() {
   // previous visit) skips straight past the form instead of being asked
   // to log in again for no reason.
   const user = await getCurrentUser();
-  if (user) redirect(user.role === "technician" ? "/technician" : "/admin");
+  if (user) redirect(user.role === "technician" ? "/technician" : user.role === "rider" ? "/rider" : "/admin");
 
   return (
     <main className="grid-bg flex min-h-screen flex-col items-center justify-center gap-6 px-4 py-12">

@@ -109,16 +109,28 @@ async function main() {
     );
     const marcoId = techRows.rows.find((r) => r.name === "Marco Reyes").id;
 
+    // Riders — Pickup & Delivery couriers, a separate role from Technicians.
+    const riderRows = await client.query(
+      `insert into riders (name, contact_number, email, branch_id, vehicle) values
+        ('Jomar Santos', '0917-300-0001', 'jomar@ceejay.ph', $1, 'motorcycle'),
+        ('Kevin Alvarez', '0917-300-0002', 'kevin@ceejay.ph', $1, 'motorcycle')
+       returning id, name`,
+      [branchByName["Cubao"]]
+    );
+    const jomarId = riderRows.rows.find((r) => r.name === "Jomar Santos").id;
+
     // Users (bcrypt-hashed passwords, from env vars)
     const adminHash = await bcrypt.hash(seedPassword("SEED_ADMIN_PASSWORD", "owner admin"), 10);
     const branchHash = await bcrypt.hash(seedPassword("SEED_BRANCH_PASSWORD", "branch admin"), 10);
     const techHash = await bcrypt.hash(seedPassword("SEED_TECH_PASSWORD", "technician"), 10);
+    const riderHash = await bcrypt.hash(seedPassword("SEED_RIDER_PASSWORD", "rider"), 10);
     await client.query(
-      `insert into users (name, email, password_hash, role, technician_id) values
-        ('Ceejay Owner', 'ceejay.spaxx@yahoo.com', $1, 'owner_admin', null),
-        ('Branch Admin', 'branch@ceejay.ph', $2, 'branch_admin', null),
-        ('Marco Reyes', 'marco@ceejay.ph', $3, 'technician', $4)`,
-      [adminHash, branchHash, techHash, marcoId]
+      `insert into users (name, email, password_hash, role, technician_id, rider_id) values
+        ('Ceejay Owner', 'ceejay.spaxx@yahoo.com', $1, 'owner_admin', null, null),
+        ('Branch Admin', 'branch@ceejay.ph', $2, 'branch_admin', null, null),
+        ('Marco Reyes', 'marco@ceejay.ph', $3, 'technician', $4, null),
+        ('Jomar Santos', 'jomar@ceejay.ph', $5, 'rider', null, $6)`,
+      [adminHash, branchHash, techHash, marcoId, riderHash, jomarId]
     );
 
     // Inventory

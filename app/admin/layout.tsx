@@ -10,6 +10,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   const user = await getCurrentUser();
   if (!user) redirect("/login");
   if (user.role === "technician") redirect("/technician");
+  if (user.role === "rider") redirect("/rider");
 
   const unreadCount = (await getNotifications()).filter((n) => !n.readAt).length;
 

@@ -9,6 +9,7 @@ const GROUPS = [
     tabs: [
       { href: "/admin/branches", label: "Branches" },
       { href: "/admin/technicians", label: "Technicians" },
+      { href: "/admin/riders", label: "Riders" },
     ],
   },
   {

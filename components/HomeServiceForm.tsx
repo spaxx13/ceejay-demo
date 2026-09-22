@@ -2,7 +2,7 @@
 
 import { Fragment, useActionState, useEffect, useRef, useState } from "react";
 import { submitHomeServiceRequest, sendHomeServiceOtp, verifyHomeServiceOtp } from "@/lib/actions";
-import { OTP_GATE_ENABLED, BOOKING_CONFIRMATION_WINDOW_HOURS } from "@/lib/config";
+import { OTP_GATE_ENABLED, BOOKING_CONFIRMATION_WINDOW_HOURS, PICKUP_DELIVERY_PUBLIC_ENABLED } from "@/lib/config";
 import {
   PROVINCE_FEES,
   SUNDAY_ONLY_PROVINCES,
@@ -107,6 +107,7 @@ export default function HomeServiceForm({
   const streetRef = useRef<HTMLInputElement>(null);
   const [vlogConsent, setVlogConsent] = useState(false);
   const [preferredDate, setPreferredDate] = useState("");
+  const [fulfillmentMode, setFulfillmentMode] = useState<"on_site" | "pickup_delivery">("on_site");
 
   // One or more devices per booking — starts with a single blank block;
   // "+ Add Another Device" appends another, sharing the contact/address
@@ -323,6 +324,11 @@ export default function HomeServiceForm({
               request will be automatically cancelled.
             </p>
           </FormNotice>
+        )}
+        {fulfillmentMode === "pickup_delivery" && state.references.length === 1 && (
+          <a href={`/track?reference=${encodeURIComponent(state.references[0])}`} className="btn-secondary inline-block">
+            Track this request
+          </a>
         )}
         <a href={`/request?area=${area}`} className="btn-secondary inline-block">
           Submit another request
@@ -751,6 +757,48 @@ export default function HomeServiceForm({
     >
       <input type="hidden" name="serviceArea" value={area} />
       <input type="hidden" name="deviceCount" value={devices.length} />
+      <input type="hidden" name="fulfillmentMode" value={fulfillmentMode} />
+
+      <div className="space-y-1.5">
+        <label className="text-xs font-medium text-slate-500">How would you like this handled?</label>
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={() => setFulfillmentMode("on_site")}
+            className={`rounded-lg border px-3 py-2.5 text-left text-sm font-medium transition-colors ${
+              fulfillmentMode === "on_site" ? "border-blue-300 bg-blue-50 text-blue-300" : "border-slate-300 bg-slate-100 text-slate-600"
+            }`}
+          >
+            On-site Repair
+            <span className="block text-[11px] font-normal text-slate-400">A technician comes to you.</span>
+          </button>
+          <button
+            type="button"
+            disabled={!PICKUP_DELIVERY_PUBLIC_ENABLED}
+            onClick={() => PICKUP_DELIVERY_PUBLIC_ENABLED && setFulfillmentMode("pickup_delivery")}
+            className={`relative rounded-lg border px-3 py-2.5 text-left text-sm font-medium transition-colors ${
+              !PICKUP_DELIVERY_PUBLIC_ENABLED
+                ? "cursor-not-allowed border-slate-200 bg-slate-50 text-slate-300"
+                : fulfillmentMode === "pickup_delivery"
+                  ? "border-blue-300 bg-blue-50 text-blue-300"
+                  : "border-slate-300 bg-slate-100 text-slate-600"
+            }`}
+          >
+            Pickup &amp; Delivery
+            <span className="block text-[11px] font-normal text-slate-400">We pick up, repair, and deliver it back.</span>
+            {!PICKUP_DELIVERY_PUBLIC_ENABLED && (
+              <span className="badge absolute right-2 top-2 border border-amber-200 bg-amber-50 text-amber-700">Soon</span>
+            )}
+          </button>
+        </div>
+        {fulfillmentMode === "pickup_delivery" && (
+          <FormNotice tone="blue" icon="🚚">
+            A rider will pick up your device at the address below, we&apos;ll repair it at the shop, then a rider delivers it back to you.
+            We&apos;ll confirm any delivery fee before pickup.
+          </FormNotice>
+        )}
+      </div>
+
       {fieldsBeforeDevices.map((f) => (f.systemKey ? renderSystemField(f) : <DynamicFormField key={f.id} field={f} />))}
 
       {devices.map((device, index) => (
