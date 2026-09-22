@@ -140,28 +140,36 @@ export default function HomeServiceForm({
     const file = area === "near" ? "/ph-addresses-near.json" : "/ph-addresses-far.json";
     fetch(file)
       .then((r) => r.json())
+      // Pickup & Delivery only covers Metro Manila for now — trim the
+      // near queue's other 6 provinces out rather than fetching a
+      // separate dataset just for this.
+      .then((data: PhProvince[]) => (mode === "pickup_delivery" ? data.filter((p) => p.key === "metro_manila") : data))
       .then(setPhData)
       .catch(() => setPhData([]));
-  }, [area]);
-  const selectedPhProvince = phData?.find((p) => p.label === province) ?? null;
+  }, [area, mode]);
+  // Only one province to pick from in Pickup & Delivery mode (Metro Manila,
+  // filtered above) — treat it as selected without making the customer
+  // choose among one option, rather than setting state from an effect.
+  const effectiveProvince = mode === "pickup_delivery" && phData?.length === 1 ? phData[0].label : province;
+  const selectedPhProvince = phData?.find((p) => p.label === effectiveProvince) ?? null;
   const selectedPhCity = selectedPhProvince?.cities.find((c) => c.name === city) ?? null;
 
   // Shown in the notice right above Submit — reflects whichever area is
   // actually selected instead of a fixed Metro Manila figure, since the
   // flat rate differs by province (and, for some provinces, by town).
   function serviceFeeNote(): string | null {
-    const fee = PROVINCE_FEES[province];
+    const fee = PROVINCE_FEES[effectiveProvince];
     if (!fee) return null;
     const peso = (n: number) => `₱${n.toLocaleString()}.00`;
     if (fee.higherTowns && fee.higherFee) {
       if (city && fee.higherTowns.includes(city)) {
-        return `A flat rate service fee of ${peso(fee.higherFee)} is applicable for ${city}, ${province}.`;
+        return `A flat rate service fee of ${peso(fee.higherFee)} is applicable for ${city}, ${effectiveProvince}.`;
       }
-      return `A flat rate service fee of ${peso(fee.base)} is applicable within ${province}, except for ${fee.higherTowns.join(
+      return `A flat rate service fee of ${peso(fee.base)} is applicable within ${effectiveProvince}, except for ${fee.higherTowns.join(
         ", "
       )}, where the service fee is ${peso(fee.higherFee)}.`;
     }
-    return `A flat rate service fee of ${peso(fee.base)} is applicable within ${province} area.`;
+    return `A flat rate service fee of ${peso(fee.base)} is applicable within ${effectiveProvince} area.`;
   }
 
   // SMS OTP verification — anti-spam gate, run at submit time: the
@@ -253,7 +261,9 @@ export default function HomeServiceForm({
   // customers submit without an OTP step instead of being stuck on a "send
   // code" button that can only ever fail. Matches the server-side check in
   // submitHomeServiceRequest, which skips the gate the same way.
-  const phoneGateActive = OTP_GATE_ENABLED && smsAvailable && (phoneField?.active ?? false);
+  // Pickup & Delivery skips the OTP gate entirely — still being tested, and
+  // the rider already confirms identity in person at pickup.
+  const phoneGateActive = mode !== "pickup_delivery" && OTP_GATE_ENABLED && smsAvailable && (phoneField?.active ?? false);
 
   useEffect(() => {
     if (!GOOGLE_MAPS_KEY || !streetActive) return;
@@ -443,14 +453,14 @@ export default function HomeServiceForm({
               <select
                 name="province"
                 required={req}
-                value={province}
+                value={effectiveProvince}
                 onChange={(e) => {
                   setProvince(e.target.value);
                   setCity("");
                   setBarangay("");
                 }}
                 className="input"
-                disabled={!phData}
+                disabled={!phData || mode === "pickup_delivery"}
               >
                 <option value="">{phData ? "Select province..." : "Loading..."}</option>
                 {provinces.map((p) => (
@@ -662,10 +672,16 @@ export default function HomeServiceForm({
             <label className="text-xs font-medium text-slate-500">
               {field.label} {asterisk}
             </label>
-            <FormNotice>
-              We do not offer backglass replacement, camera repair, and board/power related issues on home service. You may contact our
-              branches for any concerns that is not listed on the dropdown list below.
-            </FormNotice>
+            {mode === "pickup_delivery" ? (
+              <FormNotice tone="blue">
+                Since your device comes to the shop either way, every repair service is available — not just the on-site-friendly ones.
+              </FormNotice>
+            ) : (
+              <FormNotice>
+                We do not offer backglass replacement, camera repair, and board/power related issues on home service. You may contact our
+                branches for any concerns that is not listed on the dropdown list below.
+              </FormNotice>
+            )}
             <select
               name={`serviceTypeId_${index}`}
               required={req}
@@ -675,7 +691,7 @@ export default function HomeServiceForm({
             >
               <option value="">Select service type...</option>
               {serviceTypes
-                .filter((s) => !EXCLUDED_FROM_HOME_SERVICE.has(s.label))
+                .filter((s) => mode === "pickup_delivery" || !EXCLUDED_FROM_HOME_SERVICE.has(s.label))
                 .map((s) => (
                   <option key={s.id} value={s.id}>
                     {s.label}

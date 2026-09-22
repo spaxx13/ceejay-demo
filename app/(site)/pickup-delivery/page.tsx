@@ -3,24 +3,16 @@ import { getLookups, getDeviceModels, getRequestFormContent, getCustomFormFields
 import { PICKUP_DELIVERY_PUBLIC_ENABLED } from "@/lib/config";
 import HomeServiceForm from "@/components/HomeServiceForm";
 import { smsConfigured } from "@/lib/sms";
-import { toPhInternational } from "@/lib/format";
-import type { HomeServiceQueue } from "@/lib/types";
 
 // Its own page, separate from the Home Service (on-site) request flow at
 // /request — same underlying form/fields/submission action (both are still
 // Home Service Requests under the hood), but Pickup & Delivery gets its own
 // entry point and copy rather than a toggle buried inside the on-site form.
-const AREA_LABELS: Record<HomeServiceQueue, string> = {
-  near: "Metro Manila, Laguna, Batangas, Rizal, Bulacan, Cavite, and Pampanga",
-  far: "Other Provinces",
-};
+// Metro Manila only for now (riders don't cover the wider near-queue area or
+// the far/other-provinces queue at all) — HomeServiceForm restricts the
+// address picker to Metro Manila cities whenever mode="pickup_delivery".
 
-const AREA_ENABLED_KEY: Record<HomeServiceQueue, "nearAreaEnabled" | "farAreaEnabled"> = {
-  near: "nearAreaEnabled",
-  far: "farAreaEnabled",
-};
-
-export default async function PickupDeliveryPage({ searchParams }: { searchParams: Promise<{ area?: string }> }) {
+export default async function PickupDeliveryPage() {
   if (!PICKUP_DELIVERY_PUBLIC_ENABLED) {
     return (
       <main className="grid-bg px-4 py-16 sm:px-6">
@@ -44,9 +36,6 @@ export default async function PickupDeliveryPage({ searchParams }: { searchParam
     );
   }
 
-  const sp = await searchParams;
-  const requestedArea: HomeServiceQueue | null = sp.area === "near" || sp.area === "far" ? sp.area : null;
-
   const [lookups, deviceModels, content, customFormFields] = await Promise.all([
     getLookups(),
     getDeviceModels(),
@@ -54,72 +43,18 @@ export default async function PickupDeliveryPage({ searchParams }: { searchParam
     getCustomFormFields(),
   ]);
 
-  const enabledAreas = (Object.keys(AREA_LABELS) as HomeServiceQueue[]).filter((key) => content[AREA_ENABLED_KEY[key]]);
-  const area = requestedArea && enabledAreas.includes(requestedArea) ? requestedArea : null;
-
-  if (!area) {
+  if (!content.nearAreaEnabled) {
     return (
-      <main className="grid-bg px-4 py-10 sm:px-6">
-        <div className="mx-auto max-w-xl space-y-6">
-          <div className="text-center">
-            <p className="kicker">Pickup &amp; Delivery</p>
-            <h1 className="mt-1 text-2xl font-bold text-slate-900">Where&apos;s your device coming from?</h1>
-            <p className="mt-2 text-sm text-slate-400">Choose your area so we can route your pickup to the right team.</p>
+      <main className="grid-bg px-4 py-16 sm:px-6">
+        <div className="mx-auto max-w-xl space-y-4 text-center">
+          <p className="kicker">Pickup &amp; Delivery</p>
+          <h1 className="text-2xl font-bold text-slate-900">Temporarily Unavailable</h1>
+          <p className="text-sm text-slate-400">Please contact a branch directly, or try Home Service instead.</p>
+          <div className="flex flex-wrap justify-center gap-3 pt-2">
+            <Link href="/branches" className="btn-secondary">
+              Find a Branch
+            </Link>
           </div>
-          <div className="space-y-3">
-            {enabledAreas.length === 0 && (
-              <p className="card text-center text-sm text-slate-400">Pickup &amp; Delivery is temporarily unavailable. Please contact a branch directly.</p>
-            )}
-            {enabledAreas.map((key) => (
-              <Link key={key} href={`/pickup-delivery?area=${key}`} className="card block text-center hover:border-blue-300">
-                <p className="text-sm font-semibold text-slate-800">{AREA_LABELS[key]}</p>
-              </Link>
-            ))}
-          </div>
-        </div>
-      </main>
-    );
-  }
-
-  if (area === "far") {
-    const number = content.farAreaContactNumber.trim();
-    const intlNumber = number ? toPhInternational(number) : null;
-
-    return (
-      <main className="grid-bg px-4 py-10 sm:px-6">
-        <div className="mx-auto max-w-xl space-y-6 text-center">
-          <div>
-            <p className="kicker">Pickup &amp; Delivery</p>
-            <h1 className="mt-1 text-2xl font-bold text-slate-900">Other Provinces</h1>
-            <p className="mt-2 text-sm text-slate-400">
-              We don&apos;t have an online form for this area yet — message us directly and we&apos;ll take it from there.
-            </p>
-            <p className="mt-1 text-xs text-slate-400">
-              <Link href="/pickup-delivery" className="text-blue-500 hover:underline">
-                Change area
-              </Link>
-            </p>
-          </div>
-          {intlNumber ? (
-            <div className="space-y-3">
-              <a
-                href={`https://wa.me/${intlNumber}`}
-                target="_blank"
-                rel="noreferrer"
-                className="card flex items-center justify-center gap-2 !bg-[#25D366] text-white hover:opacity-90"
-              >
-                <span className="text-sm font-semibold">Message us on WhatsApp</span>
-              </a>
-              <a
-                href={`viber://chat?number=%2B${intlNumber}`}
-                className="card flex items-center justify-center gap-2 !bg-[#7360F2] text-white hover:opacity-90"
-              >
-                <span className="text-sm font-semibold">Message us on Viber</span>
-              </a>
-            </div>
-          ) : (
-            <p className="card text-center text-sm text-slate-400">Pickup &amp; Delivery is temporarily unavailable. Please contact a branch directly.</p>
-          )}
         </div>
       </main>
     );
@@ -145,12 +80,7 @@ export default async function PickupDeliveryPage({ searchParams }: { searchParam
           <p className="kicker">Pickup &amp; Delivery</p>
           <h1 className="mt-1 text-2xl font-bold text-slate-900">We pick up, repair, and deliver it back</h1>
           <p className="mt-2 text-sm text-slate-400">No need to leave home — a rider handles the trip both ways.</p>
-          <p className="mt-1 text-xs text-slate-400">
-            Area: {AREA_LABELS[area]} ·{" "}
-            <Link href="/pickup-delivery" className="text-blue-500 hover:underline">
-              Change
-            </Link>
-          </p>
+          <p className="mt-1 text-xs text-slate-400">Metro Manila only, for now.</p>
         </div>
         {fields.length === 0 ? (
           <p className="card text-center text-sm text-slate-400">
@@ -163,7 +93,7 @@ export default async function PickupDeliveryPage({ searchParams }: { searchParam
             serviceTypes={serviceTypes}
             content={content}
             fields={fields}
-            area={area}
+            area="near"
             smsAvailable={smsConfigured()}
             mode="pickup_delivery"
           />

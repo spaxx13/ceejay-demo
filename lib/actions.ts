@@ -1329,8 +1329,9 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
   if (isRequired("email") && !email) return { ok: false, error: `${label("email")} is required.` };
   // A misconfigured/missing Semaphore key must never be able to take the
   // public request form down — the gate only actually applies once SMS
-  // sending is really available.
-  if (OTP_GATE_ENABLED && smsConfigured() && isActive("phone") && phone) {
+  // sending is really available. Pickup & Delivery skips it outright (still
+  // being tested — see HomeServiceForm.tsx's matching client-side skip).
+  if (fulfillmentMode !== "pickup_delivery" && OTP_GATE_ENABLED && smsConfigured() && isActive("phone") && phone) {
     const otpRow = await queryOne<{ verified: boolean }>("select verified from otp_codes where phone=$1", [normalizePhone(phone)]);
     if (!otpRow?.verified) return { ok: false, error: "Please verify your phone number before submitting." };
   }
