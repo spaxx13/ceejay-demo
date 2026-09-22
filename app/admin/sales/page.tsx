@@ -11,6 +11,7 @@ import {
   isBranchHidden,
   canViewAllBranchSales,
   technicianSharePercent,
+  canonicalTechnicianName,
 } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import SalesTabs from "@/components/SalesTabs";
@@ -96,7 +97,7 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
   const key = (branchId: string | null) => branchId ?? "unassigned";
   const ensureTech = (branchId: string | null, rawName: string) => {
     const bk = key(branchId);
-    const name = rawName.trim() || "Unassigned";
+    const name = canonicalTechnicianName(rawName, technicians) || "Unassigned";
     if (!techByBranch.has(bk)) techByBranch.set(bk, new Map());
     const branchMap = techByBranch.get(bk)!;
     if (!branchMap.has(name)) {
@@ -201,6 +202,9 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
   // Share and Remaining (branch totals and each technician's own row)
   // still add back up to exactly Net Profit (Before Sharing) — Revenue/Job
   // Cost/Net Profit stay factual and untouched, only the split moves.
+  // Aliased before the map below shadows `technicians` with each branch's
+  // own per-technician row array.
+  const allTechnicians = technicians;
   const rowsWithExpenses = rows.map((r) => {
     const branchNetProfitExpenseRows = netProfitExpenseRows.filter((e) => e.branchId === null || e.branchId === r.branchId);
     const techNames = new Set(r.technicians.map((t) => t.name));
@@ -252,7 +256,8 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
     const homeServiceTechnicians = homeServiceSalesByTechnician(
       visibleAgreements.filter((a) => a.branchId === r.branchId),
       inRange,
-      requests
+      requests,
+      allTechnicians
     );
     const homeService = sumHomeServiceSales(homeServiceTechnicians);
 
@@ -296,7 +301,7 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
   // home-service-only technicians (see homeServiceQueueBranches) never get
   // assigned a real (addressed) branch at all, so summing only what each
   // real branch's card captures would silently drop most of this revenue.
-  const grandHomeService = sumHomeServiceSales(homeServiceSalesByTechnician(visibleAgreements, inRange, requests));
+  const grandHomeService = sumHomeServiceSales(homeServiceSalesByTechnician(visibleAgreements, inRange, requests, technicians));
 
   // The one true bottom-line figure — what the business actually keeps
   // across every revenue stream (every branch's POS/walk-in business share,
@@ -316,7 +321,8 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
     const homeServiceTechnicians = homeServiceSalesByTechnician(
       visibleAgreements.filter((a) => a.branchId === b.id),
       inRange,
-      requests
+      requests,
+      technicians
     );
     return { branch: b, homeServiceTechnicians, homeService: sumHomeServiceSales(homeServiceTechnicians) };
   });

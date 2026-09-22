@@ -166,10 +166,28 @@ export function homeServiceBranchId(
 // name into that technician's configured earnings share — every Sales
 // report should call this rather than re-deriving its own default, so they
 // can never disagree with each other or with Settings > Technicians.
+// Case-insensitive so a typo'd capitalization ("jhong" vs "Jhong") still
+// resolves to the right technician's configured share instead of silently
+// falling back to the 50% default.
 export function technicianSharePercent(technicianName: string, technicians: Pick<Technician, "name" | "earningsSharePercent">[]) {
-  const name = technicianName.trim();
-  const tech = technicians.find((t) => t.name.trim() === name);
+  const name = technicianName.trim().toLowerCase();
+  const tech = technicians.find((t) => t.name.trim().toLowerCase() === name);
   return tech?.earningsSharePercent ?? 50;
+}
+
+// Every Sales report groups POS/home-service records by the technician name
+// typed on each one — with no FK, a name typed in a different case
+// ("jhong" one day, "Jhong" the next) would otherwise split one technician
+// into multiple phantom rows. This resolves a raw typed name to the exact
+// casing configured on Settings > Technicians whenever one matches
+// case-insensitively, so every report groups them as the same technician;
+// falls back to the trimmed raw name when it matches no configured
+// technician (renamed/deleted technician, or a one-off typo).
+export function canonicalTechnicianName(rawName: string, technicians: Pick<Technician, "name">[]): string {
+  const trimmed = rawName.trim();
+  if (!trimmed) return trimmed;
+  const match = technicians.find((t) => t.name.trim().toLowerCase() === trimmed.toLowerCase());
+  return match ? match.name.trim() : trimmed;
 }
 
 // True when this account can see combined "All Branches" sales figures on
@@ -700,10 +718,16 @@ export type HomeServiceSalesRow = {
 //      recomputed from source data on every load, never stored separately.
 //   2. For a request that IS still active, its currently-waived visit fee
 //      (if any) is subtracted the same way — see ServiceFeeWaiver.
+// `technicians` (optional — defaults to none) resolves each job's raw typed
+// name to its configured Settings > Technicians casing via
+// canonicalTechnicianName, so a name typed in a different case doesn't split
+// one technician into multiple rows; omit only where the caller has no
+// technicians list handy and grouping precision doesn't matter.
 export function homeServiceSalesByTechnician(
   agreements: ServiceAgreement[],
   inRange: (date: string) => boolean,
-  requests: Pick<HomeServiceRequest, "id" | "serviceFeeWaived" | "province" | "city">[] = []
+  requests: Pick<HomeServiceRequest, "id" | "serviceFeeWaived" | "province" | "city">[] = [],
+  technicians: Pick<Technician, "name">[] = []
 ): HomeServiceSalesRow[] {
   const requestById = new Map(requests.map((r) => [r.id, r]));
   const homeServiceJobs = agreements.filter((a) => a.phase === "post_repair" && a.requestId && inRange(a.completedAt.slice(0, 10)));
@@ -711,7 +735,7 @@ export function homeServiceSalesByTechnician(
   type TechTotals = { name: string; count: number; totalAmount: number; partsCost: number; jobs: { deviceLabel: string; amount: number }[] };
   const totals = new Map<string, TechTotals>();
   const ensure = (rawName: string) => {
-    const name = rawName.trim() || "Unassigned";
+    const name = canonicalTechnicianName(rawName, technicians) || "Unassigned";
     if (!totals.has(name)) totals.set(name, { name, count: 0, totalAmount: 0, partsCost: 0, jobs: [] });
     return totals.get(name)!;
   };

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getRepairRecords, getExpenses, getTechnicians, isBranchHidden, technicianSharePercent } from "@/lib/db";
+import { getRepairRecords, getExpenses, getTechnicians, isBranchHidden, technicianSharePercent, canonicalTechnicianName } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import SalesTabs from "@/components/SalesTabs";
 
@@ -44,7 +44,7 @@ export default async function TechnicianSalesPage({ searchParams }: { searchPara
   type TechTotals = { name: string; count: number; totalSales: number; partsCost: number; laborCost: number; otherExpenses: number };
   const totals = new Map<string, TechTotals>();
   const ensure = (rawName: string) => {
-    const name = rawName.trim() || "Unassigned";
+    const name = canonicalTechnicianName(rawName, technicians) || "Unassigned";
     if (!totals.has(name)) totals.set(name, { name, count: 0, totalSales: 0, partsCost: 0, laborCost: 0, otherExpenses: 0 });
     return totals.get(name)!;
   };

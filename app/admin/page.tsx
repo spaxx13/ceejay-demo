@@ -13,6 +13,7 @@ import {
   getBranches,
   getTodayCheckIn,
   technicianSharePercent,
+  canonicalTechnicianName,
   homeServiceSalesByTechnician,
   sumHomeServiceSales,
   canManageHomeServiceRequests,
@@ -81,7 +82,7 @@ export default async function AdminDashboard() {
   const businessExpenseTotal = todayExpenses.filter((e) => e.target === "owner_final_total_sales").reduce((s, e) => s + e.amount, 0);
   const todayTechTotals = new Map<string, { revenue: number; jobCost: number; sharePercent: number }>();
   for (const r of todayRecords.filter((r) => !r.cancelled)) {
-    const name = r.technicianName.trim() || "Unassigned";
+    const name = canonicalTechnicianName(r.technicianName, technicians) || "Unassigned";
     if (!todayTechTotals.has(name)) todayTechTotals.set(name, { revenue: 0, jobCost: 0, sharePercent: technicianSharePercent(name, technicians) });
     const t = todayTechTotals.get(name)!;
     t.revenue += r.cost;
@@ -104,7 +105,7 @@ export default async function AdminDashboard() {
   // Sales — Today" card and Sales > Home Service, so this figure can't
   // drift from either of those. Business expenses aren't wired to Home
   // Service anywhere else in the app, so none are deducted here either.
-  const todayHomeServiceSales = sumHomeServiceSales(homeServiceSalesByTechnician(agreements, (date) => date === today, allRequests));
+  const todayHomeServiceSales = sumHomeServiceSales(homeServiceSalesByTechnician(agreements, (date) => date === today, allRequests, technicians));
   const businessShareNetToday = posBusinessShareNetToday + todayHomeServiceSales.companyShare;
 
   const recent = [...requests].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)).slice(0, 6);
