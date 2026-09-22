@@ -1,9 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 type MenuItem = { label: string; href: string; internal?: boolean };
+
+// How long the button bounces to catch a new visitor's eye before settling
+// down to its normal resting state.
+const ATTENTION_MS = 3000;
+// Small grace period before a hover-close actually fires, so moving the
+// mouse from the button up to the popup (a real but momentary gap) doesn't
+// close it before the cursor arrives.
+const HOVER_CLOSE_DELAY_MS = 200;
 
 // A Page URL (facebook.com/<slug>) and its Messenger deep link (m.me/<slug>)
 // share the same slug for every normal Facebook Page — so this derives the
@@ -19,6 +27,22 @@ function toMessengerUrl(facebookUrl: string): string {
   }
 }
 
+// "(hover: hover)" is true only for a real pointer (mouse/trackpad) — a
+// touchscreen tap fires a synthetic mouseenter right before its click, which
+// would otherwise immediately re-close a menu the tap just opened. Reading
+// via useSyncExternalStore (not useEffect+setState) avoids a server/client
+// render mismatch, same reasoning as PullToRefresh/RefreshButton's
+// standalone-mode check.
+function subscribeNever() {
+  return () => {};
+}
+function getHoverCapableSnapshot() {
+  return window.matchMedia("(hover: hover)").matches;
+}
+function getServerHoverCapableSnapshot() {
+  return false;
+}
+
 // Floating "contact us" widget shown on every public page, bottom-right —
 // mimics a live-chat launcher (Tawk.to, which this replaced): a round
 // button that expands into a short menu instead of jumping straight to one
@@ -28,6 +52,28 @@ function toMessengerUrl(facebookUrl: string): string {
 // nowhere.
 export default function ContactWidget({ facebookUrl }: { facebookUrl: string }) {
   const [open, setOpen] = useState(false);
+  const [attention, setAttention] = useState(true);
+  const hoverCapable = useSyncExternalStore(subscribeNever, getHoverCapableSnapshot, getServerHoverCapableSnapshot);
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setAttention(false), ATTENTION_MS);
+    return () => clearTimeout(timer);
+  }, []);
+
+  function openOnHover() {
+    if (!hoverCapable) return;
+    if (closeTimer.current) {
+      clearTimeout(closeTimer.current);
+      closeTimer.current = null;
+    }
+    setAttention(false);
+    setOpen(true);
+  }
+  function closeOnHover() {
+    if (!hoverCapable) return;
+    closeTimer.current = setTimeout(() => setOpen(false), HOVER_CLOSE_DELAY_MS);
+  }
 
   const items: MenuItem[] = [
     { label: "Our Branches", href: "/branches", internal: true },
@@ -40,7 +86,11 @@ export default function ContactWidget({ facebookUrl }: { facebookUrl: string }) 
       {open && (
         <>
           <div className="fixed inset-0 z-40" aria-hidden="true" onClick={() => setOpen(false)} />
-          <div className="fixed bottom-20 right-4 z-50 w-64 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl print:hidden">
+          <div
+            onMouseEnter={openOnHover}
+            onMouseLeave={closeOnHover}
+            className="fixed bottom-20 right-4 z-50 w-64 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl print:hidden"
+          >
             <div className="bg-[#1877F2] px-4 py-3">
               <p className="text-sm font-semibold text-white">How can we help?</p>
             </div>
@@ -72,8 +122,15 @@ export default function ContactWidget({ facebookUrl }: { facebookUrl: string }) 
       <button
         type="button"
         aria-label={open ? "Close contact menu" : "Contact us"}
-        onClick={() => setOpen((o) => !o)}
-        className="fixed bottom-4 right-4 z-50 flex h-12 w-12 items-center justify-center rounded-full bg-[#1877F2] text-white shadow-lg transition-transform hover:scale-105 active:scale-95 print:hidden"
+        onMouseEnter={openOnHover}
+        onMouseLeave={closeOnHover}
+        onClick={() => {
+          setAttention(false);
+          setOpen((o) => !o);
+        }}
+        className={`fixed bottom-4 right-4 z-50 flex h-12 w-12 items-center justify-center rounded-full bg-[#1877F2] text-white shadow-lg transition-transform hover:scale-105 active:scale-95 print:hidden ${
+          attention ? "animate-bounce" : ""
+        }`}
       >
         {open ? (
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
