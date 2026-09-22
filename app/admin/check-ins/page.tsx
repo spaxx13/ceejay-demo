@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCheckIns, isBranchHidden } from "@/lib/db";
 import { getCurrentUser, requireRole } from "@/lib/auth";
-import { formatDateTime, todayDateStr } from "@/lib/format";
+import { formatDateTime, todayDateStr, toManilaDateStr } from "@/lib/format";
 import type { CheckIn, Role } from "@/lib/types";
 
 const ROLE_LABELS: Record<Role, string> = {
@@ -38,14 +38,14 @@ export default async function CheckInsPage({ searchParams }: { searchParams: Pro
 
   let checkIns = [...allCheckIns];
   if (sp.role) checkIns = checkIns.filter((c) => c.role === sp.role);
-  if (from) checkIns = checkIns.filter((c) => c.checkedInAt.slice(0, 10) >= from);
-  if (to) checkIns = checkIns.filter((c) => c.checkedInAt.slice(0, 10) <= to);
+  if (from) checkIns = checkIns.filter((c) => toManilaDateStr(c.checkedInAt) >= from);
+  if (to) checkIns = checkIns.filter((c) => toManilaDateStr(c.checkedInAt) <= to);
   if (sp.q) {
     const q = sp.q.toLowerCase();
     checkIns = checkIns.filter((c) => c.userName.toLowerCase().includes(q) || c.branchName.toLowerCase().includes(q));
   }
 
-  const todayCheckIns = allCheckIns.filter((c) => c.checkedInAt.slice(0, 10) === today);
+  const todayCheckIns = allCheckIns.filter((c) => toManilaDateStr(c.checkedInAt) === today);
 
   const homeServiceCheckIns = checkIns.filter((c) => c.branchName === "Home Service").sort(byCheckedInAsc);
   const branchCheckIns = checkIns.filter((c) => c.branchName !== "Home Service").sort(byCheckedInAsc);

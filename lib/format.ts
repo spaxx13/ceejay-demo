@@ -24,7 +24,18 @@ export function formatTime(value: string | Date): string {
 // are already truncated to (see toDateStr in lib/db.ts), so this can be
 // compared directly against r.preferredDatetime.
 export function todayDateStr(): string {
-  return new Date().toLocaleDateString("en-CA", { timeZone: TIME_ZONE });
+  return toManilaDateStr(new Date());
+}
+
+// A timestamptz's own ".slice(0, 10)" gives its UTC calendar date, not its
+// Asia/Manila one — for anything before 8:00 AM Manila that's still the
+// previous UTC day, so a naive slice silently drops early-morning rows from
+// a "today" filter compared against todayDateStr(). Use this instead
+// whenever a timestamp (not a plain date column) needs to be compared
+// against a Manila calendar date.
+export function toManilaDateStr(value: string | Date): string {
+  const date = typeof value === "string" ? new Date(value) : value;
+  return date.toLocaleDateString("en-CA", { timeZone: TIME_ZONE });
 }
 
 // Branches open at 6:00 AM — check-in before that is refused (see checkIn,
