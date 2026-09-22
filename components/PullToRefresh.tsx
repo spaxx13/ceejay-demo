@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
-const THRESHOLD = 70;
+const THRESHOLD = 40;
 
 // A standalone (installed-to-Home-Screen) PWA has no browser chrome, so it
 // also has none of the browser's own pull-to-refresh gesture — the only way
