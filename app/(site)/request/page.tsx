@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getLookups, getDeviceModels, getRequestFormContent, getCustomFormFields } from "@/lib/db";
 import HomeServiceForm from "@/components/HomeServiceForm";
 import { smsConfigured } from "@/lib/sms";
+import { toPhInternational } from "@/lib/format";
 import type { HomeServiceQueue } from "@/lib/types";
 
 // The customer picks their service area up front (?area=near|far) — this
@@ -59,6 +60,55 @@ export default async function RequestPage({ searchParams }: { searchParams: Prom
     );
   }
 
+  // "Other Provinces" has no technicians on an automated dispatch queue, so
+  // instead of the digital booking form (built for the "near" queue's real
+  // assignment flow) this just routes the customer straight into a chat.
+  if (area === "far") {
+    const number = content.farAreaContactNumber.trim();
+    const intlNumber = number ? toPhInternational(number) : null;
+
+    return (
+      <main className="grid-bg px-4 py-10 sm:px-6">
+        <div className="mx-auto max-w-xl space-y-6 text-center">
+          <div>
+            <p className="kicker">Book a Home Service</p>
+            <h1 className="mt-1 text-2xl font-bold text-slate-900">Other Provinces</h1>
+            <p className="mt-2 text-sm text-slate-400">
+              We don&apos;t have an online form for this area yet — message us directly and we&apos;ll take it from there.
+            </p>
+            <p className="mt-1 text-xs text-slate-400">
+              <Link href="/request" className="text-blue-500 hover:underline">
+                Change area
+              </Link>
+            </p>
+          </div>
+          {intlNumber ? (
+            <div className="space-y-3">
+              <a
+                href={`https://wa.me/${intlNumber}`}
+                target="_blank"
+                rel="noreferrer"
+                className="card flex items-center justify-center gap-2 !bg-[#25D366] text-white hover:opacity-90"
+              >
+                <ChatIcon />
+                <span className="text-sm font-semibold">Message us on WhatsApp</span>
+              </a>
+              <a
+                href={`viber://chat?number=%2B${intlNumber}`}
+                className="card flex items-center justify-center gap-2 !bg-[#7360F2] text-white hover:opacity-90"
+              >
+                <ChatIcon />
+                <span className="text-sm font-semibold">Message us on Viber</span>
+              </a>
+            </div>
+          ) : (
+            <p className="card text-center text-sm text-slate-400">Home service booking is temporarily unavailable. Please contact a branch directly.</p>
+          )}
+        </div>
+      </main>
+    );
+  }
+
   const brands = lookups
     .filter((l) => l.kind === "device_brand" && l.active)
     .sort((a, b) => a.order - b.order)
@@ -103,5 +153,13 @@ export default async function RequestPage({ searchParams }: { searchParams: Prom
         )}
       </div>
     </main>
+  );
+}
+
+function ChatIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5 shrink-0">
+      <path d="M12 2C6.48 2 2 5.94 2 10.8c0 2.77 1.47 5.24 3.78 6.85L5 22l4.55-2.39c.79.15 1.61.24 2.45.24 5.52 0 10-3.94 10-8.85S17.52 2 12 2z" />
+    </svg>
   );
 }
