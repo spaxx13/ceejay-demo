@@ -13,6 +13,7 @@ export type User = {
   canAccessCrm: boolean; // whether this account can access the CRM (leads/customers) section (branch_admin scoping) — owner_admin always can regardless
   canManageWalkIns: boolean; // whether this account can access/manage Walk-In Registrations (branch_admin scoping) — independent of canManageRequests, defaults to false for new/existing branch admins
   canWaiveServiceFee: boolean; // whether this account can waive a Home Service request's visit fee (branch_admin scoping) — independent of canManageRequests, defaults to false
+  canManageRepairPricing: boolean; // whether this account can access Repair Pricing (branch_admin scoping) — independent of every other flag, defaults to false
   phone: string; // optional — set by the account holder to opt into SMS alerts (new requests, technician status updates); blank means not opted in
   active: boolean;
 };

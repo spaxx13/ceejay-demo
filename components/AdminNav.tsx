@@ -8,7 +8,15 @@ import PushSubscribe from "@/components/PushSubscribe";
 
 const NAV_GROUPS: {
   label: string | null;
-  links: { href: string; label: string; ownerOnly?: boolean; requestsGated?: boolean; walkinsGated?: boolean; crmGated?: boolean }[];
+  links: {
+    href: string;
+    label: string;
+    ownerOnly?: boolean;
+    requestsGated?: boolean;
+    walkinsGated?: boolean;
+    crmGated?: boolean;
+    repairPricingGated?: boolean;
+  }[];
 }[] = [
   { label: null, links: [{ href: "/admin", label: "Dashboard" }] },
   {
@@ -19,6 +27,7 @@ const NAV_GROUPS: {
       { href: "/admin/pos", label: "POS" },
       { href: "/admin/sales", label: "Branch Sales" },
       { href: "/admin/check-ins", label: "Check-Ins" },
+      { href: "/admin/service-prices", label: "Repair Pricing", repairPricingGated: true },
     ],
   },
   { label: "Customers", links: [{ href: "/admin/crm", label: "CRM", crmGated: true }] },
@@ -51,6 +60,7 @@ export default function AdminNav({
   canManageRequests = true,
   canManageWalkIns = true,
   canAccessCrm = true,
+  canManageRepairPricing = true,
   unreadCount = 0,
   vapidPublicKey = null,
 }: {
@@ -59,6 +69,7 @@ export default function AdminNav({
   canManageRequests?: boolean;
   canManageWalkIns?: boolean;
   canAccessCrm?: boolean;
+  canManageRepairPricing?: boolean;
   unreadCount?: number;
   vapidPublicKey?: string | null;
 }) {
@@ -81,6 +92,7 @@ export default function AdminNav({
               .filter((l) => !l.requestsGated || canManageRequests)
               .filter((l) => !l.walkinsGated || canManageWalkIns)
               .filter((l) => !l.crmGated || canAccessCrm)
+              .filter((l) => !l.repairPricingGated || canManageRepairPricing)
               .map((l) => {
               const active = l.href === "/admin" ? pathname === "/admin" : pathname.startsWith(l.href);
               return (

@@ -22,6 +22,7 @@ export default async function UsersPage() {
     canAccessCrm: u.canAccessCrm,
     canManageWalkIns: u.canManageWalkIns,
     canWaiveServiceFee: u.canWaiveServiceFee,
+    canManageRepairPricing: u.canManageRepairPricing,
     phone: u.phone,
     active: u.active,
   }));
