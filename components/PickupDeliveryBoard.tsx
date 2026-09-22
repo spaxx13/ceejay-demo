@@ -17,17 +17,20 @@ type Job = {
   pickupRiderName: string | null;
   deliveryRiderId: string | null;
   deliveryRiderName: string | null;
+  pickupStartedAt: string | null;
   pickedUpAt: string | null;
+  receivedAtShopAt: string | null;
+  outForDeliveryAt: string | null;
   deliveredAt: string | null;
   createdAt: string;
 };
 type Rider = { id: string; name: string };
 
 const COLUMNS: { key: string; label: string; stages: PickupDeliveryStage[] }[] = [
-  { key: "awaiting_pickup", label: "Awaiting Pickup", stages: ["requested", "pickup_assigned"] },
-  { key: "at_shop", label: "At Shop", stages: ["picked_up"] },
-  { key: "awaiting_delivery", label: "Awaiting Delivery", stages: ["ready_for_delivery", "delivery_assigned"] },
-  { key: "completed", label: "Completed", stages: ["out_for_delivery", "delivered"] },
+  { key: "awaiting_pickup", label: "Awaiting Pickup", stages: ["requested", "pickup_assigned", "pickup_started", "picked_up"] },
+  { key: "at_shop", label: "At Shop", stages: ["at_shop"] },
+  { key: "awaiting_delivery", label: "Awaiting Delivery", stages: ["ready_for_delivery", "delivery_assigned", "out_for_delivery"] },
+  { key: "completed", label: "Completed", stages: ["delivered"] },
 ];
 
 function RiderAssignForm({
@@ -111,11 +114,23 @@ export default function PickupDeliveryBoard({ jobs, riders }: { jobs: Job[]; rid
                     />
                   )}
 
+                  {job.stage === "pickup_started" && (
+                    <p className="text-xs text-slate-500">
+                      Rider <span className="font-medium text-slate-700">{job.pickupRiderName}</span> is on the way to pick up the device.
+                    </p>
+                  )}
+
                   {job.stage === "picked_up" && (
+                    <p className="text-xs text-slate-500">
+                      Rider <span className="font-medium text-slate-700">{job.pickupRiderName}</span> has the device, heading to the shop.
+                    </p>
+                  )}
+
+                  {job.stage === "at_shop" && (
                     <div className="space-y-0.5 text-xs text-slate-500">
                       <p>
                         Picked up by <span className="font-medium text-slate-700">{job.pickupRiderName}</span>
-                        {job.pickedUpAt ? `, ${formatDateTime(job.pickedUpAt)}` : ""}
+                        {job.receivedAtShopAt ? ` — at the shop since ${formatDateTime(job.receivedAtShopAt)}` : ""}
                       </p>
                       <p>Technician: {job.technicianName ? <span className="font-medium text-slate-700">{job.technicianName}</span> : "Not yet assigned"}</p>
                     </div>
@@ -136,7 +151,13 @@ export default function PickupDeliveryBoard({ jobs, riders }: { jobs: Job[]; rid
                     </>
                   )}
 
-                  {(job.stage === "out_for_delivery" || job.stage === "delivered") && (
+                  {job.stage === "out_for_delivery" && (
+                    <p className="text-xs text-slate-500">
+                      Rider <span className="font-medium text-slate-700">{job.deliveryRiderName}</span> is on the way to deliver the device.
+                    </p>
+                  )}
+
+                  {job.stage === "delivered" && (
                     <div className="space-y-0.5 text-xs text-slate-500">
                       <p>
                         Pickup: <span className="font-medium text-slate-700">{job.pickupRiderName ?? "—"}</span>

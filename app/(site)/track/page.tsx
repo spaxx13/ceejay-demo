@@ -8,7 +8,9 @@ function normalizePhone(p: string) {
 const STAGE_ORDER: PickupDeliveryStage[] = [
   "requested",
   "pickup_assigned",
+  "pickup_started",
   "picked_up",
+  "at_shop",
   "ready_for_delivery",
   "delivery_assigned",
   "out_for_delivery",
@@ -88,7 +90,12 @@ export default async function TrackPage({ searchParams }: { searchParams: Promis
   const pickupRider = riders.find((r) => r.id === req.pickupRiderId);
   const deliveryRider = riders.find((r) => r.id === req.deliveryRiderId);
   const technician = technicians.find((t) => t.id === req.assignedTechnicianId);
-  const activeRider = stage === "out_for_delivery" || stage === "delivery_assigned" ? deliveryRider : pickupRider;
+  const activeRider =
+    stage === "out_for_delivery" || stage === "delivery_assigned"
+      ? deliveryRider
+      : stage === "pickup_assigned" || stage === "pickup_started" || stage === "picked_up"
+        ? pickupRider
+        : null;
   const stageIndex = STAGE_ORDER.indexOf(stage);
 
   return (
@@ -107,12 +114,13 @@ export default async function TrackPage({ searchParams }: { searchParams: Promis
               <span key={s} className={`h-1.5 flex-1 rounded-full ${i <= stageIndex ? "bg-blue-500" : "bg-slate-200"}`} />
             ))}
           </div>
-          {activeRider && (stage === "pickup_assigned" || stage === "delivery_assigned" || stage === "out_for_delivery") && (
+          {activeRider && (
             <p className="text-sm text-slate-600">
               Rider: <span className="font-medium text-slate-800">{activeRider.name}</span>
             </p>
           )}
-          {stage === "picked_up" && (
+          {stage === "picked_up" && <p className="text-sm text-slate-600">Your device is on its way to the shop.</p>}
+          {stage === "at_shop" && (
             <p className="text-sm text-slate-600">
               At the shop{technician ? <> — technician <span className="font-medium text-slate-800">{technician.name}</span></> : ""}.
             </p>

@@ -546,8 +546,27 @@ export async function assignDeliveryRider(formData: FormData) {
   revalidatePath(`/admin/requests/${requestId}`);
 }
 
-// The rider's own two actions (app/rider) — each only allowed on a job
-// actually assigned to the signed-in rider, for the leg it belongs to.
+// The rider's own actions (app/rider) — each only allowed on a job actually
+// assigned to the signed-in rider, for the leg it belongs to. Each leg has
+// three steps: On The Way -> Picked Up/Out For Delivery (has the device) ->
+// arrived (shop or customer) — mirrors a normal courier app instead of one
+// single "done" button.
+
+export async function riderMarkPickupStarted(formData: FormData) {
+  const user = await getCurrentUser();
+  if (!user || user.role !== "rider" || !user.riderId) return;
+
+  const requestId = str(formData, "requestId");
+  const req = await getRequestById(requestId);
+  if (!req || req.pickupRiderId !== user.riderId || req.pickupStartedAt) return;
+
+  await query("update home_service_requests set pickup_started_at=now() where id=$1", [requestId]);
+  await logActivity("home_service_request", requestId, `Rider ${user.name} is on the way to pick up the device`, user.name);
+  revalidatePath("/rider");
+  revalidatePath("/admin/pickup-delivery");
+  revalidatePath(`/admin/requests/${requestId}`);
+}
+
 export async function riderMarkPickedUp(formData: FormData) {
   const user = await getCurrentUser();
   if (!user || user.role !== "rider" || !user.riderId) return;
@@ -561,7 +580,45 @@ export async function riderMarkPickedUp(formData: FormData) {
     requestId,
   ]);
   await logActivity("home_service_request", requestId, `Picked up by rider ${user.name}`, user.name);
-  await notifyAdmins("request_in_progress", requestId, `${user.name} picked up ${req.reference} (${req.customerName}) — on the way to the shop.`);
+  revalidatePath("/rider");
+  revalidatePath("/admin/pickup-delivery");
+  revalidatePath(`/admin/requests/${requestId}`);
+}
+
+// Completes the pickup leg — the rider has physically handed the device off
+// at the shop. Distinct from riderMarkPickedUp (which only means the rider
+// took it from the customer) so admins can tell "has the device, in transit"
+// apart from "device is actually here now."
+export async function riderMarkReceivedAtShop(formData: FormData) {
+  const user = await getCurrentUser();
+  if (!user || user.role !== "rider" || !user.riderId) return;
+
+  const requestId = str(formData, "requestId");
+  const req = await getRequestById(requestId);
+  if (!req || req.pickupRiderId !== user.riderId || !req.pickedUpAt || req.receivedAtShopAt) return;
+
+  await query("update home_service_requests set received_at_shop_at=now() where id=$1", [requestId]);
+  await logActivity("home_service_request", requestId, `Device delivered to the shop by rider ${user.name}`, user.name);
+  await notifyAdmins(
+    "request_in_progress",
+    requestId,
+    `${user.name} brought ${req.reference} (${req.customerName}) to the shop — ready to assign a technician.`
+  );
+  revalidatePath("/rider");
+  revalidatePath("/admin/pickup-delivery");
+  revalidatePath(`/admin/requests/${requestId}`);
+}
+
+export async function riderMarkOutForDelivery(formData: FormData) {
+  const user = await getCurrentUser();
+  if (!user || user.role !== "rider" || !user.riderId) return;
+
+  const requestId = str(formData, "requestId");
+  const req = await getRequestById(requestId);
+  if (!req || req.deliveryRiderId !== user.riderId || req.outForDeliveryAt) return;
+
+  await query("update home_service_requests set out_for_delivery_at=now() where id=$1", [requestId]);
+  await logActivity("home_service_request", requestId, `Rider ${user.name} is on the way to deliver the device`, user.name);
   revalidatePath("/rider");
   revalidatePath("/admin/pickup-delivery");
   revalidatePath(`/admin/requests/${requestId}`);

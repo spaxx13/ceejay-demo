@@ -32,7 +32,10 @@ export default async function PickupDeliveryPage() {
         pickupRiderName: pickupRider?.name ?? null,
         deliveryRiderId: r.deliveryRiderId,
         deliveryRiderName: deliveryRider?.name ?? null,
+        pickupStartedAt: r.pickupStartedAt,
         pickedUpAt: r.pickedUpAt,
+        receivedAtShopAt: r.receivedAtShopAt,
+        outForDeliveryAt: r.outForDeliveryAt,
         deliveredAt: r.deliveredAt,
         createdAt: r.createdAt,
       };
