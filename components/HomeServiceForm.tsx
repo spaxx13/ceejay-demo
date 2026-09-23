@@ -13,7 +13,6 @@ import {
 } from "@/lib/homeServiceFees";
 import dynamic from "next/dynamic";
 import PhotoUpload from "./PhotoUpload";
-import { usePlaceSearch, type PlaceResult } from "./LocationPinMap";
 import DynamicFormField from "./DynamicFormField";
 import type { RequestFormContent, CustomFormField, HomeServiceQueue } from "@/lib/types";
 
@@ -88,7 +87,6 @@ export default function HomeServiceForm({
   const [barangay, setBarangay] = useState("");
   const [lat, setLat] = useState<number | null>(null);
   const [lng, setLng] = useState<number | null>(null);
-  const streetRef = useRef<HTMLInputElement>(null);
   const [vlogConsent, setVlogConsent] = useState(false);
   const [preferredDate, setPreferredDate] = useState("");
 
@@ -225,7 +223,6 @@ export default function HomeServiceForm({
     }
   }
 
-  const streetActive = fields.some((f) => f.systemKey === "street");
   const phoneField = fields.find((f) => f.systemKey === "phone");
   // Also requires smsAvailable (whether SEMAPHORE_API_KEY is actually set)
   // so the form degrades gracefully — with no SMS provider configured,
@@ -233,32 +230,6 @@ export default function HomeServiceForm({
   // code" button that can only ever fail. Matches the server-side check in
   // submitHomeServiceRequest, which skips the gate the same way.
   const phoneGateActive = OTP_GATE_ENABLED && smsAvailable && (phoneField?.active ?? false);
-
-  // Street field suggestions — Google Places API (New) via the same hook
-  // the pin map uses (the legacy places.Autocomplete widget this replaced
-  // popped "This page can't load Google Maps correctly" on newer keys). No
-  // OpenStreetMap fallback here: if Google errors the field just stays a
-  // plain text input.
-  const [streetQuery, setStreetQuery] = useState("");
-  const [showStreetResults, setShowStreetResults] = useState(false);
-  const streetSearch = usePlaceSearch(GOOGLE_MAPS_KEY && streetActive ? streetQuery : "", { osmFallback: false });
-
-  async function pickStreetResult(r: PlaceResult) {
-    setShowStreetResults(false);
-    if (streetRef.current) streetRef.current.value = r.mainText;
-    try {
-      const picked = await streetSearch.resolve(r);
-      // City/Province/Barangay stay driven by the cascading dropdowns below
-      // — only the coordinates are taken from Google (and the pin map
-      // follows them).
-      if (picked) {
-        setLat(picked.pos.lat);
-        setLng(picked.pos.lng);
-      }
-    } catch {
-      // Keep the typed street text; the customer can still pin on the map.
-    }
-  }
 
   if (state?.ok) {
     return (
@@ -537,37 +508,8 @@ export default function HomeServiceForm({
             <label className="text-xs font-medium text-slate-500">
               {field.label} {asterisk}
             </label>
-            <div className="relative">
-              <input
-                ref={streetRef}
-                name="street"
-                required={req}
-                className="input w-full"
-                placeholder={field.placeholder}
-                autoComplete="off"
-                onChange={(e) => {
-                  setStreetQuery(e.target.value);
-                  setShowStreetResults(true);
-                }}
-                onBlur={() => window.setTimeout(() => setShowStreetResults(false), 200)}
-              />
-              {showStreetResults && streetQuery.trim().length >= 3 && streetSearch.results.length > 0 && (
-                <ul className="absolute z-[1000] mt-1 max-h-64 w-full overflow-auto rounded-lg border border-slate-200 bg-white shadow-lg">
-                  {streetSearch.results.map((r) => (
-                    <li key={r.id}>
-                      <button
-                        type="button"
-                        className="block w-full px-3 py-2 text-left text-sm text-slate-700 hover:bg-blue-50"
-                        onMouseDown={(e) => e.preventDefault()}
-                        onClick={() => pickStreetResult(r)}
-                      >
-                        {r.label}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
+            {/* Plain text on purpose — searching/pinning happens in the map below. */}
+            <input name="street" required={req} className="input" placeholder={field.placeholder} />
             {!GOOGLE_MAPS_KEY && (
               <FormNotice tone="blue" icon="📍">
                 Please also fill in your Landmark below — this helps our technician find you accurately.
