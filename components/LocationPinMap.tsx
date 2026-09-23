@@ -60,7 +60,79 @@ const GOOGLE_MAPS_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 // search often can't — and falls back to the key-less OpenStreetMap
 // version otherwise.
 export default function LocationPinMap(props: { value: LatLng | null; onChange: (pos: LatLng, address: string | null) => void }) {
-  return GOOGLE_MAPS_KEY ? <GooglePinMap {...props} /> : <OsmPinMap {...props} />;
+  const googleBroken = useGoogleAuthFailed();
+  const [debug] = useState(() => typeof window !== "undefined" && new URLSearchParams(window.location.search).has("debugmaps"));
+  return (
+    <>
+      {GOOGLE_MAPS_KEY && !googleBroken ? <GooglePinMap {...props} /> : <OsmPinMap {...props} />}
+      {/* Add ?debugmaps to the page URL to see why Google Maps was rejected. */}
+      {debug && <MapsDebugInfo />}
+    </>
+  );
+}
+
+// ---------- Google key failure detection ----------
+//
+// When Google rejects the key (domain not allowed by the key's website
+// restrictions, API not enabled, billing, ...) the Maps script calls
+// window.gm_authFailure and logs the reason to the console, then shows
+// "Oops! Something went wrong" over the map. We catch that and swap in the
+// OpenStreetMap version so customers can still pin their location.
+let googleAuthFailed = false;
+const googleErrorLog: string[] = [];
+const authFailureListeners = new Set<() => void>();
+
+function installGoogleFailureHooks() {
+  const w = window as unknown as { gm_authFailure?: () => void; __ceejayMapsHooked?: boolean };
+  if (w.__ceejayMapsHooked) return;
+  w.__ceejayMapsHooked = true;
+  w.gm_authFailure = () => {
+    googleAuthFailed = true;
+    authFailureListeners.forEach((l) => l());
+  };
+  const origError = console.error.bind(console);
+  console.error = (...args: unknown[]) => {
+    const text = args.map(String).join(" ");
+    if (text.includes("Google Maps JavaScript API") || text.includes("MapError")) {
+      googleErrorLog.push(text);
+      authFailureListeners.forEach((l) => l());
+    }
+    origError(...args);
+  };
+}
+
+function useGoogleAuthFailed() {
+  const [failed, setFailed] = useState(googleAuthFailed);
+  useEffect(() => {
+    if (!GOOGLE_MAPS_KEY) return;
+    installGoogleFailureHooks();
+    const listener = () => setFailed(googleAuthFailed);
+    authFailureListeners.add(listener);
+    listener();
+    return () => {
+      authFailureListeners.delete(listener);
+    };
+  }, []);
+  return failed;
+}
+
+function MapsDebugInfo() {
+  const [log, setLog] = useState<string[]>([]);
+  useEffect(() => {
+    const listener = () => setLog([...googleErrorLog]);
+    authFailureListeners.add(listener);
+    listener();
+    return () => {
+      authFailureListeners.delete(listener);
+    };
+  }, []);
+  return (
+    <div className="mt-2 rounded-lg border border-slate-300 bg-slate-50 p-2 font-mono text-[11px] text-slate-600">
+      <p>page: {window.location.origin}</p>
+      <p>key set: {GOOGLE_MAPS_KEY ? "yes" : "no"} · google rejected key: {googleAuthFailed ? "YES" : "no"}</p>
+      {log.length === 0 ? <p>no Google Maps errors logged</p> : log.map((l, i) => <p key={i} className="whitespace-pre-wrap break-words text-red-700">{l}</p>)}
+    </div>
+  );
 }
 
 // Minimal slice of the Maps JS API used below — kept local (not a global
@@ -163,7 +235,7 @@ export function usePlaceSearch(query: string, { osmFallback }: { osmFallback: bo
   useEffect(() => {
     const q = query.trim();
     if (!ready || q.length < 3) return;
-    const useGoogle = !!GOOGLE_MAPS_KEY && !googleFailed;
+    const useGoogle = !!GOOGLE_MAPS_KEY && !googleFailed && !googleAuthFailed;
     if (!useGoogle && !osmFallback) return;
     const controller = new AbortController();
     const timer = window.setTimeout(async () => {
