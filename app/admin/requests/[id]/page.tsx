@@ -27,6 +27,7 @@ import type { ServiceAgreement } from "@/lib/types";
 import { formatDate, formatDateTime } from "@/lib/format";
 import { serviceFeeAmount } from "@/lib/homeServiceFees";
 import { getRepairQuote } from "@/lib/servicePricing";
+import { directionsUrl } from "@/lib/technicianTracking";
 
 const peso = (n: number) => `₱${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
@@ -282,6 +283,27 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
                 text={`${req.street}${req.barangay ? `, Brgy. ${req.barangay}` : ""}, ${req.city}${req.province ? `, ${req.province}` : ""}${req.landmark ? ` (near ${req.landmark})` : ""}`}
               />
             </dd>
+            <dt className="text-slate-400">Map Pin</dt>
+            <dd className="text-slate-800">
+              {req.lat !== null && req.lng !== null ? (
+                <a href={directionsUrl(req.lat, req.lng)} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                  📍 Open in Google Maps
+                </a>
+              ) : (
+                <span className="text-slate-400">No pin</span>
+              )}
+            </dd>
+            {req.trackingToken && (
+              <>
+                {/* Same link the customer is emailed when the job goes On the Way — handy to copy/send manually. */}
+                <dt className="text-slate-400">Tracking Link</dt>
+                <dd className="text-slate-800">
+                  <a href={`/track-technician/${req.trackingToken}`} target="_blank" rel="noopener noreferrer" className="break-all text-blue-600 hover:underline">
+                    /track-technician/{req.trackingToken}
+                  </a>
+                </dd>
+              </>
+            )}
             <dt className="text-slate-400">Preferred</dt>
             <dd className="text-slate-800">{formatDate(req.preferredDatetime)}</dd>
             <dt className="text-slate-400">Vlog Consent</dt>
