@@ -8,6 +8,7 @@ import {
   getRequests,
   homeServiceSalesByTechnician,
   sumHomeServiceSales,
+  homeServiceBusinessExpenses,
   isBranchHidden,
   canViewAllBranchSales,
   technicianSharePercent,
@@ -34,6 +35,7 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
   // sales/expense attribution — they don't get their own card here since
   // that data has its own dedicated Sales > Home Service tab instead.
   const branches = allBranches.filter((b) => !isBranchHidden(user, b.id) && b.address);
+  const homeServiceQueueBranchIds = allBranches.filter((b) => b.homeServiceQueue !== null).map((b) => b.id);
 
   // Default to today so the page always opens on the most current sales —
   // an explicit From/To filter (even a partial one) overrides this.
@@ -190,7 +192,12 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
   const amountFor = (list: typeof expenses, branchId: string | null) =>
     list.filter((e) => e.branchId === null || e.branchId === branchId).reduce((s, e) => s + e.amount, 0);
   const totalNetProfitExpenses = netProfitExpenseRows.reduce((s, e) => s + e.amount, 0);
-  const totalBusinessExpenses = remainingExpenseRows.reduce((s, e) => s + e.amount, 0);
+  // Excludes an expense explicitly tied to a Home Service queue branch —
+  // that one is this POS pool's business, deducted from Home Service's own
+  // Business Share (Net) below instead (homeServiceExpenses), never both.
+  const totalBusinessExpenses = remainingExpenseRows
+    .filter((e) => e.branchId === null || !homeServiceQueueBranchIds.includes(e.branchId))
+    .reduce((s, e) => s + e.amount, 0);
   const totalTechnicianExpenses = technicianExpenseRows.reduce((s, e) => s + e.amount, 0);
 
   // "Net Profit (Before Sharing)" expenses shrink the pool that actually
@@ -302,13 +309,18 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
   // assigned a real (addressed) branch at all, so summing only what each
   // real branch's card captures would silently drop most of this revenue.
   const grandHomeService = sumHomeServiceSales(homeServiceSalesByTechnician(visibleAgreements, inRange, requests, technicians));
+  // An "Owner's Final Total Sales" expense logged with Branch = Home Service
+  // — excluded from totalBusinessExpenses above so it's never deducted
+  // twice.
+  const homeServiceExpenses = homeServiceBusinessExpenses(expenses, inRange, homeServiceQueueBranchIds);
+  const grandHomeServiceNet = grandHomeService.companyShare - homeServiceExpenses;
 
   // The one true bottom-line figure — what the business actually keeps
   // across every revenue stream (every branch's POS/walk-in business share,
-  // already net of all expenses, plus Home Service's company share) — since
-  // the two waterfalls above are never otherwise added together anywhere on
-  // this page.
-  const grandTotalBusinessShare = grandBusinessShareNet + grandHomeService.companyShare;
+  // already net of all expenses, plus Home Service's own business share,
+  // also net of its expenses) — since the two waterfalls above are never
+  // otherwise added together anywhere on this page.
+  const grandTotalBusinessShare = grandBusinessShareNet + grandHomeServiceNet;
 
   // Home Service technicians are usually tied only to the backend "Home
   // Service" queue branch(es) (near/far), not a real addressed branch — so
@@ -324,7 +336,9 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
       requests,
       technicians
     );
-    return { branch: b, homeServiceTechnicians, homeService: sumHomeServiceSales(homeServiceTechnicians) };
+    const homeService = sumHomeServiceSales(homeServiceTechnicians);
+    const businessExpenses = homeServiceBusinessExpenses(expenses, inRange, [b.id]);
+    return { branch: b, homeServiceTechnicians, homeService, businessExpenses, businessShareNet: homeService.companyShare - businessExpenses };
   });
 
   return (
@@ -720,7 +734,7 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
           );
         })}
 
-        {queueHomeServiceCards.map(({ branch, homeServiceTechnicians, homeService }) => (
+        {queueHomeServiceCards.map(({ branch, homeServiceTechnicians, homeService, businessExpenses, businessShareNet }) => (
           <div key={branch.id} className="card space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex flex-wrap items-center gap-2">
@@ -729,7 +743,7 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
                   {homeService.count} job{homeService.count === 1 ? "" : "s"} completed
                 </span>
               </div>
-              <p className="text-base font-bold text-green-700">{peso(homeService.companyShare)} company share</p>
+              <p className="text-base font-bold text-blue-300">{peso(businessShareNet)} business share (net)</p>
             </div>
 
             {homeService.count === 0 ? (
@@ -754,11 +768,19 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
                       <td className="py-2 pr-3 pl-5 text-slate-500">Technician Share (70%)</td>
                       <td className="py-2 pr-3 text-right text-amber-700">{peso(homeService.technicianShare)}</td>
                     </tr>
-                    <tr>
+                    <tr className="border-b border-slate-100">
                       <td className="py-2 pr-3 pl-5 font-semibold text-slate-700">Company Share (30%)</td>
+                      <td className="py-2 pr-3 text-right font-semibold text-green-700">{peso(homeService.companyShare)}</td>
+                    </tr>
+                    <tr className="border-b border-slate-100">
+                      <td className="py-2 pr-3 pl-5 text-slate-600">− Business Expenses</td>
+                      <td className="py-2 pr-3 text-right text-red-700">−{peso(businessExpenses)}</td>
+                    </tr>
+                    <tr>
+                      <td className="py-2 pr-3 pl-5 font-semibold text-slate-700">Business Share (Net)</td>
                       <td className="py-2 pr-3 text-right">
-                        <span className="inline-block rounded-md border-2 border-green-300 bg-green-50 px-2.5 py-1 text-base font-bold text-green-900">
-                          {peso(homeService.companyShare)}
+                        <span className="inline-block rounded-md border-2 border-blue-300 bg-blue-50 px-2.5 py-1 text-base font-bold text-blue-900">
+                          {peso(businessShareNet)}
                         </span>
                       </td>
                     </tr>
@@ -883,11 +905,19 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
                       <td className="py-2 pr-3 pl-5 text-slate-500">Technician Share (70%)</td>
                       <td className="py-2 pr-3 text-right text-amber-700">{peso(grandHomeService.technicianShare)}</td>
                     </tr>
+                    <tr className="border-b border-slate-100">
+                      <td className="py-2 pr-3 pl-5 font-semibold text-slate-700">Company Share (30%)</td>
+                      <td className="py-2 pr-3 text-right font-semibold text-green-700">{peso(grandHomeService.companyShare)}</td>
+                    </tr>
+                    <tr className="border-b border-slate-100">
+                      <td className="py-2 pr-3 pl-5 text-slate-600">− Business Expenses</td>
+                      <td className="py-2 pr-3 text-right text-red-700">−{peso(homeServiceExpenses)}</td>
+                    </tr>
                     <tr>
-                      <td className="pt-2 pr-3 pl-5 font-semibold text-slate-900">Company Share (30%)</td>
+                      <td className="pt-2 pr-3 pl-5 font-semibold text-slate-900">Business Share (Net)</td>
                       <td className="pt-2 pr-3 text-right">
-                        <span className="inline-block rounded-md border-2 border-green-300 bg-green-50 px-2.5 py-1 text-base font-bold text-green-900">
-                          {peso(grandHomeService.companyShare)}
+                        <span className="inline-block rounded-md border-2 border-blue-300 bg-blue-50 px-2.5 py-1 text-base font-bold text-blue-900">
+                          {peso(grandHomeServiceNet)}
                         </span>
                       </td>
                     </tr>
@@ -907,7 +937,7 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
                 ))}
                 <li className="flex items-center justify-between gap-2">
                   <span className="text-slate-600">Home Service</span>
-                  <span className="font-medium text-slate-800">{peso(grandHomeService.companyShare)}</span>
+                  <span className="font-medium text-slate-800">{peso(grandHomeServiceNet)}</span>
                 </li>
               </ul>
               <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 pt-2">
