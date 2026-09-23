@@ -78,15 +78,26 @@ type GMarker = {
   getPosition: () => GLatLng | null;
   addListener: (event: string, cb: () => void) => void;
 };
-type GAutocomplete = {
-  addListener: (event: string, cb: () => void) => void;
-  getPlace: () => { formatted_address?: string; name?: string; geometry?: { location: GLatLng } };
+// Places API (New) — the legacy `places.Autocomplete` widget isn't
+// available to newer Google Cloud projects (it pops "This page can't load
+// Google Maps correctly"), so suggestions are fetched through the new
+// AutocompleteSuggestion API and rendered in our own dropdown.
+type GPlacePrediction = {
+  placeId: string;
+  text: { toString: () => string };
+  toPlace: () => { fetchFields: (o: { fields: string[] }) => Promise<unknown>; location?: GLatLng; formattedAddress?: string };
+};
+type GPlacesLib = {
+  AutocompleteSessionToken: new () => object;
+  AutocompleteSuggestion: {
+    fetchAutocompleteSuggestions: (req: Record<string, unknown>) => Promise<{ suggestions: { placePrediction: GPlacePrediction | null }[] }>;
+  };
 };
 type GoogleNs = {
   maps: {
     Map: new (el: HTMLElement, opts: Record<string, unknown>) => GMap;
     Marker: new (opts: Record<string, unknown>) => GMarker;
-    places: { Autocomplete: new (input: HTMLInputElement, opts?: Record<string, unknown>) => GAutocomplete };
+    importLibrary: (name: "places") => Promise<GPlacesLib>;
   };
 };
 
@@ -94,7 +105,7 @@ type GoogleNs = {
 // HomeServiceForm.tsx loads, so the two share one copy of the API.
 function loadGoogleMaps(onReady: () => void) {
   const w = window as unknown as { google?: GoogleNs };
-  if (w.google?.maps?.places) {
+  if (w.google?.maps?.importLibrary) {
     onReady();
     return;
   }
@@ -123,17 +134,28 @@ function requestCurrentPosition(onPos: (pos: LatLng) => void, onError: (msg: str
   );
 }
 
+type GoogleResult = { id: string; label: string; prediction: GPlacePrediction | null; lat?: number; lng?: number };
+
 function GooglePinMap({ value, onChange }: { value: LatLng | null; onChange: (pos: LatLng, address: string | null) => void }) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const searchRef = useRef<HTMLInputElement>(null);
   const mapRef = useRef<GMap | null>(null);
   const markerRef = useRef<GMarker | null>(null);
   const googleRef = useRef<GoogleNs | null>(null);
+  const sessionTokenRef = useRef<object | null>(null);
   const onChangeRef = useRef(onChange);
   useEffect(() => {
     onChangeRef.current = onChange;
   });
   const [ready, setReady] = useState(false);
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<GoogleResult[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [showResults, setShowResults] = useState(false);
+  // Flips on the first time Google search fails (e.g. Places API (New) not
+  // enabled on the key) — from then on search falls back to OpenStreetMap
+  // so the customer can still find their area.
+  const [googleSearchFailed, setGoogleSearchFailed] = useState(false);
+  const queryReady = query.trim().length >= 3;
   const [locating, setLocating] = useState(false);
   const [geoError, setGeoError] = useState<string | null>(null);
 
@@ -176,7 +198,7 @@ function GooglePinMap({ value, onChange }: { value: LatLng | null; onChange: (po
   }
 
   useEffect(() => {
-    if (!ready || !containerRef.current || !searchRef.current || mapRef.current) return;
+    if (!ready || !containerRef.current || mapRef.current) return;
     const g = (window as unknown as { google: GoogleNs }).google;
     googleRef.current = g;
     const map = new g.maps.Map(containerRef.current, {
@@ -190,17 +212,6 @@ function GooglePinMap({ value, onChange }: { value: LatLng | null; onChange: (po
     mapRef.current = map;
     map.addListener("click", (e) => placePin({ lat: e.latLng.lat(), lng: e.latLng.lng() }, null));
     if (value) showMarker(value);
-
-    const autocomplete = new g.maps.places.Autocomplete(searchRef.current, {
-      componentRestrictions: { country: "ph" },
-      fields: ["formatted_address", "name", "geometry"],
-    });
-    autocomplete.addListener("place_changed", () => {
-      const place = autocomplete.getPlace();
-      const loc = place.geometry?.location;
-      if (!loc) return;
-      placePin({ lat: loc.lat(), lng: loc.lng() }, place.formatted_address ?? place.name ?? null, 18);
-    });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- one-time map setup
   }, [ready]);
 
@@ -213,20 +224,104 @@ function GooglePinMap({ value, onChange }: { value: LatLng | null; onChange: (po
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value]);
 
+  useEffect(() => {
+    const q = query.trim();
+    if (!ready || q.length < 3) return;
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      setSearching(true);
+      try {
+        if (!googleSearchFailed) {
+          try {
+            const places = await googleRef.current!.maps.importLibrary("places");
+            sessionTokenRef.current ??= new places.AutocompleteSessionToken();
+            const { suggestions } = await places.AutocompleteSuggestion.fetchAutocompleteSuggestions({
+              input: q,
+              sessionToken: sessionTokenRef.current,
+              includedRegionCodes: ["ph"],
+            });
+            if (controller.signal.aborted) return;
+            setResults(
+              suggestions
+                .map((sug) => sug.placePrediction)
+                .filter((pr): pr is GPlacePrediction => !!pr)
+                .map((pr) => ({ id: pr.placeId, label: pr.text.toString(), prediction: pr }))
+            );
+            setShowResults(true);
+            return;
+          } catch {
+            if (controller.signal.aborted) return;
+            setGoogleSearchFailed(true);
+          }
+        }
+        const osm = await searchPlaces(q, controller.signal);
+        setResults(osm.map((r) => ({ id: String(r.placeId), label: r.label, prediction: null, lat: r.lat, lng: r.lng })));
+        setShowResults(true);
+      } catch {
+        // aborted or network error — leave previous results
+      } finally {
+        if (!controller.signal.aborted) setSearching(false);
+      }
+    }, 350);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [query, ready, googleSearchFailed]);
+
+  async function pickResult(r: GoogleResult) {
+    setShowResults(false);
+    if (!r.prediction) {
+      if (r.lat !== undefined && r.lng !== undefined) placePin({ lat: r.lat, lng: r.lng }, r.label, 18);
+      return;
+    }
+    try {
+      const place = r.prediction.toPlace();
+      await place.fetchFields({ fields: ["location", "formattedAddress"] });
+      // A session covers typing through one pick — start a fresh one next time.
+      sessionTokenRef.current = null;
+      if (place.location) placePin({ lat: place.location.lat(), lng: place.location.lng() }, place.formattedAddress ?? r.label, 18);
+    } catch {
+      setGeoError("Couldn't open that place. Try another result, or tap the map to drop the pin.");
+    }
+  }
+
   return (
     <div className="space-y-2">
-      <input
-        ref={searchRef}
-        type="text"
-        placeholder="Search your exact address, building, or landmark"
-        className="input w-full"
-        aria-label="Search your location"
-        onKeyDown={(e) => {
-          // Inside the Home Service <form>, Enter would submit the booking
-          // instead of picking the highlighted suggestion.
-          if (e.key === "Enter") e.preventDefault();
-        }}
-      />
+      <div className="relative">
+        <input
+          type="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onFocus={() => results.length > 0 && setShowResults(true)}
+          onKeyDown={(e) => {
+            // Inside the Home Service <form>, Enter would submit the booking.
+            if (e.key === "Enter") e.preventDefault();
+          }}
+          placeholder="Search your exact address, building, or landmark"
+          className="input w-full"
+          aria-label="Search your location"
+        />
+        {searching && <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400">Searching…</span>}
+        {showResults && queryReady && results.length > 0 && (
+          <ul className="absolute z-[1000] mt-1 max-h-64 w-full overflow-auto rounded-lg border border-slate-200 bg-white shadow-lg">
+            {results.map((r) => (
+              <li key={r.id}>
+                <button
+                  type="button"
+                  className="block w-full px-3 py-2 text-left text-sm text-slate-700 hover:bg-blue-50"
+                  onClick={() => pickResult(r)}
+                >
+                  {r.label}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        {showResults && !searching && queryReady && results.length === 0 && (
+          <p className="mt-1 text-xs text-slate-400">No matches — try a nearby landmark, or tap the map to drop the pin.</p>
+        )}
+      </div>
       <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"
