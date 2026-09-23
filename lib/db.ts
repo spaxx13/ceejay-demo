@@ -777,6 +777,27 @@ export function sumHomeServiceSales(rows: HomeServiceSalesRow[]) {
     { count: 0, totalAmount: 0, partsCost: 0, netAmount: 0, companyShare: 0, technicianShare: 0 }
   );
 }
+
+// "Owner's Final Total Sales" expenses (Sales > Expenses) explicitly tied to
+// one of the backend Home Service queue branches — the same deduction a
+// real branch's own "Owner's Final Total Sales" expenses already get on
+// Branch Sales (Business Expenses -> Business Share (Net)), just scoped to
+// Home Service instead. Previously nothing subtracted these anywhere, so
+// picking "Home Service" as the branch when logging an expense silently had
+// no effect on Home Service's own figures. Left-unassigned expenses (no
+// branch picked) are deliberately excluded — those already count once
+// toward the combined POS grand total elsewhere, and there's no way to
+// split "meant for everyone" between the two pools without double-deducting
+// the same peso from both.
+export function homeServiceBusinessExpenses(
+  expenses: Pick<Expense, "target" | "branchId" | "amount" | "expenseDate">[],
+  inRange: (date: string) => boolean,
+  homeServiceQueueBranchIds: string[]
+): number {
+  return expenses
+    .filter((e) => e.target === "owner_final_total_sales" && inRange(e.expenseDate) && e.branchId !== null && homeServiceQueueBranchIds.includes(e.branchId))
+    .reduce((s, e) => s + e.amount, 0);
+}
 export async function getRepairProgressByRequestId(requestId: string): Promise<RepairProgress | null> {
   const row = await queryOne<RepairProgressRow>("select * from repair_progress where request_id = $1", [requestId]);
   return row ? mapRepairProgress(row) : null;

@@ -7,8 +7,10 @@ import {
   getRequests,
   getDeviceModels,
   getServiceAgreements,
+  getExpenses,
   homeServiceSalesByTechnician,
   sumHomeServiceSales,
+  homeServiceBusinessExpenses,
   canManageHomeServiceRequests,
   canDeleteHomeServiceRequests,
   isBranchHidden,
@@ -32,13 +34,14 @@ export default async function RequestsPage({
   if (!canManageHomeServiceRequests(user)) redirect("/admin");
 
   const sp = await searchParams;
-  const [lookups, technicians, branches, allRequests, deviceModels, agreements] = await Promise.all([
+  const [lookups, technicians, branches, allRequests, deviceModels, agreements, expenses] = await Promise.all([
     getLookups(),
     getTechnicians(),
     getBranches(),
     getRequests(),
     getDeviceModels(),
     getServiceAgreements(),
+    getExpenses(),
   ]);
   const statuses = lookups.filter((l) => l.kind === "request_status").sort((a, b) => a.order - b.order);
 
@@ -117,6 +120,8 @@ export default async function RequestsPage({
   // date-range picker; the full breakdown is still one click away there.
   const salesRows = homeServiceSalesByTechnician(agreements, (date) => date === todayStr, allRequests, technicians);
   const salesTotal = sumHomeServiceSales(salesRows);
+  const homeServiceQueueBranchIds = branches.filter((b) => b.homeServiceQueue !== null).map((b) => b.id);
+  const salesBusinessExpenses = homeServiceBusinessExpenses(expenses, (date) => date === todayStr, homeServiceQueueBranchIds);
 
   function labelFor(id: string | null, list: { id: string; label?: string; name?: string }[]) {
     if (!id) return "—";
@@ -230,6 +235,12 @@ export default async function RequestsPage({
                 <span className="text-xs font-semibold text-green-900">Company Share (30%)</span>
                 <span className="break-all text-lg font-bold text-green-900">{peso(salesTotal.companyShare)}</span>
               </div>
+              {salesBusinessExpenses > 0 && (
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border-2 border-blue-300 bg-blue-50 px-3 py-2">
+                  <span className="text-xs font-semibold text-blue-900">Business Share (Net)</span>
+                  <span className="break-all text-lg font-bold text-blue-900">{peso(salesTotal.companyShare - salesBusinessExpenses)}</span>
+                </div>
+              )}
             </div>
           </>
         )}
