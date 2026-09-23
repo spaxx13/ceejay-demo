@@ -8,13 +8,13 @@ import { pinIcon, type LatLng } from "./LocationPinMap";
 // Customer-facing live map: the customer's pinned home, the technician's
 // current position, and the road route between them. Purely
 // presentational — whoever renders it feeds in fresh positions (the demo
-// page simulates them; a real version would poll the technician's GPS).
+// page simulates them; TechnicianTrackingView polls the technician's GPS).
 export default function TechnicianTrackingMap({
   customer,
   technician,
   route,
 }: {
-  customer: LatLng;
+  customer: LatLng | null;
   technician: LatLng | null;
   route: LatLng[];
 }) {
@@ -26,13 +26,16 @@ export default function TechnicianTrackingMap({
   const routeLineRef = useRef<Polyline | null>(null);
   const [ready, setReady] = useState(false);
   const [follow, setFollow] = useState(true);
+  // First fit snaps straight to both markers; later ones animate.
+  const fittedRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
     import("leaflet").then((L) => {
       if (cancelled || !containerRef.current || mapRef.current) return;
       leafletRef.current = L;
-      const map = L.map(containerRef.current).setView([customer.lat, customer.lng], 14);
+      const start = customer ?? technician ?? { lat: 14.5995, lng: 120.9842 };
+      const map = L.map(containerRef.current).setView([start.lat, start.lng], 14);
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
         maxZoom: 19,
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
@@ -56,7 +59,7 @@ export default function TechnicianTrackingMap({
   useEffect(() => {
     const L = leafletRef.current;
     const map = mapRef.current;
-    if (!ready || !L || !map) return;
+    if (!ready || !L || !map || !customer) return;
     if (!customerMarkerRef.current) {
       customerMarkerRef.current = L.marker([customer.lat, customer.lng], { icon: pinIcon(L, "🏠", "#0071e3") })
         .bindTooltip("Your location")
@@ -96,13 +99,18 @@ export default function TechnicianTrackingMap({
       techMarkerRef.current.setLatLng([technician.lat, technician.lng]);
     }
     if (follow) {
-      map.fitBounds(
-        L.latLngBounds([
-          [technician.lat, technician.lng],
-          [customer.lat, customer.lng],
-        ]),
-        { padding: [50, 50], maxZoom: 17, animate: true }
-      );
+      if (customer) {
+        map.fitBounds(
+          L.latLngBounds([
+            [technician.lat, technician.lng],
+            [customer.lat, customer.lng],
+          ]),
+          { padding: [50, 50], maxZoom: 17, animate: fittedRef.current }
+        );
+      } else {
+        map.setView([technician.lat, technician.lng], 16, { animate: fittedRef.current });
+      }
+      fittedRef.current = true;
     }
   }, [ready, technician, customer, follow]);
 

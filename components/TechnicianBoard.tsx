@@ -6,6 +6,8 @@ import { technicianUpdateStatus } from "@/lib/actions";
 import StatusBadge from "./StatusBadge";
 import Linkify from "./Linkify";
 import { formatDate, formatDateTime } from "@/lib/format";
+import { directionsUrl } from "@/lib/technicianTracking";
+import TechnicianLocationSharer from "./TechnicianLocationSharer";
 
 type Status = { id: string; label: string };
 type Req = {
@@ -19,6 +21,8 @@ type Req = {
   city: string;
   province: string;
   landmark: string;
+  lat: number | null;
+  lng: number | null;
   issueDescription: string;
   photoDataUrl: string | null;
   deviceLabel: string;
@@ -33,6 +37,7 @@ type Req = {
   repairCost: number | null;
   serviceFee: number | null;
   inProgress: boolean;
+  onTheWay: boolean;
   hasPreAgreement: boolean;
   hasPostAgreement: boolean;
   customFieldEntries: { label: string; value: string | boolean }[];
@@ -135,6 +140,18 @@ export default function TechnicianBoard({ requests, statuses }: { requests: Req[
                   text={`${r.street}${r.barangay ? `, Brgy. ${r.barangay}` : ""}, ${r.city}${r.province ? `, ${r.province}` : ""}${r.landmark ? ` (near ${r.landmark})` : ""}`}
                 />
               </DetailRow>
+              {r.lat !== null && r.lng !== null ? (
+                <a
+                  href={directionsUrl(r.lat, r.lng)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn-secondary block w-full text-center text-sm"
+                >
+                  📍 Navigate to customer&apos;s pin (Google Maps)
+                </a>
+              ) : (
+                <p className="text-sm text-slate-400">No map pin — use the address and landmark above.</p>
+              )}
               <DetailRow label="Preferred">{formatDate(r.preferredDatetime)}</DetailRow>
               <DetailRow label="Vlog Consent">
                 {r.vlogConsent
@@ -155,6 +172,8 @@ export default function TechnicianBoard({ requests, statuses }: { requests: Req[
                 </div>
               )}
             </div>
+
+            {r.onTheWay && <TechnicianLocationSharer requestId={r.id} />}
 
             {r.adminNotes && <p className="whitespace-pre-line rounded-md bg-slate-50 p-2 text-xs text-slate-500">{r.adminNotes}</p>}
 

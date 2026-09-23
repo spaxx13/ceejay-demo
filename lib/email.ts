@@ -368,3 +368,34 @@ export async function sendCancellationEmail(to: string, opts: { customerName: st
   });
   if (error) throw new Error(error.message);
 }
+
+// Sent once, the first time a Home Service request's status becomes
+// "En Route" — links the customer to the live /track-technician map.
+export async function sendTechnicianOnTheWayEmail(
+  to: string,
+  opts: { customerName: string; reference: string; technicianName: string; trackingUrl: string }
+) {
+  const client = getClient();
+  const { error } = await client.emails.send({
+    from: FROM,
+    to,
+    subject: `Your technician is on the way — ${opts.reference}`,
+    html: `
+      <div style="font-family: -apple-system, sans-serif; max-width: 480px; margin: 0 auto; color: #1e293b;">
+        <p style="font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8;">Ceejay Cellphone Repair Shop</p>
+        <h2 style="margin: 4px 0 16px;">Your technician is on the way 🛵</h2>
+        <p style="font-size: 14px; line-height: 1.5;">
+          Hi ${escapeHtml(opts.customerName)}, ${escapeHtml(opts.technicianName)} is now heading to your pinned location
+          for your home service <strong>${opts.reference}</strong>.
+        </p>
+        <p style="margin: 24px 0;">
+          <a href="${opts.trackingUrl}" style="display: inline-block; background: #0071e3; color: #fff; text-decoration: none; padding: 12px 20px; border-radius: 9999px; font-weight: 600;">
+            Track your technician
+          </a>
+        </p>
+        <p style="font-size: 13px; color: #64748b;">The map updates live while your technician is on the way. If the button doesn't work, open this link: ${opts.trackingUrl}</p>
+      </div>
+    `,
+  });
+  if (error) throw new Error(error.message);
+}

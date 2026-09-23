@@ -340,6 +340,12 @@ export type HomeServiceRequest = {
   paymongoPaymentId: string | null;
   downpaymentPaidAt: string | null;
   deletedAt: string | null; // set when moved to Trash — null again once restored
+  // Live technician tracking (supabase/migrations/0069) — token for the
+  // customer's /track-technician link, and the technician's latest GPS fix.
+  trackingToken: string | null;
+  techLat: number | null;
+  techLng: number | null;
+  techLocationAt: string | null;
   serviceFeeWaived: boolean; // set by a staff account with canWaiveServiceFee — treats the province-computed visit fee (lib/homeServiceFees.ts) as ₱0 wherever it's quoted/displayed, without changing the underlying province fee table
 };
 

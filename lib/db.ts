@@ -293,6 +293,7 @@ type RequestRow = {
   deleted_at: Date | null; service_fee_waived: boolean;
   downpayment_required: boolean; downpayment_amount: string | number | null; downpayment_status: HomeServiceRequest["downpaymentStatus"];
   paymongo_checkout_session_id: string | null; paymongo_checkout_url: string | null; paymongo_payment_id: string | null; downpayment_paid_at: Date | null;
+  tracking_token: string | null; tech_lat: number | null; tech_lng: number | null; tech_location_at: Date | null;
 };
 function mapRequest(r: RequestRow): HomeServiceRequest {
   return {
@@ -309,6 +310,8 @@ function mapRequest(r: RequestRow): HomeServiceRequest {
     downpaymentRequired: r.downpayment_required, downpaymentAmount: r.downpayment_amount === null ? null : Number(r.downpayment_amount),
     downpaymentStatus: r.downpayment_status, paymongoCheckoutSessionId: r.paymongo_checkout_session_id, paymongoCheckoutUrl: r.paymongo_checkout_url,
     paymongoPaymentId: r.paymongo_payment_id, downpaymentPaidAt: toIsoOrNull(r.downpayment_paid_at),
+    // `?? null` so this still maps cleanly before migration 0069 is applied.
+    trackingToken: r.tracking_token ?? null, techLat: r.tech_lat ?? null, techLng: r.tech_lng ?? null, techLocationAt: toIsoOrNull(r.tech_location_at ?? null),
   };
 }
 
@@ -571,6 +574,11 @@ export async function getRequestById(id: string) {
 // A multi-device booking shares one confirmation_token across every
 // device's row (one quotation email, one confirm link for all of them) —
 // this returns every row in that group, not just the first match.
+export async function getRequestByTrackingToken(token: string) {
+  const rows = await query<RequestRow>("select * from home_service_requests where tracking_token = $1 and deleted_at is null", [token]);
+  return rows[0] ? mapRequest(rows[0]) : null;
+}
+
 export async function getRequestsByConfirmationToken(token: string) {
   return (await query<RequestRow>("select * from home_service_requests where confirmation_token = $1", [token])).map(mapRequest);
 }

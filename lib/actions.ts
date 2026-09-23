@@ -52,7 +52,8 @@ import {
   getTodayCheckIn,
 } from "./db";
 import { getCurrentUser, setSession, clearSession, requireRole } from "./auth";
-import { sendRepairReceiptEmail, sendCancellationEmail, sendQuotationEmail, sendLeadReplyEmail, sendBroadcastEmail, sendWalkInOtpEmail, sendPublicQuoteEmail, emailConfigured } from "./email";
+import { sendRepairReceiptEmail, sendCancellationEmail, sendQuotationEmail, sendLeadReplyEmail, sendBroadcastEmail, sendWalkInOtpEmail, sendPublicQuoteEmail, sendTechnicianOnTheWayEmail, emailConfigured } from "./email";
+import { isOnTheWayStatus } from "./technicianTracking";
 import { sendSms, sendOtpSms, smsConfigured, normalizePhone, getAccountStatus, type SmsAccountStatus } from "./sms";
 import { SUNDAY_ONLY_PROVINCES, DOWNPAYMENT_PROVINCES, serviceFeeAmount } from "./homeServiceFees";
 import { getRepairQuote } from "./servicePricing";
@@ -2264,7 +2265,7 @@ export async function changeRequestStatus(formData: FormData) {
     await query("update home_service_requests set status_id=$1, status_history=$2 where id=$3", [statusId, JSON.stringify(statusHistory), requestId]);
   }
 
-  let emailNote = "";
+  let emailNote = await startTechnicianTrackingIfOnTheWay(req, status.label);
   if (cancelled && req.email) {
     try {
       await sendCancellationEmail(req.email, { customerName: req.customerName, reference: req.reference, reason: "" });
@@ -2711,6 +2712,48 @@ export async function addConversationMessage(formData: FormData) {
 
 // ---------- Technician view ----------
 
+// ---------- Live technician tracking ----------
+
+// Called after any status change: the first time a request goes "En Route",
+// mints its tracking token and emails the customer the live map link
+// (/track-technician/<token>). Returns a note for the activity log.
+async function startTechnicianTrackingIfOnTheWay(req: HomeServiceRequest, newStatusLabel: string): Promise<string> {
+  if (!isOnTheWayStatus(newStatusLabel) || req.trackingToken) return "";
+  const token = crypto.randomUUID().replace(/-/g, "");
+  await query("update home_service_requests set tracking_token=$1 where id=$2", [token, req.id]);
+  if (!req.email) return " — no customer email on file, tracking link not sent";
+  if (!emailConfigured()) return " — email not configured, tracking link not sent";
+
+  // Link back to whichever deployment the technician is using (so a
+  // Preview deployment emails a Preview link), falling back to SITE_URL.
+  const hdrs = await headers();
+  const host = hdrs.get("x-forwarded-host") ?? hdrs.get("host");
+  const origin = host ? `${hdrs.get("x-forwarded-proto") ?? "https"}://${host}` : SITE_URL;
+  const trackingUrl = `${origin}/track-technician/${token}`;
+  const technicianName = (await getTechnicians()).find((t) => t.id === req.assignedTechnicianId)?.name ?? "Your technician";
+  try {
+    await sendTechnicianOnTheWayEmail(req.email, { customerName: req.customerName, reference: req.reference, technicianName, trackingUrl });
+    return ` — tracking link emailed to ${req.email}`;
+  } catch (err) {
+    return ` — tracking email failed to send to ${req.email} (${err instanceof Error ? err.message : "unknown error"})`;
+  }
+}
+
+// GPS fix pushed from the assigned technician's phone while their job is
+// En Route (components/TechnicianLocationSharer.tsx). `stop` tells the
+// phone to stop sharing once the job is no longer En Route.
+export async function updateTechnicianLocation(requestId: string, lat: number, lng: number): Promise<{ ok: boolean; stop?: boolean }> {
+  const user = await getCurrentUser();
+  if (!user || user.role !== "technician") return { ok: false, stop: true };
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) return { ok: false };
+  const req = await getRequestById(requestId);
+  if (!req || req.assignedTechnicianId !== user.technicianId) return { ok: false, stop: true };
+  const status = (await getLookups()).find((l) => l.id === req.statusId);
+  if (!isOnTheWayStatus(status?.label)) return { ok: false, stop: true };
+  await query("update home_service_requests set tech_lat=$1, tech_lng=$2, tech_location_at=now() where id=$3", [lat, lng, requestId]);
+  return { ok: true };
+}
+
 export async function technicianUpdateStatus(formData: FormData) {
   const user = await getCurrentUser();
   const requestId = str(formData, "id");
@@ -2731,7 +2774,7 @@ export async function technicianUpdateStatus(formData: FormData) {
     [statusId, JSON.stringify(statusHistory), adminNotes, requestId]
   );
 
-  let emailNote = "";
+  let emailNote = await startTechnicianTrackingIfOnTheWay(req, status.label);
   if (cancelled && req.email) {
     try {
       await sendCancellationEmail(req.email, { customerName: req.customerName, reference: req.reference, reason: note });
