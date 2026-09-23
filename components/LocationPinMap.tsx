@@ -155,6 +155,7 @@ function GooglePinMap({ value, onChange }: { value: LatLng | null; onChange: (po
   // enabled on the key) — from then on search falls back to OpenStreetMap
   // so the customer can still find their area.
   const [googleSearchFailed, setGoogleSearchFailed] = useState(false);
+  const [googleSearchError, setGoogleSearchError] = useState<string | null>(null);
   const queryReady = query.trim().length >= 3;
   const [locating, setLocating] = useState(false);
   const [geoError, setGeoError] = useState<string | null>(null);
@@ -249,9 +250,10 @@ function GooglePinMap({ value, onChange }: { value: LatLng | null; onChange: (po
             );
             setShowResults(true);
             return;
-          } catch {
+          } catch (err) {
             if (controller.signal.aborted) return;
             setGoogleSearchFailed(true);
+            setGoogleSearchError(err instanceof Error ? err.message : String(err));
           }
         }
         const osm = await searchPlaces(q, controller.signal);
@@ -322,6 +324,12 @@ function GooglePinMap({ value, onChange }: { value: LatLng | null; onChange: (po
           <p className="mt-1 text-xs text-slate-400">No matches — try a nearby landmark, or tap the map to drop the pin.</p>
         )}
       </div>
+      {googleSearchFailed && (
+        <p className="text-[11px] text-slate-400">
+          Google search unavailable — showing OpenStreetMap results.
+          {googleSearchError && <span className="block break-words font-mono">{googleSearchError}</span>}
+        </p>
+      )}
       <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"
