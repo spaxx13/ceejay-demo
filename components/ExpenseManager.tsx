@@ -76,9 +76,9 @@ export default function ExpenseManager({
               </select>
             </div>
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-slate-500">Date</label>
-              <input type="date" value={new Date().toISOString().slice(0, 10)} disabled className="input disabled:opacity-70" />
-              <p className="text-[11px] text-slate-400">Expenses are recorded on the day they&apos;re logged.</p>
+              <label className="text-xs font-medium text-slate-500">Date *</label>
+              <input type="date" name="expenseDate" required defaultValue={new Date().toISOString().slice(0, 10)} className="input" />
+              <p className="text-[11px] text-slate-400">Defaults to today — change it to log a past expense on the day it actually happened.</p>
             </div>
           </div>
           <div className="space-y-1.5">
