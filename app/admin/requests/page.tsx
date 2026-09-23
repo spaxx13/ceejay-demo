@@ -28,7 +28,7 @@ const peso = (n: number) => `₱${n.toLocaleString(undefined, { minimumFractionD
 export default async function RequestsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string; technician?: string; date?: string; unassigned?: string; province?: string }>;
+  searchParams: Promise<{ status?: string; technician?: string; date?: string; unassigned?: string; province?: string; downpayment?: string }>;
 }) {
   const user = await getCurrentUser();
   if (!canManageHomeServiceRequests(user)) redirect("/admin");
@@ -68,6 +68,7 @@ export default async function RequestsPage({
   if (sp.technician) requests = requests.filter((r) => r.assignedTechnicianId === sp.technician);
   if (sp.date) requests = requests.filter((r) => r.preferredDatetime.startsWith(sp.date!));
   if (sp.province) requests = requests.filter((r) => r.province === sp.province);
+  if (sp.downpayment) requests = requests.filter((r) => r.downpaymentStatus === sp.downpayment);
   if (sp.unassigned === "1") requests = requests.filter(isUnassigned);
   requests.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
 
@@ -248,7 +249,7 @@ export default async function RequestsPage({
 
       <RequestsFilterForm statuses={statuses} technicians={homeServiceTechnicians} provinces={provinceOptions} current={sp} />
 
-      {(sp.date || sp.province || sp.status || sp.technician || sp.unassigned === "1") && (
+      {(sp.date || sp.province || sp.status || sp.technician || sp.downpayment || sp.unassigned === "1") && (
         <div className="card">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-sm font-semibold text-slate-800">
