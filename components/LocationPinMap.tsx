@@ -196,6 +196,9 @@ export function usePlaceSearch(query: string, { osmFallback }: { osmFallback: bo
             if (controller.signal.aborted) return;
             setGoogleFailed(true);
             setGoogleError(err instanceof Error ? err.message : String(err));
+            // Kept out of the customer-facing UI; e.g. "Places API (New) has
+            // not been used in project …" when the API isn't enabled.
+            console.warn("Google place search failed, falling back to OpenStreetMap:", err);
             if (!osmFallback) return;
           }
         }
@@ -238,7 +241,7 @@ function GooglePinMap({ value, onChange }: { value: LatLng | null; onChange: (po
   });
   const [query, setQuery] = useState("");
   const [showResults, setShowResults] = useState(false);
-  const { ready, results, searching, googleFailed: googleSearchFailed, googleError: googleSearchError, resolve } = usePlaceSearch(query, {
+  const { ready, results, searching, googleFailed: googleSearchFailed, resolve } = usePlaceSearch(query, {
     osmFallback: true,
   });
   const queryReady = query.trim().length >= 3;
@@ -356,10 +359,7 @@ function GooglePinMap({ value, onChange }: { value: LatLng | null; onChange: (po
         )}
       </div>
       {googleSearchFailed && (
-        <p className="text-[11px] text-slate-400">
-          Google search unavailable — showing OpenStreetMap results.
-          {googleSearchError && <span className="block break-words font-mono">{googleSearchError}</span>}
-        </p>
+        <p className="text-[11px] text-slate-400">Can&apos;t find your exact address? Pick the nearest street, then drag the pin to your door.</p>
       )}
       <div className="flex flex-wrap items-center gap-2">
         <button
