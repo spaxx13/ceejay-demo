@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
-import { estimateEta, type TrackingSnapshot } from "@/lib/technicianTracking";
+import { estimateEta, isTrackingClosed, type TrackingSnapshot } from "@/lib/technicianTracking";
 
 // Leaflet needs `window`, so the map renders client-side only.
 const TechnicianTrackingMap = dynamic(() => import("./TechnicianTrackingMap"), { ssr: false });
@@ -41,7 +41,9 @@ export default function TechnicianTrackingView({
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
-    if (snap.phase === "arrived" || snap.phase === "cancelled") return;
+    // Keep polling through "arrived" so the page closes itself once the job
+    // is marked Completed.
+    if (isTrackingClosed(snap.phase)) return;
     const timer = window.setInterval(async () => {
       setNow(Date.now());
       try {
@@ -61,7 +63,7 @@ export default function TechnicianTrackingView({
     <div className="space-y-4">
       <div
         className={`card flex items-center justify-between gap-3 border-2 ${
-          snap.phase === "arrived"
+          snap.phase === "arrived" || snap.phase === "completed"
             ? "border-green-300 bg-green-50"
             : snap.phase === "on_the_way"
               ? "border-orange-300 bg-orange-50"
@@ -73,9 +75,16 @@ export default function TechnicianTrackingView({
             {snap.phase === "scheduled" && (admin ? "Technician hasn't left yet" : "Your technician hasn't left yet")}
             {snap.phase === "on_the_way" && (admin ? "🛵 Technician is on the way" : "🛵 Your technician is on the way")}
             {snap.phase === "arrived" && (admin ? "✅ Technician has arrived" : "✅ Your technician has arrived")}
+            {snap.phase === "completed" && "✅ Home service completed"}
             {snap.phase === "cancelled" && "This home service was cancelled"}
           </p>
-          <p className="text-xs text-slate-600">{snap.technicianName} · Ceejay Technician</p>
+          <p className="text-xs text-slate-600">
+            {snap.phase === "completed"
+              ? admin
+                ? "Tracking has ended for this job."
+                : "Thank you for choosing Ceejay! Live tracking has ended."
+              : `${snap.technicianName} · Ceejay Technician`}
+          </p>
         </div>
         {snap.phase === "on_the_way" && eta && (
           <div className="text-right">
@@ -99,7 +108,7 @@ export default function TechnicianTrackingView({
         </p>
       )}
 
-      {(snap.customer || snap.technician) && snap.phase !== "cancelled" && (
+      {(snap.customer || snap.technician) && !isTrackingClosed(snap.phase) && (
         <TechnicianTrackingMap
           customer={snap.customer}
           technician={snap.technician}
@@ -108,17 +117,19 @@ export default function TechnicianTrackingView({
         />
       )}
 
-      <ol className="flex justify-between text-xs">
-        {[
-          { label: "Assigned", done: true },
-          { label: "On the way", done: snap.phase === "on_the_way" || snap.phase === "arrived" },
-          { label: "Arrived", done: snap.phase === "arrived" },
-        ].map((s) => (
-          <li key={s.label} className={s.done ? "font-semibold text-green-700" : "text-slate-400"}>
-            {s.done ? "●" : "○"} {s.label}
-          </li>
-        ))}
-      </ol>
+      {!isTrackingClosed(snap.phase) && (
+        <ol className="flex justify-between text-xs">
+          {[
+            { label: "Assigned", done: true },
+            { label: "On the way", done: snap.phase === "on_the_way" || snap.phase === "arrived" },
+            { label: "Arrived", done: snap.phase === "arrived" },
+          ].map((s) => (
+            <li key={s.label} className={s.done ? "font-semibold text-green-700" : "text-slate-400"}>
+              {s.done ? "●" : "○"} {s.label}
+            </li>
+          ))}
+        </ol>
+      )}
       {eta && <p className="text-center text-[11px] text-slate-400">Arrival time is an estimate and may change with traffic.</p>}
     </div>
   );
