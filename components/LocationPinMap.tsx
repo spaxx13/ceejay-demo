@@ -85,6 +85,7 @@ type GMarker = {
 type GPlacePrediction = {
   placeId: string;
   text: { toString: () => string };
+  mainText?: { toString: () => string } | null;
   toPlace: () => { fetchFields: (o: { fields: string[] }) => Promise<unknown>; location?: GLatLng; formattedAddress?: string };
 };
 type GPlacesLib = {
@@ -134,35 +135,115 @@ function requestCurrentPosition(onPos: (pos: LatLng) => void, onError: (msg: str
   );
 }
 
-type GoogleResult = { id: string; label: string; prediction: GPlacePrediction | null; lat?: number; lng?: number };
+export type PlaceResult = {
+  id: string;
+  label: string;
+  // Street-level part of a Google suggestion (e.g. "3 F. Salalilla Street").
+  mainText: string;
+  prediction: GPlacePrediction | null;
+  lat?: number;
+  lng?: number;
+};
+
+// Debounced place search shared by the pin map and the Home Service form's
+// Street field: Google Places API (New) when a key is set, else (or once
+// Google errors, with `osmFallback`) OpenStreetMap.
+export function usePlaceSearch(query: string, { osmFallback }: { osmFallback: boolean }) {
+  const [ready, setReady] = useState(!GOOGLE_MAPS_KEY);
+  const [results, setResults] = useState<PlaceResult[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [googleFailed, setGoogleFailed] = useState(false);
+  const [googleError, setGoogleError] = useState<string | null>(null);
+  const sessionTokenRef = useRef<object | null>(null);
+
+  useEffect(() => {
+    if (GOOGLE_MAPS_KEY) loadGoogleMaps(() => setReady(true));
+  }, []);
+
+  useEffect(() => {
+    const q = query.trim();
+    if (!ready || q.length < 3) return;
+    const useGoogle = !!GOOGLE_MAPS_KEY && !googleFailed;
+    if (!useGoogle && !osmFallback) return;
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      setSearching(true);
+      try {
+        if (useGoogle) {
+          try {
+            const g = (window as unknown as { google: GoogleNs }).google;
+            const places = await g.maps.importLibrary("places");
+            sessionTokenRef.current ??= new places.AutocompleteSessionToken();
+            const { suggestions } = await places.AutocompleteSuggestion.fetchAutocompleteSuggestions({
+              input: q,
+              sessionToken: sessionTokenRef.current,
+              includedRegionCodes: ["ph"],
+            });
+            if (controller.signal.aborted) return;
+            setResults(
+              suggestions
+                .map((sug) => sug.placePrediction)
+                .filter((pr): pr is GPlacePrediction => !!pr)
+                .map((pr) => ({
+                  id: pr.placeId,
+                  label: pr.text.toString(),
+                  mainText: pr.mainText?.toString() ?? pr.text.toString(),
+                  prediction: pr,
+                }))
+            );
+            return;
+          } catch (err) {
+            if (controller.signal.aborted) return;
+            setGoogleFailed(true);
+            setGoogleError(err instanceof Error ? err.message : String(err));
+            if (!osmFallback) return;
+          }
+        }
+        const osm = await searchPlaces(q, controller.signal);
+        setResults(osm.map((r) => ({ id: String(r.placeId), label: r.label, mainText: r.label, prediction: null, lat: r.lat, lng: r.lng })));
+      } catch {
+        // aborted or network error — leave previous results
+      } finally {
+        if (!controller.signal.aborted) setSearching(false);
+      }
+    }, 350);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [query, ready, googleFailed, osmFallback]);
+
+  // Turns a picked result into coordinates + a display address.
+  async function resolve(r: PlaceResult): Promise<{ pos: LatLng; address: string } | null> {
+    if (!r.prediction) return r.lat !== undefined && r.lng !== undefined ? { pos: { lat: r.lat, lng: r.lng }, address: r.label } : null;
+    const place = r.prediction.toPlace();
+    await place.fetchFields({ fields: ["location", "formattedAddress"] });
+    // A session covers typing through one pick — start a fresh one next time.
+    sessionTokenRef.current = null;
+    if (!place.location) return null;
+    return { pos: { lat: place.location.lat(), lng: place.location.lng() }, address: place.formattedAddress ?? r.label };
+  }
+
+  return { ready, results, searching, googleFailed, googleError, resolve };
+}
 
 function GooglePinMap({ value, onChange }: { value: LatLng | null; onChange: (pos: LatLng, address: string | null) => void }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<GMap | null>(null);
   const markerRef = useRef<GMarker | null>(null);
   const googleRef = useRef<GoogleNs | null>(null);
-  const sessionTokenRef = useRef<object | null>(null);
   const onChangeRef = useRef(onChange);
   useEffect(() => {
     onChangeRef.current = onChange;
   });
-  const [ready, setReady] = useState(false);
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<GoogleResult[]>([]);
-  const [searching, setSearching] = useState(false);
   const [showResults, setShowResults] = useState(false);
-  // Flips on the first time Google search fails (e.g. Places API (New) not
-  // enabled on the key) — from then on search falls back to OpenStreetMap
-  // so the customer can still find their area.
-  const [googleSearchFailed, setGoogleSearchFailed] = useState(false);
-  const [googleSearchError, setGoogleSearchError] = useState<string | null>(null);
+  const { ready, results, searching, googleFailed: googleSearchFailed, googleError: googleSearchError, resolve } = usePlaceSearch(query, {
+    osmFallback: true,
+  });
   const queryReady = query.trim().length >= 3;
   const [locating, setLocating] = useState(false);
   const [geoError, setGeoError] = useState<string | null>(null);
-
-  useEffect(() => {
-    loadGoogleMaps(() => setReady(true));
-  }, []);
 
   function showMarker(pos: LatLng, zoom?: number) {
     const g = googleRef.current;
@@ -225,64 +306,11 @@ function GooglePinMap({ value, onChange }: { value: LatLng | null; onChange: (po
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value]);
 
-  useEffect(() => {
-    const q = query.trim();
-    if (!ready || q.length < 3) return;
-    const controller = new AbortController();
-    const timer = window.setTimeout(async () => {
-      setSearching(true);
-      try {
-        if (!googleSearchFailed) {
-          try {
-            const places = await googleRef.current!.maps.importLibrary("places");
-            sessionTokenRef.current ??= new places.AutocompleteSessionToken();
-            const { suggestions } = await places.AutocompleteSuggestion.fetchAutocompleteSuggestions({
-              input: q,
-              sessionToken: sessionTokenRef.current,
-              includedRegionCodes: ["ph"],
-            });
-            if (controller.signal.aborted) return;
-            setResults(
-              suggestions
-                .map((sug) => sug.placePrediction)
-                .filter((pr): pr is GPlacePrediction => !!pr)
-                .map((pr) => ({ id: pr.placeId, label: pr.text.toString(), prediction: pr }))
-            );
-            setShowResults(true);
-            return;
-          } catch (err) {
-            if (controller.signal.aborted) return;
-            setGoogleSearchFailed(true);
-            setGoogleSearchError(err instanceof Error ? err.message : String(err));
-          }
-        }
-        const osm = await searchPlaces(q, controller.signal);
-        setResults(osm.map((r) => ({ id: String(r.placeId), label: r.label, prediction: null, lat: r.lat, lng: r.lng })));
-        setShowResults(true);
-      } catch {
-        // aborted or network error — leave previous results
-      } finally {
-        if (!controller.signal.aborted) setSearching(false);
-      }
-    }, 350);
-    return () => {
-      window.clearTimeout(timer);
-      controller.abort();
-    };
-  }, [query, ready, googleSearchFailed]);
-
-  async function pickResult(r: GoogleResult) {
+  async function pickResult(r: PlaceResult) {
     setShowResults(false);
-    if (!r.prediction) {
-      if (r.lat !== undefined && r.lng !== undefined) placePin({ lat: r.lat, lng: r.lng }, r.label, 18);
-      return;
-    }
     try {
-      const place = r.prediction.toPlace();
-      await place.fetchFields({ fields: ["location", "formattedAddress"] });
-      // A session covers typing through one pick — start a fresh one next time.
-      sessionTokenRef.current = null;
-      if (place.location) placePin({ lat: place.location.lat(), lng: place.location.lng() }, place.formattedAddress ?? r.label, 18);
+      const picked = await resolve(r);
+      if (picked) placePin(picked.pos, picked.address, 18);
     } catch {
       setGeoError("Couldn't open that place. Try another result, or tap the map to drop the pin.");
     }
@@ -294,8 +322,11 @@ function GooglePinMap({ value, onChange }: { value: LatLng | null; onChange: (po
         <input
           type="search"
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          onFocus={() => results.length > 0 && setShowResults(true)}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setShowResults(true);
+          }}
+          onFocus={() => setShowResults(true)}
           onKeyDown={(e) => {
             // Inside the Home Service <form>, Enter would submit the booking.
             if (e.key === "Enter") e.preventDefault();

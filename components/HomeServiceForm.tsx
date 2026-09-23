@@ -13,6 +13,7 @@ import {
 } from "@/lib/homeServiceFees";
 import dynamic from "next/dynamic";
 import PhotoUpload from "./PhotoUpload";
+import { usePlaceSearch, type PlaceResult } from "./LocationPinMap";
 import DynamicFormField from "./DynamicFormField";
 import type { RequestFormContent, CustomFormField, HomeServiceQueue } from "@/lib/types";
 
@@ -29,27 +30,6 @@ function FormNotice({ children, tone = "amber", icon = "⚠️" }: { children: R
       <div>{children}</div>
     </div>
   );
-}
-
-declare global {
-  interface Window {
-    google?: {
-      maps: {
-        places: {
-          Autocomplete: new (
-            input: HTMLInputElement,
-            opts?: Record<string, unknown>
-          ) => {
-            addListener: (event: string, cb: () => void) => void;
-            getPlace: () => {
-              address_components?: { long_name: string; types: string[] }[];
-              geometry?: { location: { lat: () => number; lng: () => number } };
-            };
-          };
-        };
-      };
-    };
-  }
 }
 
 const GOOGLE_MAPS_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
@@ -254,45 +234,31 @@ export default function HomeServiceForm({
   // submitHomeServiceRequest, which skips the gate the same way.
   const phoneGateActive = OTP_GATE_ENABLED && smsAvailable && (phoneField?.active ?? false);
 
-  useEffect(() => {
-    if (!GOOGLE_MAPS_KEY || !streetActive) return;
+  // Street field suggestions — Google Places API (New) via the same hook
+  // the pin map uses (the legacy places.Autocomplete widget this replaced
+  // popped "This page can't load Google Maps correctly" on newer keys). No
+  // OpenStreetMap fallback here: if Google errors the field just stays a
+  // plain text input.
+  const [streetQuery, setStreetQuery] = useState("");
+  const [showStreetResults, setShowStreetResults] = useState(false);
+  const streetSearch = usePlaceSearch(GOOGLE_MAPS_KEY && streetActive ? streetQuery : "", { osmFallback: false });
 
-    function initAutocomplete() {
-      if (!window.google || !streetRef.current) return;
-      const autocomplete = new window.google.maps.places.Autocomplete(streetRef.current, {
-        componentRestrictions: { country: "ph" },
-        fields: ["address_components", "geometry"],
-      });
-      autocomplete.addListener("place_changed", () => {
-        const place = autocomplete.getPlace();
-        // City/Province/Barangay are always driven by the cascading dropdown
-        // below (both queues) — autofilling them here from Google's own text
-        // would just as often mismatch that curated list's exact option
-        // strings and silently reset the selects. Only the geocoded
-        // coordinates are useful from this autocomplete now.
-        if (place.geometry?.location) {
-          setLat(place.geometry.location.lat());
-          setLng(place.geometry.location.lng());
-        }
-      });
+  async function pickStreetResult(r: PlaceResult) {
+    setShowStreetResults(false);
+    if (streetRef.current) streetRef.current.value = r.mainText;
+    try {
+      const picked = await streetSearch.resolve(r);
+      // City/Province/Barangay stay driven by the cascading dropdowns below
+      // — only the coordinates are taken from Google (and the pin map
+      // follows them).
+      if (picked) {
+        setLat(picked.pos.lat);
+        setLng(picked.pos.lng);
+      }
+    } catch {
+      // Keep the typed street text; the customer can still pin on the map.
     }
-
-    if (window.google) {
-      initAutocomplete();
-      return;
-    }
-    const existing = document.getElementById("google-maps-script") as HTMLScriptElement | null;
-    if (existing) {
-      existing.addEventListener("load", initAutocomplete);
-      return;
-    }
-    const script = document.createElement("script");
-    script.id = "google-maps-script";
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_KEY}&libraries=places`;
-    script.async = true;
-    script.onload = initAutocomplete;
-    document.head.appendChild(script);
-  }, [streetActive, area]);
+  }
 
   if (state?.ok) {
     return (
@@ -571,7 +537,37 @@ export default function HomeServiceForm({
             <label className="text-xs font-medium text-slate-500">
               {field.label} {asterisk}
             </label>
-            <input ref={streetRef} name="street" required={req} className="input" placeholder={field.placeholder} />
+            <div className="relative">
+              <input
+                ref={streetRef}
+                name="street"
+                required={req}
+                className="input w-full"
+                placeholder={field.placeholder}
+                autoComplete="off"
+                onChange={(e) => {
+                  setStreetQuery(e.target.value);
+                  setShowStreetResults(true);
+                }}
+                onBlur={() => window.setTimeout(() => setShowStreetResults(false), 200)}
+              />
+              {showStreetResults && streetQuery.trim().length >= 3 && streetSearch.results.length > 0 && (
+                <ul className="absolute z-[1000] mt-1 max-h-64 w-full overflow-auto rounded-lg border border-slate-200 bg-white shadow-lg">
+                  {streetSearch.results.map((r) => (
+                    <li key={r.id}>
+                      <button
+                        type="button"
+                        className="block w-full px-3 py-2 text-left text-sm text-slate-700 hover:bg-blue-50"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => pickStreetResult(r)}
+                      >
+                        {r.label}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
             {!GOOGLE_MAPS_KEY && (
               <FormNotice tone="blue" icon="📍">
                 Please also fill in your Landmark below — this helps our technician find you accurately.
