@@ -28,6 +28,8 @@ import { formatDate, formatDateTime } from "@/lib/format";
 import { serviceFeeAmount } from "@/lib/homeServiceFees";
 import { getRepairQuote } from "@/lib/servicePricing";
 import { directionsUrl } from "@/lib/technicianTracking";
+import { getTrackingSnapshotForRequest } from "@/lib/trackingSnapshot";
+import AdminLiveMap from "@/components/AdminLiveMap";
 
 const peso = (n: number) => `₱${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
@@ -157,6 +159,7 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
       (t.active && (homeServiceBranch ? t.branchIds.includes(homeServiceBranch.id) : true)) || t.id === req.assignedTechnicianId
   );
   const currentStatus = statuses.find((s) => s.id === req.statusId);
+  const trackingSnapshot = await getTrackingSnapshotForRequest(req.id);
   const activity = activityLog
     .filter((a) => a.entityType === "home_service_request" && a.entityId === req.id)
     .sort((a, b) => (a.at < b.at ? 1 : -1));
@@ -248,6 +251,11 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
           )}
         </div>
       </div>
+
+      {/* Same live map the customer sees from their "on the way" email. */}
+      {trackingSnapshot && (trackingSnapshot.customer || trackingSnapshot.technician) && (
+        <AdminLiveMap requestId={req.id} initial={trackingSnapshot} />
+      )}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="card space-y-3 lg:col-span-2">

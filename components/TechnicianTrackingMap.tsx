@@ -13,10 +13,12 @@ export default function TechnicianTrackingMap({
   customer,
   technician,
   route,
+  customerLabel = "Your location",
 }: {
   customer: LatLng | null;
   technician: LatLng | null;
   route: LatLng[];
+  customerLabel?: string;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<LeafletMap | null>(null);
@@ -62,12 +64,12 @@ export default function TechnicianTrackingMap({
     if (!ready || !L || !map || !customer) return;
     if (!customerMarkerRef.current) {
       customerMarkerRef.current = L.marker([customer.lat, customer.lng], { icon: pinIcon(L, "🏠", "#0071e3") })
-        .bindTooltip("Your location")
+        .bindTooltip(customerLabel)
         .addTo(map);
     } else {
       customerMarkerRef.current.setLatLng([customer.lat, customer.lng]);
     }
-  }, [ready, customer]);
+  }, [ready, customer, customerLabel]);
 
   useEffect(() => {
     const L = leafletRef.current;

@@ -22,10 +22,21 @@ function minutesAgo(iso: string, now: number) {
   return m <= 0 ? "just now" : m === 1 ? "1 min ago" : `${m} mins ago`;
 }
 
-// The customer's live tracking view: status banner, ETA, and a map of the
-// technician riding to the customer's pin. Polls the public API route
-// until the technician arrives.
-export default function TechnicianTrackingView({ token, initial }: { token: string; initial: TrackingSnapshot }) {
+// Live tracking view: status banner, ETA, and a map of the technician
+// riding to the customer's pin. Polls `pollUrl` until the technician
+// arrives. Shown to the customer (public /track-technician page, polling by
+// token) and to Home Service admins on the request page (`viewer="admin"`,
+// polling by request id), with wording adjusted for each.
+export default function TechnicianTrackingView({
+  pollUrl,
+  initial,
+  viewer = "customer",
+}: {
+  pollUrl: string;
+  initial: TrackingSnapshot;
+  viewer?: "customer" | "admin";
+}) {
+  const admin = viewer === "admin";
   const [snap, setSnap] = useState(initial);
   const [now, setNow] = useState(() => Date.now());
 
@@ -34,14 +45,14 @@ export default function TechnicianTrackingView({ token, initial }: { token: stri
     const timer = window.setInterval(async () => {
       setNow(Date.now());
       try {
-        const res = await fetch(`/api/track-technician/${token}`, { cache: "no-store" });
+        const res = await fetch(pollUrl, { cache: "no-store" });
         if (res.ok) setSnap(await res.json());
       } catch {
         // offline for a moment — keep showing the last position
       }
     }, POLL_MS);
     return () => window.clearInterval(timer);
-  }, [token, snap.phase]);
+  }, [pollUrl, snap.phase]);
 
   const eta = snap.technician && snap.customer ? estimateEta(snap.technician, snap.customer) : null;
   const stale = snap.technicianUpdatedAt ? now - new Date(snap.technicianUpdatedAt).getTime() > STALE_MS : false;
@@ -59,9 +70,9 @@ export default function TechnicianTrackingView({ token, initial }: { token: stri
       >
         <div>
           <p className="text-sm font-semibold text-slate-900">
-            {snap.phase === "scheduled" && "Your technician hasn't left yet"}
-            {snap.phase === "on_the_way" && "🛵 Your technician is on the way"}
-            {snap.phase === "arrived" && "✅ Your technician has arrived"}
+            {snap.phase === "scheduled" && (admin ? "Technician hasn't left yet" : "Your technician hasn't left yet")}
+            {snap.phase === "on_the_way" && (admin ? "🛵 Technician is on the way" : "🛵 Your technician is on the way")}
+            {snap.phase === "arrived" && (admin ? "✅ Technician has arrived" : "✅ Your technician has arrived")}
             {snap.phase === "cancelled" && "This home service was cancelled"}
           </p>
           <p className="text-xs text-slate-600">{snap.technicianName} · Ceejay Technician</p>
@@ -75,17 +86,26 @@ export default function TechnicianTrackingView({ token, initial }: { token: stri
       </div>
 
       {snap.phase === "on_the_way" && !snap.technician && (
-        <p className="text-center text-sm text-slate-500">Waiting for your technician&apos;s location…</p>
+        <p className="text-center text-sm text-slate-500">
+          {admin
+            ? "Waiting for the technician's location — they need My Jobs open on their phone with location allowed."
+            : "Waiting for your technician's location…"}
+        </p>
       )}
       {snap.phase === "on_the_way" && snap.technicianUpdatedAt && (
         <p className={`text-center text-xs ${stale ? "text-amber-700" : "text-slate-400"}`}>
           {stale ? "⚠️ " : ""}Location updated {minutesAgo(snap.technicianUpdatedAt, now)}
-          {stale && " — your technician may be in an area with weak signal."}
+          {stale && (admin ? " — the technician's phone may have lost signal or closed My Jobs." : " — your technician may be in an area with weak signal.")}
         </p>
       )}
 
       {(snap.customer || snap.technician) && snap.phase !== "cancelled" && (
-        <TechnicianTrackingMap customer={snap.customer} technician={snap.technician} route={[]} />
+        <TechnicianTrackingMap
+          customer={snap.customer}
+          technician={snap.technician}
+          route={[]}
+          customerLabel={admin ? "Customer's pin" : "Your location"}
+        />
       )}
 
       <ol className="flex justify-between text-xs">

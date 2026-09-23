@@ -21,7 +21,7 @@ export default async function TrackTechnicianPage({ params }: { params: Promise<
           <p className="kicker">Home Service · {snapshot.reference}</p>
           <h1 className="mt-1 text-2xl font-bold text-slate-900">Track your technician</h1>
         </div>
-        <TechnicianTrackingView token={token} initial={snapshot} />
+        <TechnicianTrackingView pollUrl={`/api/track-technician/${token}`} initial={snapshot} />
       </div>
     </main>
   );
