@@ -8,6 +8,9 @@ import { estimateEta, isTrackingClosed, type TrackingSnapshot } from "@/lib/tech
 const TechnicianTrackingMap = dynamic(() => import("./TechnicianTrackingMap"), { ssr: false });
 
 const POLL_MS = 10_000;
+// Before the technician sets off (and once they've arrived) the map is only
+// waiting for a status change, so it doesn't need the 10s live refresh.
+const IDLE_POLL_MS = 60_000;
 // A fix older than this means the technician's phone stopped reporting
 // (screen locked, app closed, no signal) — say so instead of implying
 // they're standing still.
@@ -44,7 +47,9 @@ export default function TechnicianTrackingView({
     // Keep polling through "arrived" so the page closes itself once the job
     // is marked Completed.
     if (isTrackingClosed(snap.phase)) return;
-    const timer = window.setInterval(async () => {
+    const interval = snap.phase === "on_the_way" ? POLL_MS : IDLE_POLL_MS;
+    let timer: number | undefined;
+    const poll = async () => {
       setNow(Date.now());
       try {
         const res = await fetch(pollUrl, { cache: "no-store" });
@@ -52,8 +57,29 @@ export default function TechnicianTrackingView({
       } catch {
         // offline for a moment — keep showing the last position
       }
-    }, POLL_MS);
-    return () => window.clearInterval(timer);
+    };
+    const start = () => {
+      if (timer === undefined) timer = window.setInterval(poll, interval);
+    };
+    const stop = () => {
+      window.clearInterval(timer);
+      timer = undefined;
+    };
+    // Don't poll from a hidden tab (e.g. an admin page left open all day);
+    // catch up right away when it's shown again.
+    const onVisibilityChange = () => {
+      if (document.hidden) stop();
+      else {
+        poll();
+        start();
+      }
+    };
+    if (!document.hidden) start();
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      stop();
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
   }, [pollUrl, snap.phase]);
 
   const eta = snap.technician && snap.customer ? estimateEta(snap.technician, snap.customer) : null;
