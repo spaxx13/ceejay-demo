@@ -49,10 +49,215 @@ export function pinIcon(L: typeof import("leaflet"), emoji: string, bg: string) 
   });
 }
 
+const GOOGLE_MAPS_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+
 // Search box + map where the customer drops a pin on their exact location.
 // The pin can be placed from a search result, by tapping the map, by
 // dragging it, or from the phone's GPS ("Use my current location").
-export default function LocationPinMap({
+//
+// Uses Google Maps + Places search when NEXT_PUBLIC_GOOGLE_MAPS_API_KEY is
+// set — Google finds exact PH house/street addresses that OpenStreetMap's
+// search often can't — and falls back to the key-less OpenStreetMap
+// version otherwise.
+export default function LocationPinMap(props: { value: LatLng | null; onChange: (pos: LatLng, address: string | null) => void }) {
+  return GOOGLE_MAPS_KEY ? <GooglePinMap {...props} /> : <OsmPinMap {...props} />;
+}
+
+// Minimal slice of the Maps JS API used below — kept local (not a global
+// Window augmentation) so it can't collide with HomeServiceForm.tsx's own
+// narrower `window.google` typing for the Street autocomplete.
+type GLatLng = { lat: () => number; lng: () => number };
+type GMap = {
+  addListener: (event: string, cb: (e: { latLng: GLatLng }) => void) => void;
+  setCenter: (pos: LatLng) => void;
+  setZoom: (z: number) => void;
+  panTo: (pos: LatLng) => void;
+};
+type GMarker = {
+  setPosition: (pos: LatLng) => void;
+  getPosition: () => GLatLng | null;
+  addListener: (event: string, cb: () => void) => void;
+};
+type GAutocomplete = {
+  addListener: (event: string, cb: () => void) => void;
+  getPlace: () => { formatted_address?: string; name?: string; geometry?: { location: GLatLng } };
+};
+type GoogleNs = {
+  maps: {
+    Map: new (el: HTMLElement, opts: Record<string, unknown>) => GMap;
+    Marker: new (opts: Record<string, unknown>) => GMarker;
+    places: { Autocomplete: new (input: HTMLInputElement, opts?: Record<string, unknown>) => GAutocomplete };
+  };
+};
+
+// Same script tag (id + libraries) the Street autocomplete in
+// HomeServiceForm.tsx loads, so the two share one copy of the API.
+function loadGoogleMaps(onReady: () => void) {
+  const w = window as unknown as { google?: GoogleNs };
+  if (w.google?.maps?.places) {
+    onReady();
+    return;
+  }
+  const existing = document.getElementById("google-maps-script") as HTMLScriptElement | null;
+  if (existing) {
+    existing.addEventListener("load", onReady);
+    return;
+  }
+  const script = document.createElement("script");
+  script.id = "google-maps-script";
+  script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_KEY}&libraries=places`;
+  script.async = true;
+  script.onload = onReady;
+  document.head.appendChild(script);
+}
+
+function requestCurrentPosition(onPos: (pos: LatLng) => void, onError: (msg: string) => void) {
+  if (!navigator.geolocation) {
+    onError("This browser can't share your location.");
+    return;
+  }
+  navigator.geolocation.getCurrentPosition(
+    (p) => onPos({ lat: p.coords.latitude, lng: p.coords.longitude }),
+    (err) => onError(err.code === err.PERMISSION_DENIED ? "Location permission was denied." : "Couldn't get your location. Try searching instead."),
+    { enableHighAccuracy: true, timeout: 15000 }
+  );
+}
+
+function GooglePinMap({ value, onChange }: { value: LatLng | null; onChange: (pos: LatLng, address: string | null) => void }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const mapRef = useRef<GMap | null>(null);
+  const markerRef = useRef<GMarker | null>(null);
+  const googleRef = useRef<GoogleNs | null>(null);
+  const onChangeRef = useRef(onChange);
+  useEffect(() => {
+    onChangeRef.current = onChange;
+  });
+  const [ready, setReady] = useState(false);
+  const [locating, setLocating] = useState(false);
+  const [geoError, setGeoError] = useState<string | null>(null);
+
+  useEffect(() => {
+    loadGoogleMaps(() => setReady(true));
+  }, []);
+
+  function showMarker(pos: LatLng, zoom?: number) {
+    const g = googleRef.current;
+    const map = mapRef.current;
+    if (!g || !map) return;
+    if (!markerRef.current) {
+      const marker = new g.maps.Marker({ position: pos, map, draggable: true });
+      marker.addListener("dragend", () => {
+        const p = marker.getPosition();
+        if (p) placePin({ lat: p.lat(), lng: p.lng() }, null);
+      });
+      markerRef.current = marker;
+    } else {
+      markerRef.current.setPosition(pos);
+    }
+    if (zoom) {
+      map.setCenter(pos);
+      map.setZoom(zoom);
+    } else {
+      map.panTo(pos);
+    }
+  }
+
+  function placePin(pos: LatLng, knownAddress: string | null, zoom?: number) {
+    if (!mapRef.current) return;
+    showMarker(pos, zoom);
+    onChangeRef.current(pos, knownAddress);
+    if (!knownAddress) {
+      reverseGeocode(pos).then((addr) => {
+        const cur = markerRef.current?.getPosition();
+        if (cur && cur.lat() === pos.lat && cur.lng() === pos.lng) onChangeRef.current(pos, addr);
+      });
+    }
+  }
+
+  useEffect(() => {
+    if (!ready || !containerRef.current || !searchRef.current || mapRef.current) return;
+    const g = (window as unknown as { google: GoogleNs }).google;
+    googleRef.current = g;
+    const map = new g.maps.Map(containerRef.current, {
+      center: value ?? DEFAULT_CENTER,
+      zoom: value ? 17 : 12,
+      streetViewControl: false,
+      mapTypeControl: false,
+      fullscreenControl: false,
+      gestureHandling: "greedy",
+    });
+    mapRef.current = map;
+    map.addListener("click", (e) => placePin({ lat: e.latLng.lat(), lng: e.latLng.lng() }, null));
+    if (value) showMarker(value);
+
+    const autocomplete = new g.maps.places.Autocomplete(searchRef.current, {
+      componentRestrictions: { country: "ph" },
+      fields: ["formatted_address", "name", "geometry"],
+    });
+    autocomplete.addListener("place_changed", () => {
+      const place = autocomplete.getPlace();
+      const loc = place.geometry?.location;
+      if (!loc) return;
+      placePin({ lat: loc.lat(), lng: loc.lng() }, place.formatted_address ?? place.name ?? null, 18);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-time map setup
+  }, [ready]);
+
+  // Follow position changes made outside this map (e.g. the Street field's
+  // own Google autocomplete on the Home Service form).
+  useEffect(() => {
+    if (!value || !mapRef.current) return;
+    const cur = markerRef.current?.getPosition();
+    if (!cur || cur.lat() !== value.lat || cur.lng() !== value.lng) showMarker(value, 17);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value]);
+
+  return (
+    <div className="space-y-2">
+      <input
+        ref={searchRef}
+        type="text"
+        placeholder="Search your exact address, building, or landmark"
+        className="input w-full"
+        aria-label="Search your location"
+        onKeyDown={(e) => {
+          // Inside the Home Service <form>, Enter would submit the booking
+          // instead of picking the highlighted suggestion.
+          if (e.key === "Enter") e.preventDefault();
+        }}
+      />
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          disabled={locating || !ready}
+          className="btn-secondary !px-3 !py-1.5 text-xs"
+          onClick={() => {
+            setLocating(true);
+            setGeoError(null);
+            requestCurrentPosition(
+              (pos) => {
+                setLocating(false);
+                placePin(pos, null, 18);
+              },
+              (msg) => {
+                setLocating(false);
+                setGeoError(msg);
+              }
+            );
+          }}
+        >
+          {locating ? "Locating…" : "📍 Use my current location"}
+        </button>
+        <p className="text-xs text-slate-400">Tap the map or drag the pin to adjust.</p>
+      </div>
+      {geoError && <p className="text-xs text-red-600">{geoError}</p>}
+      <div ref={containerRef} className="h-80 w-full overflow-hidden rounded-xl border border-slate-200 bg-slate-100" />
+    </div>
+  );
+}
+
+function OsmPinMap({
   value,
   onChange,
 }: {
@@ -166,22 +371,17 @@ export default function LocationPinMap({
   }, [query]);
 
   function useMyLocation() {
-    if (!navigator.geolocation) {
-      setGeoError("This browser can't share your location.");
-      return;
-    }
     setLocating(true);
     setGeoError(null);
-    navigator.geolocation.getCurrentPosition(
-      (p) => {
+    requestCurrentPosition(
+      (pos) => {
         setLocating(false);
-        placePin({ lat: p.coords.latitude, lng: p.coords.longitude }, null, 17);
+        placePin(pos, null, 17);
       },
-      (err) => {
+      (msg) => {
         setLocating(false);
-        setGeoError(err.code === err.PERMISSION_DENIED ? "Location permission was denied." : "Couldn't get your location. Try searching instead.");
-      },
-      { enableHighAccuracy: true, timeout: 15000 }
+        setGeoError(msg);
+      }
     );
   }
 
