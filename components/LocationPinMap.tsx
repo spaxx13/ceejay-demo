@@ -99,7 +99,9 @@ export default function LocationPinMap({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  function placePin(pos: LatLng, knownAddress: string | null, zoom?: number) {
+  // Draws/moves the marker only — no onChange. Shared by customer actions
+  // (placePin) and by the parent setting `value` from elsewhere.
+  function showMarker(pos: LatLng, zoom?: number) {
     const L = leafletRef.current;
     const map = mapRef.current;
     if (!L || !map) return;
@@ -115,6 +117,11 @@ export default function LocationPinMap({
     }
     if (zoom) map.setView([pos.lat, pos.lng], zoom);
     else map.panTo([pos.lat, pos.lng]);
+  }
+
+  function placePin(pos: LatLng, knownAddress: string | null, zoom?: number) {
+    if (!leafletRef.current || !mapRef.current) return;
+    showMarker(pos, zoom);
     onChangeRef.current(pos, knownAddress);
     if (!knownAddress) {
       reverseGeocode(pos).then((addr) => {
@@ -125,12 +132,17 @@ export default function LocationPinMap({
     }
   }
 
-  // Keep the pin in sync when the parent sets a position (e.g. reset).
+  // Keep the pin in sync when the parent changes the position itself
+  // (e.g. a reset, or the Google address autocomplete on the real form).
   useEffect(() => {
-    if (!value && markerRef.current) {
-      markerRef.current.remove();
+    if (!value) {
+      markerRef.current?.remove();
       markerRef.current = null;
+      return;
     }
+    const cur = markerRef.current?.getLatLng();
+    if (!cur || cur.lat !== value.lat || cur.lng !== value.lng) showMarker(value, 17);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value]);
 
   useEffect(() => {
@@ -181,6 +193,10 @@ export default function LocationPinMap({
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onFocus={() => results.length > 0 && setShowResults(true)}
+          onKeyDown={(e) => {
+            // Inside the Home Service <form>, Enter would submit the booking.
+            if (e.key === "Enter") e.preventDefault();
+          }}
           placeholder="Search your street, barangay, subdivision, or landmark"
           className="input w-full"
           aria-label="Search your location"

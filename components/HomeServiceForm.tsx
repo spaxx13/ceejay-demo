@@ -11,6 +11,7 @@ import {
   nextSunday,
   minPreferredDateStr,
 } from "@/lib/homeServiceFees";
+import dynamic from "next/dynamic";
 import PhotoUpload from "./PhotoUpload";
 import DynamicFormField from "./DynamicFormField";
 import type { RequestFormContent, CustomFormField, HomeServiceQueue } from "@/lib/types";
@@ -52,6 +53,9 @@ declare global {
 }
 
 const GOOGLE_MAPS_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+
+// Leaflet needs `window`, so the pin map renders client-side only.
+const LocationPinMap = dynamic(() => import("./LocationPinMap"), { ssr: false });
 
 type Brand = { id: string; label: string };
 type Model = { id: string; brandId: string; name: string };
@@ -575,6 +579,22 @@ export default function HomeServiceForm({
             )}
             <input type="hidden" name="lat" value={lat ?? ""} />
             <input type="hidden" name="lng" value={lng ?? ""} />
+            <div className="space-y-1.5 pt-2">
+              <p className="text-xs font-medium text-slate-500">Pin your exact location on the map</p>
+              <p className="text-xs text-slate-400">Search your area, then drag the pin to your gate/door so our technician finds you easily.</p>
+              <LocationPinMap
+                value={lat !== null && lng !== null ? { lat, lng } : null}
+                onChange={(pos) => {
+                  setLat(pos.lat);
+                  setLng(pos.lng);
+                }}
+              />
+              {lat !== null && lng !== null && (
+                <p className="text-xs font-medium text-green-700">
+                  ✓ Location pinned ({lat.toFixed(5)}, {lng.toFixed(5)})
+                </p>
+              )}
+            </div>
           </div>
         );
       case "city":
