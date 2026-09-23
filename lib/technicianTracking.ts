@@ -9,19 +9,22 @@ export function isOnTheWayStatus(label: string | undefined) {
   return l === "en route" || l === "on the way";
 }
 
-// Once work has started (or finished) the technician has arrived.
-export function isArrivedStatus(label: string | undefined) {
-  const l = (label ?? "").trim().toLowerCase();
-  return l === "in progress" || l === "completed";
-}
-
-export type TrackingPhase = "scheduled" | "on_the_way" | "arrived" | "cancelled";
+// Once work has started the technician has arrived; "completed" closes the
+// map entirely (tracking page and admin Live Map).
+export type TrackingPhase = "scheduled" | "on_the_way" | "arrived" | "completed" | "cancelled";
 
 export function trackingPhase(label: string | undefined): TrackingPhase {
   if (isOnTheWayStatus(label)) return "on_the_way";
-  if (isArrivedStatus(label)) return "arrived";
-  if ((label ?? "").trim().toLowerCase() === "cancelled") return "cancelled";
+  const l = (label ?? "").trim().toLowerCase();
+  if (l === "in progress") return "arrived";
+  if (l === "completed") return "completed";
+  if (l === "cancelled") return "cancelled";
   return "scheduled";
+}
+
+// Phases where the job is over and the map is no longer shown.
+export function isTrackingClosed(phase: TrackingPhase) {
+  return phase === "completed" || phase === "cancelled";
 }
 
 // Shape returned by GET /api/track-technician/[token] and passed to the

@@ -27,7 +27,7 @@ import type { ServiceAgreement } from "@/lib/types";
 import { formatDate, formatDateTime } from "@/lib/format";
 import { serviceFeeAmount } from "@/lib/homeServiceFees";
 import { getRepairQuote } from "@/lib/servicePricing";
-import { directionsUrl } from "@/lib/technicianTracking";
+import { directionsUrl, isTrackingClosed } from "@/lib/technicianTracking";
 import { getTrackingSnapshotForRequest } from "@/lib/trackingSnapshot";
 import AdminLiveMap from "@/components/AdminLiveMap";
 
@@ -253,7 +253,7 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
       </div>
 
       {/* Same live map the customer sees from their "on the way" email. */}
-      {trackingSnapshot && (trackingSnapshot.customer || trackingSnapshot.technician) && (
+      {trackingSnapshot && !isTrackingClosed(trackingSnapshot.phase) && (trackingSnapshot.customer || trackingSnapshot.technician) && (
         <AdminLiveMap requestId={req.id} initial={trackingSnapshot} />
       )}
 
