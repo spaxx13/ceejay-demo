@@ -2789,6 +2789,21 @@ export async function technicianUpdateStatus(formData: FormData) {
     `Status updated to "${status.label}" by technician ${user?.name ?? ""}${note ? ` — ${note}` : ""}${cancelled ? " — moved to Trash" : ""}${emailNote}`,
     user?.name ?? "Technician"
   );
+  // Only on the transition into On the Way, so re-saving the same status
+  // (e.g. just adding a note) doesn't notify again.
+  const previousStatus = lookups.find((l) => l.id === req.statusId);
+  if (isOnTheWayStatus(status.label) && !isOnTheWayStatus(previousStatus?.label)) {
+    try {
+      await notifyAdmins(
+        "technician_on_the_way",
+        req.id,
+        `🛵 ${user?.name ?? "A technician"} is on the way to ${req.customerName} (${req.reference}).`
+      );
+    } catch {
+      // Needs migration 0070 (the new notification type) — never fail the
+      // status update over the alert.
+    }
+  }
   if (status.label === "In Progress") {
     await notifyAdmins(
       "request_in_progress",
