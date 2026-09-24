@@ -15,6 +15,11 @@ const config: CapacitorConfig = {
     // same live site, so nothing else about the site needed to change.
     url: "https://ceejayrepair.vercel.app/app-home",
     cleartext: false,
+    // Without this, any navigation away from the exact url above (e.g.
+    // tapping "Home Service" into /request) is treated as external and
+    // kicked out to native Safari chrome instead of staying in the app's
+    // webview. Every page the app links to lives on this same host.
+    allowNavigation: ["ceejayrepair.vercel.app"],
   },
 };
 
