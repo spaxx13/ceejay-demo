@@ -12,6 +12,7 @@ import {
   ICLOUD_CHECK_PRICE_PESOS,
   PICKUP_DELIVERY_PUBLIC_ENABLED,
   PICKUP_DELIVERY_SKIP_PAYMENT,
+  PICKUP_DELIVERY_SKIP_OTP,
 } from "@/lib/config";
 import { CHECKLIST_TEMPLATE } from "./checklist";
 import {
@@ -1744,8 +1745,11 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
   // public request form down — the gate only actually applies once SMS
   // sending is really available. Pickup & Delivery uses this same gate (per
   // the FINAL FLOW spec: SMS OTP verifies the initial booking only) — see
-  // HomeServiceForm.tsx's matching client-side gate.
-  if (OTP_GATE_ENABLED && smsConfigured() && isActive("phone") && phone) {
+  // HomeServiceForm.tsx's matching client-side gate. TEMPORARY:
+  // PICKUP_DELIVERY_SKIP_OTP bypasses it entirely for pickup_delivery — see
+  // lib/config.ts.
+  const pickupDeliverySkipOtp = fulfillmentMode === "pickup_delivery" && PICKUP_DELIVERY_SKIP_OTP;
+  if (!pickupDeliverySkipOtp && OTP_GATE_ENABLED && smsConfigured() && isActive("phone") && phone) {
     const otpRow = await queryOne<{ verified: boolean }>("select verified from otp_codes where phone=$1", [normalizePhone(phone)]);
     if (!otpRow?.verified) return { ok: false, error: "Please verify your phone number before submitting." };
   }

@@ -36,3 +36,9 @@ export const PICKUP_DELIVERY_PUBLIC_ENABLED = process.env.NEXT_PUBLIC_PICKUP_DEL
 // live keys are shared with the rest of the app, so this is the only way
 // to test repeatedly without moving real money each time.
 export const PICKUP_DELIVERY_SKIP_PAYMENT = process.env.PICKUP_DELIVERY_SKIP_PAYMENT === "true";
+
+// TEMPORARY testing toggle — set PICKUP_DELIVERY_SKIP_OTP=true (Preview
+// only) to skip SMS OTP verification for Pickup & Delivery bookings, same
+// reasoning as PICKUP_DELIVERY_SKIP_PAYMENT above (no real SMS sent while
+// testing). Turn back off (or unset) once done.
+export const PICKUP_DELIVERY_SKIP_OTP = process.env.PICKUP_DELIVERY_SKIP_OTP === "true";

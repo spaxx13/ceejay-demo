@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { getLookups, getDeviceModels, getRequestFormContent, getCustomFormFields } from "@/lib/db";
-import { PICKUP_DELIVERY_PUBLIC_ENABLED } from "@/lib/config";
+import { PICKUP_DELIVERY_PUBLIC_ENABLED, PICKUP_DELIVERY_SKIP_OTP } from "@/lib/config";
 import HomeServiceForm from "@/components/HomeServiceForm";
 import { smsConfigured } from "@/lib/sms";
 
@@ -99,7 +99,10 @@ export default async function PickupDeliveryPage() {
             content={content}
             fields={fields}
             area="near"
-            smsAvailable={smsConfigured()}
+            // TEMPORARY: PICKUP_DELIVERY_SKIP_OTP lets the form degrade the
+            // same way it already does when no SMS provider is configured —
+            // no OTP step shown, no real SMS sent — see lib/config.ts.
+            smsAvailable={smsConfigured() && !PICKUP_DELIVERY_SKIP_OTP}
             mode="pickup_delivery"
           />
         )}
