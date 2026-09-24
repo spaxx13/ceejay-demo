@@ -94,6 +94,7 @@ export async function sendQuotationEmail(
     confirmationWindowHours: number;
     downpaymentRequired: boolean;
     downpaymentAmount: number | null;
+    fulfillmentMode: "on_site" | "pickup_delivery";
   }
 ) {
   const client = getClient();
@@ -137,7 +138,17 @@ export async function sendQuotationEmail(
 
   const downpaymentBlock =
     opts.downpaymentRequired && opts.downpaymentAmount !== null
-      ? `
+      ? opts.fulfillmentMode === "pickup_delivery"
+        ? `
+      <div style="margin: 16px 0; padding: 16px; border: 2px solid #f59e0b; border-radius: 8px; background: #fffbeb;">
+        <p style="font-size: 14px; font-weight: 700; color: #92400e; margin: 0 0 6px;">💳 Booking, Diagnostic &amp; Delivery Fee required</p>
+        <p style="font-size: 13px; color: #78350f; margin: 0; line-height: 1.5;">
+          We require a ${peso(opts.downpaymentAmount)} payment to confirm your booking and assign a rider. This one payment covers the
+          pickup trip, the initial diagnosis, and delivery of your repaired device back to you — nothing more to pay when it comes back.
+        </p>
+      </div>
+    `
+        : `
       <div style="margin: 16px 0; padding: 16px; border: 2px solid #f59e0b; border-radius: 8px; background: #fffbeb;">
         <p style="font-size: 14px; font-weight: 700; color: #92400e; margin: 0 0 6px;">💳 Down payment required to secure your slot</p>
         <p style="font-size: 13px; color: #78350f; margin: 0 0 8px; line-height: 1.5;">
@@ -434,6 +445,9 @@ export async function sendPickupDeliveryBookingConfirmedEmail(
         <p style="font-size: 14px; line-height: 1.5;">
           Hi ${escapeHtml(opts.customerName)}, your ${peso(opts.amountPaid)} payment went through and your Pickup &amp; Delivery booking is
           confirmed. We're assigning a rider now — you'll get another email once they're on the way.
+        </p>
+        <p style="font-size: 13px; line-height: 1.5; color: #64748b;">
+          This payment covers pickup, diagnosis, and delivery back to you — nothing more to pay when your repaired device comes back.
         </p>
         <table style="width: 100%; font-size: 13px; margin: 16px 0; border-collapse: collapse;">
           <tr><td style="padding: 4px 0; color: #64748b;">Job ID</td><td style="padding: 4px 0; text-align: right; font-weight: 600;">${escapeHtml(opts.reference)}</td></tr>

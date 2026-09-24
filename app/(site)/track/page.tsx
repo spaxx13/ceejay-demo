@@ -165,7 +165,15 @@ export default async function TrackPage({ searchParams }: { searchParams: Promis
               )}
             </div>
           )}
-          {stage === "ready_for_delivery" && <p className="text-sm text-slate-600">Repaired and ready — waiting for a delivery rider to be assigned.</p>}
+          {stage === "ready_for_delivery" && (
+            <p className="text-sm text-slate-600">
+              Repaired and ready — waiting for a delivery rider to be assigned. Your delivery fee was already included in your Booking,
+              Diagnostic &amp; Delivery Fee, so there&apos;s nothing more to pay.
+            </p>
+          )}
+          {stage === "out_for_delivery" && (
+            <p className="text-sm text-slate-600">Your delivery fee is already paid — nothing to prepare except receiving your device.</p>
+          )}
           {stage === "delivered" && <p className="text-sm font-medium text-green-700">Delivered — this request is complete.</p>}
         </div>
 

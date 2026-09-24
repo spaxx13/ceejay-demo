@@ -2111,6 +2111,7 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
         confirmationWindowHours: BOOKING_CONFIRMATION_WINDOW_HOURS,
         downpaymentRequired: downpaymentActive,
         downpaymentAmount,
+        fulfillmentMode,
       });
       quoteNote = " — quotation emailed";
     } catch (err) {
@@ -2209,9 +2210,10 @@ export async function startHomeServiceDownpayment(token: string): Promise<StartH
       amountPesos: first.downpaymentAmount,
       description:
         first.fulfillmentMode === "pickup_delivery"
-          ? `Ceejay Pickup & Delivery — Booking & Diagnostic Fee — ${reqs.map((r) => r.reference).join(", ")}`
+          ? `Ceejay Pickup & Delivery — Booking, Diagnostic & Delivery Fee — ${reqs.map((r) => r.reference).join(", ")}`
           : `Home Service down payment — ${reqs.map((r) => r.reference).join(", ")}`,
-      lineItemName: first.fulfillmentMode === "pickup_delivery" ? "Pickup & Delivery Booking & Diagnostic Fee" : "Home Service Down Payment",
+      lineItemName:
+        first.fulfillmentMode === "pickup_delivery" ? "Pickup & Delivery Booking, Diagnostic & Delivery Fee" : "Home Service Down Payment",
       paymentMethodTypes: ["qrph"],
       // Both point back to the same confirm-booking page — it always
       // re-derives payment status from the DB (with a fallback

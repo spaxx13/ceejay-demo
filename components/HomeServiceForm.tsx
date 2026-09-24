@@ -275,15 +275,17 @@ export default function HomeServiceForm({
         )}
         {state.downpaymentRequired && state.confirmationUrl && (
           <FormNotice tone="amber" icon="💳">
-            <p className="font-semibold">{mode === "pickup_delivery" ? "Booking & Diagnostic Fee required to confirm your booking" : "Down payment required to confirm your booking"}</p>
+            <p className="font-semibold">
+              {mode === "pickup_delivery" ? "Booking, Diagnostic & Delivery Fee required to confirm your booking" : "Down payment required to confirm your booking"}
+            </p>
             <p className="mt-1">
               {mode === "pickup_delivery"
-                ? `Pickup & Delivery bookings require a ₱${(state.downpaymentAmount ?? 0).toLocaleString()}.00 Booking & Diagnostic Fee via QR Ph before we can confirm your booking and assign a rider.`
+                ? `Pickup & Delivery bookings require a ₱${(state.downpaymentAmount ?? 0).toLocaleString()}.00 Booking, Diagnostic & Delivery Fee via QR Ph before we can confirm your booking and assign a rider — this covers pickup, diagnosis, and delivery back to you, so there's nothing more to pay when your device comes back.`
                 : `Home Service bookings in your area require a ₱${(state.downpaymentAmount ?? 0).toLocaleString()}.00 down payment via QR Ph before we can confirm your booking.`}{" "}
               Please pay within {BOOKING_CONFIRMATION_WINDOW_HOURS} hours, or your request will be automatically cancelled.
             </p>
             <a href={state.confirmationUrl} className="btn-primary mt-3 inline-block">
-              {mode === "pickup_delivery" ? "Pay Booking & Diagnostic Fee Now" : "Pay Down Payment Now"}
+              {mode === "pickup_delivery" ? "Pay Booking, Diagnostic & Delivery Fee Now" : "Pay Down Payment Now"}
             </a>
           </FormNotice>
         )}
@@ -769,7 +771,8 @@ export default function HomeServiceForm({
       {mode === "pickup_delivery" && (
         <FormNotice tone="blue" icon="🚚">
           A rider will pick up your device at the address below, we&apos;ll repair it at the shop, then a rider delivers it back to you.
-          We&apos;ll confirm any delivery fee before pickup.
+          The delivery fee is already included in the Booking, Diagnostic &amp; Delivery Fee below — nothing more to pay when it comes
+          back.
         </FormNotice>
       )}
 
@@ -804,8 +807,8 @@ export default function HomeServiceForm({
         {serviceFeeNote() && <p className="mt-2 font-semibold">{serviceFeeNote()}</p>}
         {mode === "pickup_delivery" && (
           <p className="mt-2 font-semibold">
-            A ₱{PICKUP_DELIVERY_FEE_PESOS.toLocaleString()}.00 Booking &amp; Diagnostic Fee is required via QR Ph after phone verification,
-            before we confirm your booking and assign a rider.
+            A ₱{PICKUP_DELIVERY_FEE_PESOS.toLocaleString()}.00 Booking, Diagnostic &amp; Delivery Fee (pickup + diagnosis + delivery back
+            to you, all included) is required via QR Ph after phone verification, before we confirm your booking and assign a rider.
           </p>
         )}
       </FormNotice>

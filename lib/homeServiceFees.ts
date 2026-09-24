@@ -57,14 +57,20 @@ export const EXCLUDED_FROM_HOME_SERVICE = new Set([
 // decisions that only happen to share the same provinces today.
 export const DOWNPAYMENT_PROVINCES = new Set(["Laguna", "Batangas", "Pampanga"]);
 
-// Pickup & Delivery's flat Booking/Pickup Fee + Initial/Diagnostic Fee (see
-// the FINAL FLOW spec), paid via the same PayMongo QR Ph down-payment flow
-// as DOWNPAYMENT_PROVINCES above before the booking is confirmed and a
-// rider can be assigned. Flat rather than looked up from PROVINCE_FEES
-// since Pickup & Delivery is Metro Manila-only regardless of city.
+// Pickup & Delivery's flat Booking/Pickup Fee + Initial/Diagnostic Fee +
+// Delivery Fee (see the FINAL FLOW spec), paid via the same PayMongo QR Ph
+// down-payment flow as DOWNPAYMENT_PROVINCES above before the booking is
+// confirmed and a rider can be assigned. Flat rather than looked up from
+// PROVINCE_FEES since Pickup & Delivery is Metro Manila-only regardless of
+// city. The Delivery Fee is collected upfront here too (same one-time
+// payment) rather than as a separate charge when the repaired device goes
+// back out, so the customer knows the full cost before booking and there's
+// no second payment step to chase down near delivery time.
 export const PICKUP_DELIVERY_BOOKING_FEE_PESOS = 150;
 export const PICKUP_DELIVERY_DIAGNOSTIC_FEE_PESOS = 200;
-export const PICKUP_DELIVERY_FEE_PESOS = PICKUP_DELIVERY_BOOKING_FEE_PESOS + PICKUP_DELIVERY_DIAGNOSTIC_FEE_PESOS;
+export const PICKUP_DELIVERY_DELIVERY_FEE_PESOS = 150;
+export const PICKUP_DELIVERY_FEE_PESOS =
+  PICKUP_DELIVERY_BOOKING_FEE_PESOS + PICKUP_DELIVERY_DIAGNOSTIC_FEE_PESOS + PICKUP_DELIVERY_DELIVERY_FEE_PESOS;
 
 // Local calendar date (YYYY-MM-DD) for a Date, using its local getters
 // throughout — unlike `d.toISOString().slice(0, 10)`, this can't roll the
