@@ -13,6 +13,7 @@ import {
   getUsers,
   getTechnicians,
   getBranches,
+  getRiders,
   getLookups,
   getCustomers,
   getDeviceModels,
@@ -1642,6 +1643,16 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
   const requestedFulfillmentMode = str(formData, "fulfillmentMode");
   const fulfillmentMode: "on_site" | "pickup_delivery" =
     requestedFulfillmentMode === "pickup_delivery" && PICKUP_DELIVERY_PUBLIC_ENABLED ? "pickup_delivery" : "on_site";
+
+  // Don't take a paid Pickup & Delivery booking nobody can fulfill — the
+  // public page already hides the form when this is true, this is just the
+  // server-side backstop for a hand-crafted/stale submission.
+  if (fulfillmentMode === "pickup_delivery") {
+    const riders = await getRiders();
+    if (!riders.some((r) => r.active)) {
+      return { ok: false, error: "No riders are available for Pickup & Delivery right now — please try again later, or book Home Service instead." };
+    }
+  }
 
   const name = str(formData, "name");
   const phone = str(formData, "phone");

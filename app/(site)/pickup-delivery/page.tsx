@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getLookups, getDeviceModels, getRequestFormContent, getCustomFormFields } from "@/lib/db";
+import { getLookups, getDeviceModels, getRequestFormContent, getCustomFormFields, getRiders } from "@/lib/db";
 import { PICKUP_DELIVERY_PUBLIC_ENABLED } from "@/lib/config";
 import HomeServiceForm from "@/components/HomeServiceForm";
 import { smsConfigured } from "@/lib/sms";
@@ -36,11 +36,12 @@ export default async function PickupDeliveryPage() {
     );
   }
 
-  const [lookups, deviceModels, content, customFormFields] = await Promise.all([
+  const [lookups, deviceModels, content, customFormFields, riders] = await Promise.all([
     getLookups(),
     getDeviceModels(),
     getRequestFormContent(),
     getCustomFormFields(),
+    getRiders(),
   ]);
 
   if (!content.nearAreaEnabled) {
@@ -51,6 +52,34 @@ export default async function PickupDeliveryPage() {
           <h1 className="text-2xl font-bold text-slate-900">Temporarily Unavailable</h1>
           <p className="text-sm text-slate-400">Please contact a branch directly, or try Home Service instead.</p>
           <div className="flex flex-wrap justify-center gap-3 pt-2">
+            <Link href="/branches" className="btn-secondary">
+              Find a Branch
+            </Link>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  // Nobody to actually do the pickup — don't take a paid booking nobody can
+  // fulfill. "Available" here just means an active rider account exists
+  // (same "Active" toggle Admin > Riders already uses), not a real-time
+  // online/offline status — the simplest check that still stops the
+  // obvious failure case.
+  if (!riders.some((r) => r.active)) {
+    return (
+      <main className="grid-bg px-4 py-16 sm:px-6">
+        <div className="mx-auto max-w-xl space-y-4 text-center">
+          <p className="kicker">Pickup &amp; Delivery</p>
+          <h1 className="text-2xl font-bold text-slate-900">No Riders Available Right Now</h1>
+          <p className="text-sm text-slate-400">
+            All our riders are currently unavailable, so we can&apos;t accept a Pickup &amp; Delivery booking at the moment. Please try
+            again later, or book Home Service instead.
+          </p>
+          <div className="flex flex-wrap justify-center gap-3 pt-2">
+            <Link href="/request" className="btn-primary">
+              Book Home Service instead
+            </Link>
             <Link href="/branches" className="btn-secondary">
               Find a Branch
             </Link>
