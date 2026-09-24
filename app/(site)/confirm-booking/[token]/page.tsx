@@ -1,7 +1,8 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { getRequestsByConfirmationToken } from "@/lib/db";
-import { confirmBooking, startHomeServiceDownpayment, processHomeServiceDownpayment } from "@/lib/actions";
+import { confirmBooking, startHomeServiceDownpayment } from "@/lib/actions";
+import { processHomeServiceDownpayment } from "@/lib/paymentProcessing";
 import { retrieveCheckoutSession } from "@/lib/paymongo";
 import { formatDate } from "@/lib/format";
 

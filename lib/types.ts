@@ -363,6 +363,12 @@ export type HomeServiceRequest = {
   paymongoPaymentId: string | null;
   downpaymentPaidAt: string | null;
   deletedAt: string | null; // set when moved to Trash — null again once restored
+  // Live technician tracking (supabase/migrations/0069) — token for the
+  // customer's /track-technician link, and the technician's latest GPS fix.
+  trackingToken: string | null;
+  techLat: number | null;
+  techLng: number | null;
+  techLocationAt: string | null;
   serviceFeeWaived: boolean; // set by a staff account with canWaiveServiceFee — treats the province-computed visit fee (lib/homeServiceFees.ts) as ₱0 wherever it's quoted/displayed, without changing the underlying province fee table
   // Pickup & Delivery — a second fulfillment mode alongside the default
   // "on_site" (technician visits the address). "pickup_delivery" reuses this
@@ -648,7 +654,7 @@ export type RepairProgress = {
 // deployment would send. Owner and branch admins both see these.
 export type Notification = {
   id: string;
-  type: "new_request" | "request_in_progress" | "checklist_completed" | "new_walkin";
+  type: "new_request" | "request_in_progress" | "checklist_completed" | "new_walkin" | "technician_on_the_way";
   requestId: string | null;
   walkinRequestId: string | null;
   message: string;

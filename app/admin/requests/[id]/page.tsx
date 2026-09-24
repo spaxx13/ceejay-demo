@@ -27,6 +27,9 @@ import type { ServiceAgreement } from "@/lib/types";
 import { formatDate, formatDateTime } from "@/lib/format";
 import { serviceFeeAmount } from "@/lib/homeServiceFees";
 import { getRepairQuote } from "@/lib/servicePricing";
+import { directionsUrl, isTrackingClosed } from "@/lib/technicianTracking";
+import { getTrackingSnapshotForRequest } from "@/lib/trackingSnapshot";
+import AdminLiveMap from "@/components/AdminLiveMap";
 
 const peso = (n: number) => `₱${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
@@ -156,6 +159,7 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
       (t.active && (homeServiceBranch ? t.branchIds.includes(homeServiceBranch.id) : true)) || t.id === req.assignedTechnicianId
   );
   const currentStatus = statuses.find((s) => s.id === req.statusId);
+  const trackingSnapshot = await getTrackingSnapshotForRequest(req.id);
   const activity = activityLog
     .filter((a) => a.entityType === "home_service_request" && a.entityId === req.id)
     .sort((a, b) => (a.at < b.at ? 1 : -1));
@@ -248,6 +252,11 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
         </div>
       </div>
 
+      {/* Same live map the customer sees from their "on the way" email. */}
+      {trackingSnapshot && !isTrackingClosed(trackingSnapshot.phase) && (trackingSnapshot.customer || trackingSnapshot.technician) && (
+        <AdminLiveMap requestId={req.id} initial={trackingSnapshot} />
+      )}
+
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="card space-y-3 lg:col-span-2">
           <h3 className="text-sm font-semibold text-slate-800">Request Details</h3>
@@ -282,6 +291,27 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
                 text={`${req.street}${req.barangay ? `, Brgy. ${req.barangay}` : ""}, ${req.city}${req.province ? `, ${req.province}` : ""}${req.landmark ? ` (near ${req.landmark})` : ""}`}
               />
             </dd>
+            <dt className="text-slate-400">Map Pin</dt>
+            <dd className="text-slate-800">
+              {req.lat !== null && req.lng !== null ? (
+                <a href={directionsUrl(req.lat, req.lng)} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                  📍 Open in Google Maps
+                </a>
+              ) : (
+                <span className="text-slate-400">No pin</span>
+              )}
+            </dd>
+            {req.trackingToken && (
+              <>
+                {/* Same link the customer is emailed when the job goes On the Way — handy to copy/send manually. */}
+                <dt className="text-slate-400">Tracking Link</dt>
+                <dd className="text-slate-800">
+                  <a href={`/track-technician/${req.trackingToken}`} target="_blank" rel="noopener noreferrer" className="break-all text-blue-600 hover:underline">
+                    /track-technician/{req.trackingToken}
+                  </a>
+                </dd>
+              </>
+            )}
             <dt className="text-slate-400">Preferred</dt>
             <dd className="text-slate-800">{formatDate(req.preferredDatetime)}</dd>
             <dt className="text-slate-400">Vlog Consent</dt>

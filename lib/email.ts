@@ -50,8 +50,8 @@ export async function sendRepairReceiptEmail(
       <p style="font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8;">Ceejay Cellphone Repair Shop</p>
       <h2 style="margin: 4px 0 16px;">Your repair receipt is ready</h2>
       <p style="font-size: 14px; line-height: 1.5;">
-        Hi ${opts.customerName}, thanks for choosing Ceejay Cellphone Repair Shop. Your receipt for
-        <strong>${opts.reference}</strong> (${opts.deviceLabel || "your device"}, ${peso(total)}) is attached as a PDF —
+        Hi ${escapeHtml(opts.customerName)}, thanks for choosing Ceejay Cellphone Repair Shop. Your receipt for
+        <strong>${escapeHtml(opts.reference)}</strong> (${escapeHtml(opts.deviceLabel || "your device")}, ${peso(total)}) is attached as a PDF —
         it includes the full pre- and post-repair checklist results and both signed copies.
       </p>
       <p style="font-size: 13px; color: #64748b;">If anything looks off, just reply to this email or contact the branch you visited.</p>
@@ -158,8 +158,8 @@ export async function sendQuotationEmail(
       <p style="font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8;">Ceejay Cellphone Repair Shop</p>
       <h2 style="margin: 4px 0 16px;">Your repair quotation is ready</h2>
       <p style="font-size: 14px; line-height: 1.5;">
-        Hi ${opts.customerName}, thanks for booking a home service repair with us. Your quotation for
-        <strong>${opts.referenceList}</strong> is attached as a PDF — ${totalLine}.
+        Hi ${escapeHtml(opts.customerName)}, thanks for booking a home service repair with us. Your quotation for
+        <strong>${escapeHtml(opts.referenceList)}</strong> is attached as a PDF — ${totalLine}.
       </p>
       <ul style="font-size: 13px; padding-left: 18px; margin: 12px 0;">${deviceLines}</ul>
       ${downpaymentBlock}
@@ -315,7 +315,7 @@ export async function sendAppointmentReminderEmail(to: string, opts: { customerN
         <h2 style="margin: 4px 0 16px;">See you tomorrow!</h2>
         <p style="font-size: 14px; line-height: 1.5;">
           Hi ${escapeHtml(opts.customerName)}, this is a reminder that your home service appointment
-          <strong>${opts.reference}</strong> is scheduled for <strong>${escapeHtml(opts.preferredDatetime)}</strong>.
+          <strong>${escapeHtml(opts.reference)}</strong> is scheduled for <strong>${escapeHtml(opts.preferredDatetime)}</strong>.
         </p>
         <p style="font-size: 13px; color: #64748b;">If you need to reschedule or have any questions, just reply to this email or contact the branch you visited.</p>
       </div>
@@ -359,8 +359,8 @@ export async function sendCancellationEmail(to: string, opts: { customerName: st
         <p style="font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8;">Ceejay Cellphone Repair Shop</p>
         <h2 style="margin: 4px 0 16px;">Your repair has been cancelled</h2>
         <p style="font-size: 14px; line-height: 1.5;">
-          Hi ${opts.customerName}, your repair <strong>${opts.reference}</strong> has been cancelled.
-          ${opts.reason ? `<br/><br/><strong>Reason:</strong> ${opts.reason}` : ""}
+          Hi ${escapeHtml(opts.customerName)}, your repair <strong>${escapeHtml(opts.reference)}</strong> has been cancelled.
+          ${opts.reason ? `<br/><br/><strong>Reason:</strong> ${escapeHtml(opts.reason)}` : ""}
         </p>
         <p style="font-size: 13px; color: #64748b;">If you have any questions, just reply to this email or contact the branch you visited.</p>
       </div>
@@ -396,14 +396,14 @@ export async function sendTrackingLinkEmail(
         <p style="font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8;">Ceejay Cellphone Repair Shop</p>
         <h2 style="margin: 4px 0 16px;">${heading}</h2>
         <p style="font-size: 14px; line-height: 1.5;">
-          Hi ${opts.customerName}, ${body}
+          Hi ${escapeHtml(opts.customerName)}, ${body}
         </p>
         <p style="margin: 20px 0;">
           <a href="${trackingUrl}" style="display: inline-block; background: #0071e3; color: #fff; padding: 10px 20px; border-radius: 999px; text-decoration: none; font-size: 14px; font-weight: 600;">
             Track My Request
           </a>
         </p>
-        <p style="font-size: 13px; color: #64748b;">Reference: <strong>${opts.reference}</strong></p>
+        <p style="font-size: 13px; color: #64748b;">Reference: <strong>${escapeHtml(opts.reference)}</strong></p>
       </div>
     `,
   });
@@ -411,10 +411,10 @@ export async function sendTrackingLinkEmail(
 }
 
 // Sent once when a Pickup & Delivery booking's Booking & Diagnostic Fee
-// clears (see confirmBookingRows in lib/actions.ts) — the FINAL FLOW spec's
-// "Ceejay Repair Booking Confirmed" email. The quotation email sent at
-// submission time already asked for this payment; this one confirms it
-// went through and hands over the tracking link.
+// clears (see confirmBookingRows in lib/paymentProcessing.ts) — the FINAL
+// FLOW spec's "Ceejay Repair Booking Confirmed" email. The quotation email
+// sent at submission time already asked for this payment; this one
+// confirms it went through and hands over the tracking link.
 export async function sendPickupDeliveryBookingConfirmedEmail(
   to: string,
   opts: { customerName: string; reference: string; phone: string; deviceLabel: string; preferredDate: string; address: string; amountPaid: number }
@@ -432,14 +432,14 @@ export async function sendPickupDeliveryBookingConfirmedEmail(
         <p style="font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8;">Ceejay Cellphone Repair Shop</p>
         <h2 style="margin: 4px 0 16px;">Your booking is confirmed!</h2>
         <p style="font-size: 14px; line-height: 1.5;">
-          Hi ${opts.customerName}, your ${peso(opts.amountPaid)} payment went through and your Pickup &amp; Delivery booking is confirmed.
-          We're assigning a rider now — you'll get another email once they're on the way.
+          Hi ${escapeHtml(opts.customerName)}, your ${peso(opts.amountPaid)} payment went through and your Pickup &amp; Delivery booking is
+          confirmed. We're assigning a rider now — you'll get another email once they're on the way.
         </p>
         <table style="width: 100%; font-size: 13px; margin: 16px 0; border-collapse: collapse;">
-          <tr><td style="padding: 4px 0; color: #64748b;">Job ID</td><td style="padding: 4px 0; text-align: right; font-weight: 600;">${opts.reference}</td></tr>
-          <tr><td style="padding: 4px 0; color: #64748b;">Device</td><td style="padding: 4px 0; text-align: right;">${opts.deviceLabel}</td></tr>
-          <tr><td style="padding: 4px 0; color: #64748b;">Pickup Schedule</td><td style="padding: 4px 0; text-align: right;">${opts.preferredDate}</td></tr>
-          <tr><td style="padding: 4px 0; color: #64748b;">Pickup Address</td><td style="padding: 4px 0; text-align: right;">${opts.address}</td></tr>
+          <tr><td style="padding: 4px 0; color: #64748b;">Job ID</td><td style="padding: 4px 0; text-align: right; font-weight: 600;">${escapeHtml(opts.reference)}</td></tr>
+          <tr><td style="padding: 4px 0; color: #64748b;">Device</td><td style="padding: 4px 0; text-align: right;">${escapeHtml(opts.deviceLabel)}</td></tr>
+          <tr><td style="padding: 4px 0; color: #64748b;">Pickup Schedule</td><td style="padding: 4px 0; text-align: right;">${escapeHtml(opts.preferredDate)}</td></tr>
+          <tr><td style="padding: 4px 0; color: #64748b;">Pickup Address</td><td style="padding: 4px 0; text-align: right;">${escapeHtml(opts.address)}</td></tr>
           <tr><td style="padding: 4px 0; color: #64748b;">Amount Paid</td><td style="padding: 4px 0; text-align: right;">${peso(opts.amountPaid)}</td></tr>
         </table>
         <p style="margin: 20px 0;">
@@ -447,6 +447,37 @@ export async function sendPickupDeliveryBookingConfirmedEmail(
             Track My Request
           </a>
         </p>
+      </div>
+    `,
+  });
+  if (error) throw new Error(error.message);
+}
+
+// Sent once, the first time a Home Service request's status becomes
+// "En Route" — links the customer to the live /track-technician map.
+export async function sendTechnicianOnTheWayEmail(
+  to: string,
+  opts: { customerName: string; reference: string; technicianName: string; trackingUrl: string }
+) {
+  const client = getClient();
+  const { error } = await client.emails.send({
+    from: FROM,
+    to,
+    subject: `Your technician is on the way — ${opts.reference}`,
+    html: `
+      <div style="font-family: -apple-system, sans-serif; max-width: 480px; margin: 0 auto; color: #1e293b;">
+        <p style="font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8;">Ceejay Cellphone Repair Shop</p>
+        <h2 style="margin: 4px 0 16px;">Your technician is on the way 🛵</h2>
+        <p style="font-size: 14px; line-height: 1.5;">
+          Hi ${escapeHtml(opts.customerName)}, ${escapeHtml(opts.technicianName)} is now heading to your pinned location
+          for your home service <strong>${escapeHtml(opts.reference)}</strong>.
+        </p>
+        <p style="margin: 24px 0;">
+          <a href="${opts.trackingUrl}" style="display: inline-block; background: #0071e3; color: #fff; text-decoration: none; padding: 12px 20px; border-radius: 9999px; font-weight: 600;">
+            Track your technician
+          </a>
+        </p>
+        <p style="font-size: 13px; color: #64748b;">The map updates live while your technician is on the way. If the button doesn't work, open this link: ${opts.trackingUrl}</p>
       </div>
     `,
   });

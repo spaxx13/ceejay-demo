@@ -7,7 +7,8 @@ import PrintReceiptButton from "@/components/PrintReceiptButton";
 import PopupLink from "@/components/PopupLink";
 import ResendReceiptButton from "@/components/ResendReceiptButton";
 import DeleteButton from "@/components/DeleteButton";
-import { cancelRepairRecord, updateRepairRecordDetails, deleteRepairRecord, startRepairRecordQrPayment, processRepairRecordQrPayment } from "@/lib/actions";
+import { cancelRepairRecord, updateRepairRecordDetails, deleteRepairRecord, startRepairRecordQrPayment } from "@/lib/actions";
+import { processRepairRecordQrPayment } from "@/lib/paymentProcessing";
 import { retrieveCheckoutSession, paymongoConfigured } from "@/lib/paymongo";
 
 const peso = (n: number) => `₱${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;

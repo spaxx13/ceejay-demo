@@ -12,6 +12,7 @@ import {
   nextSunday,
   minPreferredDateStr,
 } from "@/lib/homeServiceFees";
+import dynamic from "next/dynamic";
 import PhotoUpload from "./PhotoUpload";
 import DynamicFormField from "./DynamicFormField";
 import MapPinPicker from "./MapPinPicker";
@@ -32,28 +33,10 @@ function FormNotice({ children, tone = "amber", icon = "⚠️" }: { children: R
   );
 }
 
-declare global {
-  interface Window {
-    google?: {
-      maps: {
-        places: {
-          Autocomplete: new (
-            input: HTMLInputElement,
-            opts?: Record<string, unknown>
-          ) => {
-            addListener: (event: string, cb: () => void) => void;
-            getPlace: () => {
-              address_components?: { long_name: string; types: string[] }[];
-              geometry?: { location: { lat: () => number; lng: () => number } };
-            };
-          };
-        };
-      };
-    };
-  }
-}
-
 const GOOGLE_MAPS_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+
+// Leaflet needs `window`, so the pin map renders client-side only.
+const LocationPinMap = dynamic(() => import("./LocationPinMap"), { ssr: false });
 
 type Brand = { id: string; label: string };
 type Model = { id: string; brandId: string; name: string };
@@ -111,7 +94,6 @@ export default function HomeServiceForm({
   const [barangay, setBarangay] = useState("");
   const [lat, setLat] = useState<number | null>(null);
   const [lng, setLng] = useState<number | null>(null);
-  const streetRef = useRef<HTMLInputElement>(null);
   const [vlogConsent, setVlogConsent] = useState(false);
   const [preferredDate, setPreferredDate] = useState("");
 
@@ -260,7 +242,6 @@ export default function HomeServiceForm({
     }
   }
 
-  const streetActive = fields.some((f) => f.systemKey === "street");
   const phoneField = fields.find((f) => f.systemKey === "phone");
   // Also requires smsAvailable (whether SEMAPHORE_API_KEY is actually set)
   // so the form degrades gracefully — with no SMS provider configured,
@@ -270,46 +251,6 @@ export default function HomeServiceForm({
   // Delivery uses this gate too (per the FINAL FLOW spec: SMS OTP verifies
   // the initial booking only — every update after that goes out by email).
   const phoneGateActive = OTP_GATE_ENABLED && smsAvailable && (phoneField?.active ?? false);
-
-  useEffect(() => {
-    if (!GOOGLE_MAPS_KEY || !streetActive) return;
-
-    function initAutocomplete() {
-      if (!window.google || !streetRef.current) return;
-      const autocomplete = new window.google.maps.places.Autocomplete(streetRef.current, {
-        componentRestrictions: { country: "ph" },
-        fields: ["address_components", "geometry"],
-      });
-      autocomplete.addListener("place_changed", () => {
-        const place = autocomplete.getPlace();
-        // City/Province/Barangay are always driven by the cascading dropdown
-        // below (both queues) — autofilling them here from Google's own text
-        // would just as often mismatch that curated list's exact option
-        // strings and silently reset the selects. Only the geocoded
-        // coordinates are useful from this autocomplete now.
-        if (place.geometry?.location) {
-          setLat(place.geometry.location.lat());
-          setLng(place.geometry.location.lng());
-        }
-      });
-    }
-
-    if (window.google) {
-      initAutocomplete();
-      return;
-    }
-    const existing = document.getElementById("google-maps-script") as HTMLScriptElement | null;
-    if (existing) {
-      existing.addEventListener("load", initAutocomplete);
-      return;
-    }
-    const script = document.createElement("script");
-    script.id = "google-maps-script";
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_KEY}&libraries=places`;
-    script.async = true;
-    script.onload = initAutocomplete;
-    document.head.appendChild(script);
-  }, [streetActive, area]);
 
   if (state?.ok) {
     return (
@@ -605,7 +546,8 @@ export default function HomeServiceForm({
             <label className="text-xs font-medium text-slate-500">
               {field.label} {asterisk}
             </label>
-            <input ref={streetRef} name="street" required={req} className="input" placeholder={field.placeholder} />
+            {/* Plain text on purpose — searching/pinning happens in the map below. */}
+            <input name="street" required={req} className="input" placeholder={field.placeholder} />
             {!GOOGLE_MAPS_KEY && (
               <FormNotice tone="blue" icon="📍">
                 Please also fill in your Landmark below — this helps our technician find you accurately.
@@ -613,6 +555,22 @@ export default function HomeServiceForm({
             )}
             <input type="hidden" name="lat" value={lat ?? ""} />
             <input type="hidden" name="lng" value={lng ?? ""} />
+            <div className="space-y-1.5 pt-2">
+              <p className="text-xs font-medium text-slate-500">Pin your exact location on the map</p>
+              <p className="text-xs text-slate-400">Search your area, then drag the pin to your gate/door so our technician finds you easily.</p>
+              <LocationPinMap
+                value={lat !== null && lng !== null ? { lat, lng } : null}
+                onChange={(pos) => {
+                  setLat(pos.lat);
+                  setLng(pos.lng);
+                }}
+              />
+              {lat !== null && lng !== null && (
+                <p className="text-xs font-medium text-green-700">
+                  ✓ Location pinned ({lat.toFixed(5)}, {lng.toFixed(5)})
+                </p>
+              )}
+            </div>
           </div>
         );
       case "city":

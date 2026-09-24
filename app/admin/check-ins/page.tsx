@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { getCheckIns, isBranchHidden } from "@/lib/db";
+import { getCheckIns, getBranches, isBranchHidden } from "@/lib/db";
 import { getCurrentUser, requireRole } from "@/lib/auth";
 import { formatDateTime, todayDateStr, toManilaDateStr } from "@/lib/format";
 import type { CheckIn, Role } from "@/lib/types";
@@ -26,7 +26,8 @@ export default async function CheckInsPage({ searchParams }: { searchParams: Pro
 
   const user = await getCurrentUser();
   const sp = await searchParams;
-  const allCheckIns = (await getCheckIns()).filter((c) => !isBranchHidden(user, c.branchId));
+  const [allCheckInsRaw, allBranches] = await Promise.all([getCheckIns(), getBranches()]);
+  const allCheckIns = allCheckInsRaw.filter((c) => !isBranchHidden(user, c.branchId));
 
   // Default to today (Asia/Manila) so the page always opens on the most
   // current check-ins instead of every check-in ever recorded — an explicit
@@ -48,8 +49,23 @@ export default async function CheckInsPage({ searchParams }: { searchParams: Pro
 
   const todayCheckIns = allCheckIns.filter((c) => toManilaDateStr(c.checkedInAt) === today);
 
-  const homeServiceCheckIns = checkIns.filter((c) => c.branchName === "Home Service").sort(byCheckedInAsc);
-  const branchCheckIns = checkIns.filter((c) => c.branchName !== "Home Service").sort(byCheckedInAsc);
+  // One group per active branch this account can see — real (addressed)
+  // branches first, alphabetically, then backend-only ones (e.g. "Home
+  // Service") last — instead of one combined "Branch" bucket, so it's
+  // obvious at a glance which specific branch someone checked into, and
+  // which branch has nobody checked in yet today. A branch still shows up
+  // with an empty state even with zero check-ins in the current filter.
+  const visibleBranches = allBranches.filter((b) => b.active && !isBranchHidden(user, b.id));
+  const branchGroups = [...visibleBranches]
+    .sort((a, b) => {
+      if (!!a.address !== !!b.address) return a.address ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    })
+    .map((b) => ({ id: b.id, name: b.name, checkIns: checkIns.filter((c) => c.branchId === b.id).sort(byCheckedInAsc) }));
+  // A check-in whose branch was since renamed/deactivated/deleted would
+  // otherwise vanish from every group above — keep it visible instead.
+  const knownBranchIds = new Set(visibleBranches.map((b) => b.id));
+  const otherCheckIns = checkIns.filter((c) => !c.branchId || !knownBranchIds.has(c.branchId)).sort(byCheckedInAsc);
 
   return (
     <div className="space-y-6">
@@ -101,8 +117,10 @@ export default async function CheckInsPage({ searchParams }: { searchParams: Pro
       </form>
       {!hasFilter && <p className="-mt-3 text-xs text-slate-400">Showing today&apos;s check-ins ({today}). Set a date range above to see other days.</p>}
 
-      <CheckInGroup title="Branch" checkIns={branchCheckIns} />
-      <CheckInGroup title="Home Service" checkIns={homeServiceCheckIns} />
+      {branchGroups.map((g) => (
+        <CheckInGroup key={g.id} title={g.name} checkIns={g.checkIns} />
+      ))}
+      {otherCheckIns.length > 0 && <CheckInGroup title="Other" checkIns={otherCheckIns} />}
     </div>
   );
 }

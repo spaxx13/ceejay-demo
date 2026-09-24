@@ -13,8 +13,10 @@ import {
   getBranches,
   getTodayCheckIn,
   technicianSharePercent,
+  canonicalTechnicianName,
   homeServiceSalesByTechnician,
   sumHomeServiceSales,
+  homeServiceBusinessExpenses,
   canManageHomeServiceRequests,
   canViewAllBranchSales,
   isBranchHidden,
@@ -77,11 +79,17 @@ export default async function AdminDashboard() {
   // Sales' own "All Branches — Combined" card, just pre-filtered to today
   // instead of a date range, so this can never disagree with that page.
   const todayExpenses = expenses.filter((e) => e.expenseDate === today);
+  const homeServiceQueueBranchIds = branches.filter((b) => b.homeServiceQueue !== null).map((b) => b.id);
   const netProfitExpenseTotal = todayExpenses.filter((e) => e.target === "owner_total_sales").reduce((s, e) => s + e.amount, 0);
-  const businessExpenseTotal = todayExpenses.filter((e) => e.target === "owner_final_total_sales").reduce((s, e) => s + e.amount, 0);
+  // Excludes an expense explicitly tied to a Home Service queue branch —
+  // that one is deducted from todayHomeServiceSales.companyShare below
+  // instead, never both.
+  const businessExpenseTotal = todayExpenses
+    .filter((e) => e.target === "owner_final_total_sales" && (e.branchId === null || !homeServiceQueueBranchIds.includes(e.branchId)))
+    .reduce((s, e) => s + e.amount, 0);
   const todayTechTotals = new Map<string, { revenue: number; jobCost: number; sharePercent: number }>();
   for (const r of todayRecords.filter((r) => !r.cancelled)) {
-    const name = r.technicianName.trim() || "Unassigned";
+    const name = canonicalTechnicianName(r.technicianName, technicians) || "Unassigned";
     if (!todayTechTotals.has(name)) todayTechTotals.set(name, { revenue: 0, jobCost: 0, sharePercent: technicianSharePercent(name, technicians) });
     const t = todayTechTotals.get(name)!;
     t.revenue += r.cost;
@@ -102,10 +110,12 @@ export default async function AdminDashboard() {
   // Home Service's own 30/70 split (fixed, not per-technician like POS
   // above) — same shared helpers as the Requests page's "Home Service
   // Sales — Today" card and Sales > Home Service, so this figure can't
-  // drift from either of those. Business expenses aren't wired to Home
-  // Service anywhere else in the app, so none are deducted here either.
-  const todayHomeServiceSales = sumHomeServiceSales(homeServiceSalesByTechnician(agreements, (date) => date === today, allRequests));
-  const businessShareNetToday = posBusinessShareNetToday + todayHomeServiceSales.companyShare;
+  // drift from either of those. An "Owner's Final Total Sales" expense
+  // logged with Branch = Home Service reduces this share, same as Sales >
+  // Home Service and Branch Sales.
+  const todayHomeServiceSales = sumHomeServiceSales(homeServiceSalesByTechnician(agreements, (date) => date === today, allRequests, technicians));
+  const todayHomeServiceExpenses = homeServiceBusinessExpenses(expenses, (date) => date === today, homeServiceQueueBranchIds);
+  const businessShareNetToday = posBusinessShareNetToday + todayHomeServiceSales.companyShare - todayHomeServiceExpenses;
 
   const recent = [...requests].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)).slice(0, 6);
   const requestsAccess = canManageHomeServiceRequests(user);

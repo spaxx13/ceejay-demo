@@ -7,8 +7,10 @@ import {
   getRequests,
   getDeviceModels,
   getServiceAgreements,
+  getExpenses,
   homeServiceSalesByTechnician,
   sumHomeServiceSales,
+  homeServiceBusinessExpenses,
   canManageHomeServiceRequests,
   canDeleteHomeServiceRequests,
   isBranchHidden,
@@ -26,19 +28,20 @@ const peso = (n: number) => `₱${n.toLocaleString(undefined, { minimumFractionD
 export default async function RequestsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string; technician?: string; date?: string; unassigned?: string; province?: string }>;
+  searchParams: Promise<{ status?: string; technician?: string; date?: string; unassigned?: string; province?: string; downpayment?: string }>;
 }) {
   const user = await getCurrentUser();
   if (!canManageHomeServiceRequests(user)) redirect("/admin");
 
   const sp = await searchParams;
-  const [lookups, technicians, branches, allRequests, deviceModels, agreements] = await Promise.all([
+  const [lookups, technicians, branches, allRequests, deviceModels, agreements, expenses] = await Promise.all([
     getLookups(),
     getTechnicians(),
     getBranches(),
     getRequests(),
     getDeviceModels(),
     getServiceAgreements(),
+    getExpenses(),
   ]);
   const statuses = lookups.filter((l) => l.kind === "request_status").sort((a, b) => a.order - b.order);
 
@@ -65,6 +68,7 @@ export default async function RequestsPage({
   if (sp.technician) requests = requests.filter((r) => r.assignedTechnicianId === sp.technician);
   if (sp.date) requests = requests.filter((r) => r.preferredDatetime.startsWith(sp.date!));
   if (sp.province) requests = requests.filter((r) => r.province === sp.province);
+  if (sp.downpayment) requests = requests.filter((r) => r.downpaymentStatus === sp.downpayment);
   if (sp.unassigned === "1") requests = requests.filter(isUnassigned);
   requests.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
 
@@ -115,8 +119,10 @@ export default async function RequestsPage({
   // Same 30/70 split as Sales > Home Service, scoped to today only — a
   // quick "how are we doing" summary so this page doesn't need its own
   // date-range picker; the full breakdown is still one click away there.
-  const salesRows = homeServiceSalesByTechnician(agreements, (date) => date === todayStr, allRequests);
+  const salesRows = homeServiceSalesByTechnician(agreements, (date) => date === todayStr, allRequests, technicians);
   const salesTotal = sumHomeServiceSales(salesRows);
+  const homeServiceQueueBranchIds = branches.filter((b) => b.homeServiceQueue !== null).map((b) => b.id);
+  const salesBusinessExpenses = homeServiceBusinessExpenses(expenses, (date) => date === todayStr, homeServiceQueueBranchIds);
 
   function labelFor(id: string | null, list: { id: string; label?: string; name?: string }[]) {
     if (!id) return "—";
@@ -230,6 +236,12 @@ export default async function RequestsPage({
                 <span className="text-xs font-semibold text-green-900">Company Share (30%)</span>
                 <span className="break-all text-lg font-bold text-green-900">{peso(salesTotal.companyShare)}</span>
               </div>
+              {salesBusinessExpenses > 0 && (
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border-2 border-blue-300 bg-blue-50 px-3 py-2">
+                  <span className="text-xs font-semibold text-blue-900">Business Share (Net)</span>
+                  <span className="break-all text-lg font-bold text-blue-900">{peso(salesTotal.companyShare - salesBusinessExpenses)}</span>
+                </div>
+              )}
             </div>
           </>
         )}
@@ -237,7 +249,7 @@ export default async function RequestsPage({
 
       <RequestsFilterForm statuses={statuses} technicians={homeServiceTechnicians} provinces={provinceOptions} current={sp} />
 
-      {(sp.date || sp.province || sp.status || sp.technician || sp.unassigned === "1") && (
+      {(sp.date || sp.province || sp.status || sp.technician || sp.downpayment || sp.unassigned === "1") && (
         <div className="card">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-sm font-semibold text-slate-800">

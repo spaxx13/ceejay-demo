@@ -4,6 +4,7 @@ import TechnicianBoard from "@/components/TechnicianBoard";
 import CheckInWidget from "@/components/CheckInWidget";
 import { serviceFeeAmount } from "@/lib/homeServiceFees";
 import { getRepairQuote } from "@/lib/servicePricing";
+import { isOnTheWayStatus } from "@/lib/technicianTracking";
 
 export default async function TechnicianPage() {
   const [user, lookups, allRequests, deviceModels, agreements, customFormFields, servicePrices, branches, technicians] = await Promise.all([
@@ -48,6 +49,8 @@ export default async function TechnicianPage() {
         city: r.city,
         province: r.province,
         landmark: r.landmark,
+        lat: r.lat,
+        lng: r.lng,
         issueDescription: r.issueDescription,
         photoDataUrl: r.photoDataUrl,
         deviceLabel: brand ? `${brand.label} ${model?.name ?? ""}`.trim() : r.deviceOther || "—",
@@ -62,6 +65,7 @@ export default async function TechnicianPage() {
         repairCost,
         serviceFee,
         inProgress: status?.label === "In Progress",
+        onTheWay: isOnTheWayStatus(status?.label),
         hasPreAgreement: agreements.some((a) => a.requestId === r.id && a.phase === "pre_repair"),
         hasPostAgreement: agreements.some((a) => a.requestId === r.id && a.phase === "post_repair"),
         customFieldEntries: Object.entries(r.customFields)

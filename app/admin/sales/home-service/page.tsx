@@ -1,12 +1,27 @@
 import Link from "next/link";
-import { getServiceAgreements, getRequests, homeServiceSalesByTechnician, sumHomeServiceSales } from "@/lib/db";
+import {
+  getServiceAgreements,
+  getRequests,
+  getTechnicians,
+  getBranches,
+  getExpenses,
+  homeServiceSalesByTechnician,
+  sumHomeServiceSales,
+  homeServiceBusinessExpenses,
+} from "@/lib/db";
 import SalesTabs from "@/components/SalesTabs";
 
 const peso = (n: number) => `₱${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 export default async function HomeServiceSalesPage({ searchParams }: { searchParams: Promise<{ from?: string; to?: string }> }) {
   const sp = await searchParams;
-  const [agreements, requests] = await Promise.all([getServiceAgreements(), getRequests()]);
+  const [agreements, requests, technicians, branches, expenses] = await Promise.all([
+    getServiceAgreements(),
+    getRequests(),
+    getTechnicians(),
+    getBranches(),
+    getExpenses(),
+  ]);
 
   // Default to today so the page always opens on the most current sales —
   // an explicit From/To filter (even a partial one) overrides this.
@@ -32,8 +47,15 @@ export default async function HomeServiceSalesPage({ searchParams }: { searchPar
   // branch tag is incidental (whichever branch the technician was
   // dispatched from), not a meaningful visibility boundary — every account
   // that can open Sales sees all of it.
-  const rows = homeServiceSalesByTechnician(agreements, inRange, requests);
+  const rows = homeServiceSalesByTechnician(agreements, inRange, requests, technicians);
   const grandTotal = sumHomeServiceSales(rows);
+  // "Owner's Final Total Sales" expenses logged against a Home Service queue
+  // branch (Sales > Expenses, Branch = Home Service) — deducted here since
+  // this is the one place that figure has anywhere to land; nothing else on
+  // this report is branch-scoped.
+  const homeServiceQueueBranchIds = branches.filter((b) => b.homeServiceQueue !== null).map((b) => b.id);
+  const businessExpenses = homeServiceBusinessExpenses(expenses, inRange, homeServiceQueueBranchIds);
+  const businessShareNet = grandTotal.companyShare - businessExpenses;
 
   return (
     <div className="space-y-6">
@@ -117,6 +139,10 @@ export default async function HomeServiceSalesPage({ searchParams }: { searchPar
                 <span className="text-right font-medium text-green-700">{peso(grandTotal.companyShare)}</span>
                 <span className="font-medium text-blue-300">Technician Share (70%)</span>
                 <span className="text-right font-medium text-blue-300">{peso(grandTotal.technicianShare)}</span>
+                <span className="text-slate-500">− Business Expenses</span>
+                <span className="text-right text-red-700">−{peso(businessExpenses)}</span>
+                <span className="font-semibold text-blue-300">Business Share (Net)</span>
+                <span className="text-right font-semibold text-blue-300">{peso(businessShareNet)}</span>
               </div>
             </div>
           </div>
@@ -133,7 +159,9 @@ export default async function HomeServiceSalesPage({ searchParams }: { searchPar
                   <th className="pb-2 pr-3 font-medium">Parts/Material Cost</th>
                   <th className="pb-2 pr-3 font-medium">Net Amount</th>
                   <th className="pb-2 pr-3 font-medium">Company Share (30%)</th>
-                  <th className="pb-2 font-medium">Technician Share (70%)</th>
+                  <th className="pb-2 pr-3 font-medium">Technician Share (70%)</th>
+                  <th className="pb-2 pr-3 font-medium">Business Expenses</th>
+                  <th className="pb-2 font-medium">Business Share (Net)</th>
                 </tr>
               </thead>
               <tbody>
@@ -152,7 +180,9 @@ export default async function HomeServiceSalesPage({ searchParams }: { searchPar
                     <td className="py-3 pr-3 text-red-700">−{peso(r.partsCost)}</td>
                     <td className="py-3 pr-3 font-semibold text-slate-900">{peso(r.netAmount)}</td>
                     <td className="py-3 pr-3 text-green-700">{peso(r.companyShare)}</td>
-                    <td className="py-3 font-semibold text-blue-300">{peso(r.technicianShare)}</td>
+                    <td className="py-3 pr-3 font-semibold text-blue-300">{peso(r.technicianShare)}</td>
+                    <td className="py-3 pr-3 text-slate-400">—</td>
+                    <td className="py-3 text-slate-400">—</td>
                   </tr>
                 ))}
                 <tr className="font-semibold text-slate-900">
@@ -163,7 +193,9 @@ export default async function HomeServiceSalesPage({ searchParams }: { searchPar
                   <td className="pt-3 pr-3 text-red-700">−{peso(grandTotal.partsCost)}</td>
                   <td className="pt-3 pr-3">{peso(grandTotal.netAmount)}</td>
                   <td className="pt-3 pr-3 text-green-700">{peso(grandTotal.companyShare)}</td>
-                  <td className="pt-3 text-blue-300">{peso(grandTotal.technicianShare)}</td>
+                  <td className="pt-3 pr-3 text-blue-300">{peso(grandTotal.technicianShare)}</td>
+                  <td className="pt-3 pr-3 text-red-700">−{peso(businessExpenses)}</td>
+                  <td className="pt-3 text-blue-300">{peso(businessShareNet)}</td>
                 </tr>
               </tbody>
             </table>

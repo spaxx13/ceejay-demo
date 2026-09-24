@@ -104,17 +104,20 @@ export function computeTechnicianEarnings(
   sharePercent: number = DEFAULT_EARNINGS_SHARE_PERCENT
 ): EarningsJob[] {
   const inRange = (date: string) => (!from || date >= from) && (!to || date <= to);
-  const name = technicianName.trim();
+  // Case-insensitive so a job logged with a differently-cased name
+  // ("jhong" vs this technician's own "Jhong") still counts toward their
+  // earnings instead of silently vanishing from their own report.
+  const name = technicianName.trim().toLowerCase();
   if (!name) return [];
 
   const posJobs = repairRecords
-    .filter((r) => !r.cancelled && r.technicianName.trim() === name && inRange(r.serviceDate))
+    .filter((r) => !r.cancelled && r.technicianName.trim().toLowerCase() === name && inRange(r.serviceDate))
     .map((r) =>
       toJob(r.id, "POS", r.reference, r.customerName, r.serviceDate, r.deviceModel || "—", r.cost, r.laborCost, r.partsCost, r.otherExpenses, sharePercent)
     );
 
   const homeServiceJobs = agreements
-    .filter((a) => a.phase === "post_repair" && a.requestId && a.technicianName.trim() === name && inRange(a.completedAt.slice(0, 10)))
+    .filter((a) => a.phase === "post_repair" && a.requestId && a.technicianName.trim().toLowerCase() === name && inRange(a.completedAt.slice(0, 10)))
     .map((a) =>
       toJob(
         a.id, "Home Service", a.reference, a.customerName, a.completedAt.slice(0, 10), a.deviceLabel || "—",

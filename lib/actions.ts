@@ -43,14 +43,11 @@ import {
   getIcloudCheckById,
   createIcloudCheck,
   markIcloudCheckPaymentPending,
-  claimIcloudCheckAsPaid,
   markIcloudCheckChecked,
   markIcloudCheckFailed,
   markIcloudCheckRefundNeeded,
   markHomeServiceDownpaymentPending,
-  claimHomeServiceDownpaymentAsPaid,
   markRepairRecordQrPaymentPending,
-  claimRepairRecordQrPaymentAsPaid,
   getTodayCheckIn,
 } from "./db";
 import { getCurrentUser, setSession, clearSession, requireRole } from "./auth";
@@ -63,14 +60,16 @@ import {
   sendWalkInOtpEmail,
   sendPublicQuoteEmail,
   sendTrackingLinkEmail,
-  sendPickupDeliveryBookingConfirmedEmail,
+  sendTechnicianOnTheWayEmail,
   emailConfigured,
 } from "./email";
+import { isOnTheWayStatus } from "./technicianTracking";
 import { sendSms, sendOtpSms, smsConfigured, normalizePhone, getAccountStatus, type SmsAccountStatus } from "./sms";
 import { SUNDAY_ONLY_PROVINCES, DOWNPAYMENT_PROVINCES, serviceFeeAmount, PICKUP_DELIVERY_FEE_PESOS } from "./homeServiceFees";
 import { getRepairQuote } from "./servicePricing";
 import { formatDate, isCheckInOpen } from "./format";
 import { createCheckoutSession as createPaymongoCheckoutSession, paymongoConfigured } from "./paymongo";
+import { confirmBookingRows, type ConfirmBookingResult } from "./paymentProcessing";
 import { checkIcloudStatus } from "./sickw";
 import {
   DEVICE_CONDITION_ITEMS,
@@ -365,6 +364,8 @@ function floatOrNull(fd: FormData, key: string): number | null {
 }
 
 export async function createBranch(formData: FormData) {
+  // Owner-only, same as the admin page that renders this form.
+  if (!(await requireRole("owner_admin"))) return;
   const name = str(formData, "name");
   if (!name) return;
   await query("insert into branches (name, address, contact_number, lat, lng) values ($1,$2,$3,$4,$5)", [
@@ -383,6 +384,8 @@ export async function createBranch(formData: FormData) {
 }
 
 export async function updateBranch(formData: FormData) {
+  // Owner-only, same as the admin page that renders this form.
+  if (!(await requireRole("owner_admin"))) return;
   const branchId = str(formData, "id");
   const name = str(formData, "name");
   if (!name) return;
@@ -399,6 +402,8 @@ export async function updateBranch(formData: FormData) {
 }
 
 export async function toggleBranchActive(formData: FormData) {
+  // Owner-only, same as the admin page that renders this form.
+  if (!(await requireRole("owner_admin"))) return;
   const branchId = str(formData, "id");
   await query("update branches set active = not active where id=$1", [branchId]);
   revalidatePath("/admin/branches");
@@ -413,6 +418,8 @@ function earningsSharePercentFromForm(formData: FormData) {
 }
 
 export async function createTechnician(formData: FormData) {
+  // Owner-only, same as the admin page that renders this form.
+  if (!(await requireRole("owner_admin"))) return;
   const name = str(formData, "name");
   if (!name) return;
   await query(
@@ -430,6 +437,8 @@ export async function createTechnician(formData: FormData) {
 }
 
 export async function updateTechnician(formData: FormData) {
+  // Owner-only, same as the admin page that renders this form.
+  if (!(await requireRole("owner_admin"))) return;
   const techId = str(formData, "id");
   const name = str(formData, "name");
   if (!name) return;
@@ -449,6 +458,8 @@ export async function updateTechnician(formData: FormData) {
 }
 
 export async function toggleTechnicianActive(formData: FormData) {
+  // Owner-only, same as the admin page that renders this form.
+  if (!(await requireRole("owner_admin"))) return;
   const techId = str(formData, "id");
   await query("update technicians set active = not active where id=$1", [techId]);
   revalidatePath("/admin/technicians");
@@ -934,6 +945,8 @@ export async function resolveRequestException(formData: FormData) {
 // ---------- Device Brands / Models ----------
 
 export async function createDeviceBrand(formData: FormData) {
+  // Owner-only, same as the admin page that renders this form.
+  if (!(await requireRole("owner_admin"))) return;
   const label = str(formData, "label");
   if (!label) return;
   const lookups = await getLookups();
@@ -943,6 +956,8 @@ export async function createDeviceBrand(formData: FormData) {
 }
 
 export async function deleteLookup(formData: FormData) {
+  // Owner-only, same as the admin page that renders this form.
+  if (!(await requireRole("owner_admin"))) return;
   const itemId = str(formData, "id");
   try {
     await query("delete from lookups where id=$1", [itemId]);
@@ -963,6 +978,8 @@ export async function deleteLookup(formData: FormData) {
 }
 
 export async function updateLookupLabel(formData: FormData) {
+  // Owner-only, same as the admin page that renders this form.
+  if (!(await requireRole("owner_admin"))) return;
   const itemId = str(formData, "id");
   const label = str(formData, "label");
   if (!label) return;
@@ -985,6 +1002,8 @@ export async function createDeviceModel(formData: FormData) {
 }
 
 export async function deleteDeviceModel(formData: FormData) {
+  // Owner-only, same as the admin page that renders this form.
+  if (!(await requireRole("owner_admin"))) return;
   const modelId = str(formData, "id");
   try {
     await query("delete from device_models where id=$1", [modelId]);
@@ -1049,6 +1068,8 @@ export async function saveServicePrices(formData: FormData) {
 // ---------- Generic lookups (service types, customer sources, statuses) ----------
 
 export async function createLookup(formData: FormData) {
+  // Owner-only, same as the admin page that renders this form.
+  if (!(await requireRole("owner_admin"))) return;
   const kind = str(formData, "kind") as LookupKind;
   const label = str(formData, "label");
   if (!label || !kind) return;
@@ -1060,6 +1081,8 @@ export async function createLookup(formData: FormData) {
 }
 
 export async function reorderLookup(formData: FormData) {
+  // Owner-only, same as the admin page that renders this form.
+  if (!(await requireRole("owner_admin"))) return;
   const itemId = str(formData, "id");
   const direction = str(formData, "direction");
   const lookups = await getLookups();
@@ -1078,6 +1101,8 @@ export async function reorderLookup(formData: FormData) {
 // ---------- Site Content (public landing page) ----------
 
 export async function updateSiteContent(formData: FormData) {
+  // Owner-only, same as the admin page that renders this form.
+  if (!(await requireRole("owner_admin"))) return;
   await query(
     `update site_content set
       hero_kicker = coalesce(nullif($1,''), hero_kicker),
@@ -1116,6 +1141,8 @@ export async function updateSiteContent(formData: FormData) {
 // ---------- Request Form Content (public home service form) ----------
 
 export async function updateRequestFormContent(formData: FormData) {
+  // Owner-only, same as the admin page that renders this form.
+  if (!(await requireRole("owner_admin"))) return;
   await query(
     `update request_form_content set
       page_kicker = coalesce(nullif($1,''), page_kicker),
@@ -1157,6 +1184,8 @@ function slugify(label: string) {
 }
 
 export async function createCustomField(formData: FormData) {
+  // Owner-only, same as the admin page that renders this form.
+  if (!(await requireRole("owner_admin"))) return;
   const label = str(formData, "label");
   const type = str(formData, "type") as CustomFieldType;
   if (!label || !type) return;
@@ -1176,6 +1205,8 @@ export async function createCustomField(formData: FormData) {
 // brand/model, service type) and photo behave when switched away from
 // their natural type.
 export async function updateCustomField(formData: FormData) {
+  // Owner-only, same as the admin page that renders this form.
+  if (!(await requireRole("owner_admin"))) return;
   const fieldId = str(formData, "id");
   const label = str(formData, "label");
   const type = str(formData, "type") as CustomFieldType;
@@ -1198,6 +1229,8 @@ export async function updateCustomField(formData: FormData) {
 // what "delete a field" means functionally: it disappears from the public
 // form and stops being enforced.
 export async function toggleCustomFieldActive(formData: FormData) {
+  // Owner-only, same as the admin page that renders this form.
+  if (!(await requireRole("owner_admin"))) return;
   const fieldId = str(formData, "id");
   await query("update custom_form_fields set active = not active where id=$1", [fieldId]);
   revalidatePath("/request");
@@ -1205,6 +1238,8 @@ export async function toggleCustomFieldActive(formData: FormData) {
 }
 
 export async function reorderCustomField(formData: FormData) {
+  // Owner-only, same as the admin page that renders this form.
+  if (!(await requireRole("owner_admin"))) return;
   const fieldId = str(formData, "id");
   const direction = str(formData, "direction");
   const fields = await getCustomFormFields();
@@ -1434,21 +1469,6 @@ export async function startRepairRecordQrPayment(formData: FormData) {
   revalidatePath(`/admin/pos/${recordId}`);
 }
 
-// The only place a repair record's QR Ph payment is ever marked paid — see
-// claimRepairRecordQrPaymentAsPaid's comment (lib/db.ts) for why. Called
-// from both the PayMongo webhook and the POS detail page's own fallback
-// re-verification, so either one racing ahead of the other is safe.
-export async function processRepairRecordQrPayment(recordId: string, paymongoPaymentId: string) {
-  const claimed = await claimRepairRecordQrPaymentAsPaid(recordId, paymongoPaymentId);
-  if (claimed) {
-    if (claimed.customerId) {
-      await logActivity("customer", claimed.customerId, `Repair ${claimed.reference} paid online via QR Ph (₱${claimed.qrPaymentAmount})`, "System");
-    }
-    revalidatePath(`/admin/pos/${recordId}`);
-    revalidatePath("/admin/pos");
-  }
-  return getRepairRecordById(recordId);
-}
 
 // Moves a repair record to Trash — unlike cancelling (which keeps the
 // record for history, just excluded from revenue), this hides it from the
@@ -2080,53 +2100,11 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
   };
 }
 
-export type ConfirmBookingResult =
-  | { ok: true; references: string[]; alreadyConfirmed: boolean }
-  | { ok: false; error: "not_found" | "expired" | "downpayment_required" };
+export type { ConfirmBookingResult };
 
-// Shared by confirmBooking (the customer clicking "Confirm My Booking")
-// and processHomeServiceDownpayment (the down payment clearing, which IS
-// the confirmation step for DOWNPAYMENT_PROVINCES bookings) — moves every
-// row in the group from "Pending Confirmation" to "Pending" (ready for an
-// admin to assign). Idempotent: skips any row already confirmed, since
-// email clients/scanners sometimes pre-fetch links and a customer might
-// click twice, or the webhook and a fallback re-verification might race.
-async function confirmBookingRows(reqs: HomeServiceRequest[]): Promise<ConfirmBookingResult> {
-  const lookups = await getLookups();
-  const pendingStatus = lookups.find((l) => l.kind === "request_status" && l.label === "Pending");
-  const now = new Date().toISOString();
-
-  for (const req of reqs) {
-    if (req.confirmedAt) continue;
-    const statusHistory = pendingStatus ? [...req.statusHistory, { statusId: pendingStatus.id, at: now }] : req.statusHistory;
-    await query(
-      `update home_service_requests set confirmed_at=now()${pendingStatus ? ", status_id=$2, status_history=$3" : ""} where id=$1`,
-      pendingStatus ? [req.id, pendingStatus.id, JSON.stringify(statusHistory)] : [req.id]
-    );
-    await logActivity("home_service_request", req.id, `Request ${req.reference} confirmed by customer — moved to the Unassigned queue`, "System");
-    await notifyAdmins("new_request", req.id, `${req.customerName || "A customer"} confirmed Home Service Request ${req.reference} — now in the Unassigned queue.`);
-
-    if (req.fulfillmentMode === "pickup_delivery" && req.email && emailConfigured()) {
-      try {
-        await sendPickupDeliveryBookingConfirmedEmail(req.email, {
-          customerName: req.customerName,
-          reference: req.reference,
-          phone: req.phone,
-          deviceLabel: req.deviceOther || "Device not specified",
-          preferredDate: req.preferredDatetime ? formatDate(req.preferredDatetime) : "To be scheduled",
-          address: [req.street, req.barangay, req.city, req.province].filter(Boolean).join(", "),
-          amountPaid: req.downpaymentAmount ?? 0,
-        });
-      } catch {
-        // Best-effort — never blocks booking confirmation.
-      }
-    }
-  }
-
-  revalidatePath("/admin/requests");
-  revalidatePath("/admin");
-  return { ok: true, references: reqs.map((r) => r.reference), alreadyConfirmed: false };
-}
+// confirmBookingRows now lives in lib/paymentProcessing.ts (see that file)
+// — moved out of this "use server" module so it can't be invoked directly
+// from the browser, same as the other payment-settlement functions.
 
 // Called from the public confirm-booking page when the customer clicks the
 // link in their quotation email (or, for a booking with no email, the link
@@ -2203,41 +2181,6 @@ export async function startHomeServiceDownpayment(token: string): Promise<StartH
   redirect(session.checkoutUrl);
 }
 
-// The only place a Home Service down payment is ever marked paid — see
-// claimHomeServiceDownpaymentAsPaid's comment (lib/db.ts) for why. Called
-// from both the PayMongo webhook (app/api/webhooks/paymongo/route.ts) and
-// the confirm-booking page's own fallback re-verification, so either one
-// racing ahead of the other is safe.
-export async function processHomeServiceDownpayment(token: string, paymongoPaymentId: string) {
-  const claimed = await claimHomeServiceDownpaymentAsPaid(token, paymongoPaymentId);
-  if (claimed.length === 0) {
-    // Already claimed (duplicate webhook delivery, or the other caller won
-    // the race) — do NOT confirm again, just report current state.
-    return getRequestsByConfirmationToken(token);
-  }
-
-  // Edge case: the 2-hour confirmation window lapsed and the
-  // void-unconfirmed-requests cron already auto-cancelled this booking
-  // between the customer starting checkout and PayMongo confirming
-  // payment. Record the payment (already done above) but don't revive a
-  // cancelled booking — flag it for a human to sort out (refund or manual
-  // re-confirm) instead.
-  if (claimed.some((r) => r.deletedAt)) {
-    for (const r of claimed) {
-      await logActivity(
-        "home_service_request",
-        r.id,
-        `Down payment received for ${r.reference} after the booking was already auto-cancelled — needs manual review (refund or re-confirm).`,
-        "System"
-      );
-      await notifyAdmins("new_request", r.id, `Down payment received for ${r.reference} after auto-cancellation — needs manual review.`);
-    }
-    return claimed;
-  }
-
-  await confirmBookingRows(claimed);
-  return getRequestsByConfirmationToken(token);
-}
 
 // ---------- Public Contact Form ----------
 
@@ -2646,28 +2589,6 @@ export async function startIcloudCheck(_prev: StartIcloudCheckResult | undefined
   redirect(session.checkoutUrl);
 }
 
-// The only place SICKW is ever called for a given payment — see
-// claimIcloudCheckAsPaid's comment (lib/db.ts) for why. Called from both
-// the PayMongo webhook (app/api/webhooks/paymongo/route.ts) and the
-// result page's own fallback re-verification, so either one racing ahead
-// of the other is safe.
-export async function processIcloudCheckPayment(checkId: string, paymongoPaymentId: string) {
-  const claimed = await claimIcloudCheckAsPaid(checkId, paymongoPaymentId);
-  if (!claimed) {
-    // Already claimed (duplicate webhook delivery, or the other caller
-    // won the race) — do NOT call SICKW again, just report current state.
-    return getIcloudCheckById(checkId);
-  }
-
-  const result = await checkIcloudStatus(claimed.imei);
-  if (result.ok) {
-    await markIcloudCheckChecked(claimed.id, result.icloudStatus, result.summary, result.rawResponse);
-  } else {
-    await markIcloudCheckFailed(claimed.id, result.error, result.rawResponse);
-  }
-  revalidatePath("/admin/tools/icloud-checks");
-  return getIcloudCheckById(checkId);
-}
 
 // ---------- Admin: iCloud Status Checks (Tools) ----------
 
@@ -2814,7 +2735,7 @@ export async function changeRequestStatus(formData: FormData) {
     await query("update home_service_requests set status_id=$1, status_history=$2 where id=$3", [statusId, JSON.stringify(statusHistory), requestId]);
   }
 
-  let emailNote = "";
+  let emailNote = await startTechnicianTrackingIfOnTheWay(req, status.label);
   if (cancelled && req.email) {
     try {
       await sendCancellationEmail(req.email, { customerName: req.customerName, reference: req.reference, reason: "" });
@@ -2969,7 +2890,7 @@ export async function createExpense(formData: FormData) {
   const technicianName =
     target === "technician_final_total_sales" || target === "owner_total_sales" ? str(formData, "technicianName") || null : null;
   const branchId = str(formData, "branchId") || null;
-  const expenseDate = new Date().toISOString().slice(0, 10); // always today — expenses are recorded on the day they happen, never backdated
+  const expenseDate = str(formData, "expenseDate") || new Date().toISOString().slice(0, 10);
   if (!description || amount <= 0 || !target || !branchId) return;
   if (target === "technician_final_total_sales" && !technicianName) return;
 
@@ -3261,15 +3182,59 @@ export async function addConversationMessage(formData: FormData) {
 
 // ---------- Technician view ----------
 
+// ---------- Live technician tracking ----------
+
+// Called after any status change: the first time a request goes "En Route",
+// mints its tracking token and emails the customer the live map link
+// (/track-technician/<token>). Returns a note for the activity log.
+async function startTechnicianTrackingIfOnTheWay(req: HomeServiceRequest, newStatusLabel: string): Promise<string> {
+  if (!isOnTheWayStatus(newStatusLabel) || req.trackingToken) return "";
+  const token = crypto.randomUUID().replace(/-/g, "");
+  await query("update home_service_requests set tracking_token=$1 where id=$2", [token, req.id]);
+  if (!req.email) return " — no customer email on file, tracking link not sent";
+  if (!emailConfigured()) return " — email not configured, tracking link not sent";
+
+  // Link back to whichever deployment the technician is using (so a
+  // Preview deployment emails a Preview link), falling back to SITE_URL.
+  const hdrs = await headers();
+  const host = hdrs.get("x-forwarded-host") ?? hdrs.get("host");
+  const origin = host ? `${hdrs.get("x-forwarded-proto") ?? "https"}://${host}` : SITE_URL;
+  const trackingUrl = `${origin}/track-technician/${token}`;
+  const technicianName = (await getTechnicians()).find((t) => t.id === req.assignedTechnicianId)?.name ?? "Your technician";
+  try {
+    await sendTechnicianOnTheWayEmail(req.email, { customerName: req.customerName, reference: req.reference, technicianName, trackingUrl });
+    return ` — tracking link emailed to ${req.email}`;
+  } catch (err) {
+    return ` — tracking email failed to send to ${req.email} (${err instanceof Error ? err.message : "unknown error"})`;
+  }
+}
+
+// GPS fix pushed from the assigned technician's phone while their job is
+// En Route (components/TechnicianLocationSharer.tsx). `stop` tells the
+// phone to stop sharing once the job is no longer En Route.
+export async function updateTechnicianLocation(requestId: string, lat: number, lng: number): Promise<{ ok: boolean; stop?: boolean }> {
+  const user = await getCurrentUser();
+  if (!user || user.role !== "technician") return { ok: false, stop: true };
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) return { ok: false };
+  const req = await getRequestById(requestId);
+  if (!req || req.assignedTechnicianId !== user.technicianId) return { ok: false, stop: true };
+  const status = (await getLookups()).find((l) => l.id === req.statusId);
+  if (!isOnTheWayStatus(status?.label)) return { ok: false, stop: true };
+  await query("update home_service_requests set tech_lat=$1, tech_lng=$2, tech_location_at=now() where id=$3", [lat, lng, requestId]);
+  return { ok: true };
+}
+
 export async function technicianUpdateStatus(formData: FormData) {
   const user = await getCurrentUser();
+  if (!user || user.role !== "technician") return;
   const requestId = str(formData, "id");
   const statusId = str(formData, "statusId");
   const note = str(formData, "note");
   const req = await getRequestById(requestId);
   const lookups = await getLookups();
-  const status = lookups.find((l) => l.id === statusId);
-  if (!req || !status) return;
+  const status = lookups.find((l) => l.id === statusId && l.kind === "request_status");
+  // Only the technician assigned to this job may move it.
+  if (!req || !status || req.assignedTechnicianId !== user.technicianId) return;
 
   const statusHistory = [...req.statusHistory, { statusId, at: new Date().toISOString() }];
   const adminNotes = note ? (req.adminNotes ? `${req.adminNotes}\n[${user?.name}] ${note}` : `[${user?.name}] ${note}`) : req.adminNotes;
@@ -3281,7 +3246,7 @@ export async function technicianUpdateStatus(formData: FormData) {
     [statusId, JSON.stringify(statusHistory), adminNotes, requestId]
   );
 
-  let emailNote = "";
+  let emailNote = await startTechnicianTrackingIfOnTheWay(req, status.label);
   if (cancelled && req.email) {
     try {
       await sendCancellationEmail(req.email, { customerName: req.customerName, reference: req.reference, reason: note });
@@ -3296,6 +3261,21 @@ export async function technicianUpdateStatus(formData: FormData) {
     `Status updated to "${status.label}" by technician ${user?.name ?? ""}${note ? ` — ${note}` : ""}${cancelled ? " — moved to Trash" : ""}${emailNote}`,
     user?.name ?? "Technician"
   );
+  // Only on the transition into On the Way, so re-saving the same status
+  // (e.g. just adding a note) doesn't notify again.
+  const previousStatus = lookups.find((l) => l.id === req.statusId);
+  if (isOnTheWayStatus(status.label) && !isOnTheWayStatus(previousStatus?.label)) {
+    try {
+      await notifyAdmins(
+        "technician_on_the_way",
+        req.id,
+        `🛵 ${user?.name ?? "A technician"} is on the way to ${req.customerName} (${req.reference}).`
+      );
+    } catch {
+      // Needs migration 0070 (the new notification type) — never fail the
+      // status update over the alert.
+    }
+  }
   if (status.label === "In Progress") {
     await notifyAdmins(
       "request_in_progress",
@@ -3790,6 +3770,7 @@ export async function resendReceiptEmail(_prev: ResendReceiptResult | undefined,
 }
 
 export async function markNotificationRead(formData: FormData) {
+  if (!(await requireRole("owner_admin", "branch_admin"))) return;
   const id = str(formData, "id");
   await query("update notifications set read_at = now() where id=$1", [id]);
   revalidatePath("/admin/notifications");
@@ -3797,6 +3778,7 @@ export async function markNotificationRead(formData: FormData) {
 }
 
 export async function markAllNotificationsRead() {
+  if (!(await requireRole("owner_admin", "branch_admin"))) return;
   await query("update notifications set read_at = now() where read_at is null");
   revalidatePath("/admin/notifications");
   revalidatePath("/admin");
