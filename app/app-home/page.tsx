@@ -1,12 +1,15 @@
 import Image from "next/image";
 import Link from "next/link";
+import { getCurrentCustomer } from "@/lib/customerAuth";
 
 // Dedicated entry screen for the Ceejay mobile app (Capacitor wraps this
 // page, not the full marketing site) — just the two booking flows the app
 // exists for, no header/footer/nav out to the rest of the website. The
 // full site (branches, walk-in, quote, admin, etc.) is still reachable
 // from a browser as normal; this page is only ever the app's start screen.
-export default function AppHomePage() {
+export default async function AppHomePage() {
+  const customer = await getCurrentCustomer();
+
   return (
     <main className="grid-bg flex min-h-screen flex-col items-center justify-center px-4 py-10 sm:px-6">
       <div className="mx-auto w-full max-w-sm space-y-8 text-center">
@@ -26,6 +29,10 @@ export default function AppHomePage() {
             <p className="text-sm text-slate-400">A rider picks up your device, we repair it at the shop, then deliver it back.</p>
           </Link>
         </div>
+
+        <Link href={customer ? "/my" : "/my/login"} className="block text-sm font-semibold text-blue-600 hover:underline">
+          {customer ? `👤 My Bookings — Hi, ${customer.name.split(" ")[0] || "there"}` : "👤 Sign In to Track Your Repair"}
+        </Link>
       </div>
     </main>
   );

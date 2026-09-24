@@ -75,7 +75,7 @@ import {
   emailConfigured,
 } from "./email";
 import { isOnTheWayStatus } from "./technicianTracking";
-import { sendSms, sendOtpSms, smsConfigured, normalizePhone, getAccountStatus, type SmsAccountStatus } from "./sms";
+import { sendSms, sendOtpSms, smsConfigured, normalizePhone, isValidPhone, getAccountStatus, type SmsAccountStatus } from "./sms";
 import { SUNDAY_ONLY_PROVINCES, DOWNPAYMENT_PROVINCES, serviceFeeAmount, PICKUP_DELIVERY_FEE_PESOS } from "./homeServiceFees";
 import { getRepairQuote } from "./servicePricing";
 import { formatDate, isCheckInOpen } from "./format";
@@ -104,10 +104,6 @@ function str(fd: FormData, key: string) {
 }
 function listStr(fd: FormData, key: string) {
   return fd.getAll(key).map(String).filter(Boolean);
-}
-function isValidPhone(phone: string) {
-  const cleaned = phone.replace(/[\s-]/g, "");
-  return /^(\+63|0)9\d{9}$/.test(cleaned);
 }
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 

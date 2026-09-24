@@ -611,6 +611,15 @@ export async function getCustomerById(id: string) {
   const row = await queryOne<CustomerRow>("select * from customers where id = $1", [id]);
   return row ? mapCustomer(row) : null;
 }
+// Customer app login — phone is the only identifier a customer logs in
+// with (no password), same normalized-digits comparison the booking forms
+// already use to dedupe customers by phone.
+export async function getCustomerByPhone(phone: string) {
+  const rows = await query<CustomerRow>("select * from customers where replace(replace(phone, ' ', ''), '-', '') = $1", [
+    phone.replace(/[\s-]/g, ""),
+  ]);
+  return rows[0] ? mapCustomer(rows[0]) : null;
+}
 export async function getLookups() {
   return (await query<LookupRow>("select * from lookups order by kind, order_num")).map(mapLookup);
 }
@@ -731,6 +740,17 @@ export async function claimHomeServiceDownpaymentAsPaid(token: string, paymongoP
 // other requests belong to the same booking.
 export async function getRequestsByBookingGroup(groupId: string) {
   return (await query<RequestRow>("select * from home_service_requests where booking_group_id = $1", [groupId])).map(mapRequest);
+}
+// The customer app's "My Bookings" dashboard — every request (any
+// fulfillment mode, any status) linked to this customer, newest first.
+// Excludes trashed rows the same way getRequests() does; a deleted
+// booking isn't something the customer should keep seeing.
+export async function getRequestsByCustomerId(customerId: string) {
+  return (
+    await query<RequestRow>("select * from home_service_requests where customer_id = $1 and deleted_at is null order by created_at desc", [
+      customerId,
+    ])
+  ).map(mapRequest);
 }
 
 type RequestExceptionRow = {
