@@ -2757,6 +2757,10 @@ export async function reassignRequest(formData: FormData) {
 
   revalidatePath("/admin/requests");
   revalidatePath(`/admin/requests/${requestId}`);
+  if (req.fulfillmentMode === "pickup_delivery") {
+    revalidatePath("/admin/pickup-delivery");
+    revalidatePath(`/admin/pickup-delivery/${requestId}`);
+  }
 }
 
 export async function changeRequestStatus(formData: FormData) {

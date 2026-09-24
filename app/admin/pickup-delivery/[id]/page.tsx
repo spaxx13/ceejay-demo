@@ -13,7 +13,7 @@ import {
   PICKUP_DELIVERY_STAGE_LABELS,
 } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
-import { assignPickupRider, assignDeliveryRider, reportRequestException, resolveRequestException } from "@/lib/actions";
+import { assignPickupRider, assignDeliveryRider, reassignRequest, reportRequestException, resolveRequestException } from "@/lib/actions";
 import { formatDateTime } from "@/lib/format";
 import StatusBadge from "@/components/StatusBadge";
 import JobQrCode from "@/components/JobQrCode";
@@ -87,6 +87,14 @@ export default async function PickupDeliveryDetailPage({ params }: { params: Pro
   const deliveryRider = riders.find((r) => r.id === req.deliveryRiderId);
   const deliveredBranch = branches.find((b) => b.id === req.deliveredBranchId);
   const activeRiders = riders.filter((r) => r.active).map((r) => ({ id: r.id, name: r.name, onDuty: r.onDuty }));
+  // Same branch-scoped technician pool as the Home Service Requests detail
+  // page, scoped to wherever this job's device actually ends up (once the
+  // rider marks it received at a branch) rather than the original queue —
+  // the repair happens at the branch the device is physically at.
+  const repairBranch = deliveredBranch ?? branches.find((b) => b.id === req.queueBranchId) ?? branches.find((b) => !b.address);
+  const assignableTechnicians = technicians.filter(
+    (t) => (t.active && (repairBranch ? t.branchIds.includes(repairBranch.id) : true)) || t.id === req.assignedTechnicianId
+  );
   const openIssues = exceptions.filter((e) => e.requestId === req.id && !e.resolvedAt);
   const resolvedIssues = exceptions.filter((e) => e.requestId === req.id && e.resolvedAt);
 
@@ -205,6 +213,26 @@ export default async function PickupDeliveryDetailPage({ params }: { params: Pro
             currentRiderName={deliveryRider?.name ?? null}
             label="Delivery rider (can differ from pickup)"
           />
+        )}
+
+        {req.receivedAtShopAt && (
+          <form action={reassignRequest} className="space-y-1.5">
+            <input type="hidden" name="id" value={req.id} />
+            <label className="text-xs font-semibold text-slate-500">Technician (for the repair)</label>
+            <div className="flex gap-1.5">
+              <select name="technicianId" defaultValue={req.assignedTechnicianId ?? ""} className="input">
+                <option value="">Unassigned</option>
+                {assignableTechnicians.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+              <button type="submit" className="btn-primary shrink-0 !px-3">
+                {technician ? "Reassign" : "Assign"}
+              </button>
+            </div>
+          </form>
         )}
 
         {req.pickupPhotoDataUrl && (

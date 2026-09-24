@@ -98,8 +98,9 @@ export default async function PickupDeliveryPage({ searchParams }: { searchParam
       <div>
         <h1 className="text-xl font-bold text-slate-900">Pickup &amp; Delivery</h1>
         <p className="mt-1 text-sm text-slate-400">
-          Requests booked with the Pickup &amp; Delivery fulfillment mode. Click a job to assign riders and manage it — the repair itself
-          still shows up on Home Service Requests and the technician&apos;s own board, same as any other job.
+          Requests booked with the Pickup &amp; Delivery fulfillment mode — kept separate from Home Service Requests since these are rider
+          jobs, not home visits. Click a job to assign riders, and once the device reaches the shop, assign the technician who&apos;ll do
+          the repair right here too.
         </p>
       </div>
 
