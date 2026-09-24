@@ -23,6 +23,7 @@ const NAV_GROUPS: {
     label: "Operations",
     links: [
       { href: "/admin/requests", label: "Home Service Requests", requestsGated: true },
+      { href: "/admin/pickup-delivery", label: "Pickup & Delivery", requestsGated: true },
       { href: "/admin/walk-ins", label: "Walk-In Registrations", walkinsGated: true },
       { href: "/admin/pos", label: "POS" },
       { href: "/admin/sales", label: "Branch Sales" },
@@ -47,6 +48,7 @@ const SETTINGS_ROUTES = [
   "/admin/users",
   "/admin/branches",
   "/admin/technicians",
+  "/admin/riders",
   "/admin/device-catalog",
   "/admin/service-types",
   "/admin/statuses",

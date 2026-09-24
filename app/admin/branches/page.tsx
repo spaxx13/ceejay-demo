@@ -13,6 +13,8 @@ export default async function BranchesPage() {
     address: b.address,
     contactNumber: b.contactNumber,
     active: b.active,
+    lat: b.lat,
+    lng: b.lng,
   }));
 
   return (

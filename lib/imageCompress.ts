@@ -1,5 +1,5 @@
-const MAX_DIMENSION = 1280;
-const JPEG_QUALITY = 0.75;
+const MAX_DIMENSION = 1024;
+const JPEG_QUALITY = 0.6;
 
 // Downscales/recompresses an image client-side before it goes into a form
 // submission as base64 — there's no file storage in this demo, so images

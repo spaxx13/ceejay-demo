@@ -15,6 +15,8 @@ import {
   markIcloudCheckFailed,
 } from "./db";
 import { checkIcloudStatus } from "./sickw";
+import { sendPickupDeliveryBookingConfirmedEmail, emailConfigured } from "./email";
+import { formatDate } from "./format";
 import type { HomeServiceRequest } from "./types";
 
 // Payment settlement, kept OUT of lib/actions.ts on purpose: every export
@@ -40,8 +42,10 @@ export async function confirmBookingRows(reqs: HomeServiceRequest[]): Promise<Co
   const pendingStatus = lookups.find((l) => l.kind === "request_status" && l.label === "Pending");
   const now = new Date().toISOString();
 
+  const newlyConfirmed: HomeServiceRequest[] = [];
   for (const req of reqs) {
     if (req.confirmedAt) continue;
+    newlyConfirmed.push(req);
     const statusHistory = pendingStatus ? [...req.statusHistory, { statusId: pendingStatus.id, at: now }] : req.statusHistory;
     await query(
       `update home_service_requests set confirmed_at=now()${pendingStatus ? ", status_id=$2, status_history=$3" : ""} where id=$1`,
@@ -49,6 +53,34 @@ export async function confirmBookingRows(reqs: HomeServiceRequest[]): Promise<Co
     );
     await logActivity("home_service_request", req.id, `Request ${req.reference} confirmed by customer — moved to the Unassigned queue`, "System");
     await notifyAdmins("new_request", req.id, `${req.customerName || "A customer"} confirmed Home Service Request ${req.reference} — now in the Unassigned queue.`);
+  }
+
+  // Pickup & Delivery has no other "your booking is confirmed" moment —
+  // paying its Booking & Diagnostic Fee IS what confirms it, unlike the
+  // on-site flow where a plain click can confirm without any payment. One
+  // email per booking (not per device row) — every row shares the same
+  // token, phone, and downpaymentAmount (the flat fee is charged once for
+  // the whole booking, not per device), so looping the send per row would
+  // show the customer the same amount "paid" once for each of their devices.
+  const first = newlyConfirmed[0];
+  if (first?.fulfillmentMode === "pickup_delivery" && first.email && emailConfigured()) {
+    try {
+      // opts.reference doubles as the /track lookup key (a single-reference
+      // lookup, see app/(site)/track/page.tsx), so it must stay the first
+      // device's reference alone — every device's reference is still listed
+      // in deviceLabel below for a multi-device booking.
+      await sendPickupDeliveryBookingConfirmedEmail(first.email, {
+        customerName: first.customerName,
+        reference: first.reference,
+        phone: first.phone,
+        deviceLabel: newlyConfirmed.map((r) => `${r.deviceOther || "Device not specified"} (${r.reference})`).join(", "),
+        preferredDate: first.preferredDatetime ? formatDate(first.preferredDatetime) : "To be scheduled",
+        address: [first.street, first.barangay, first.city, first.province].filter(Boolean).join(", "),
+        amountPaid: first.downpaymentAmount ?? 0,
+      });
+    } catch {
+      // Best-effort — never blocks booking confirmation.
+    }
   }
 
   revalidatePath("/admin/requests");

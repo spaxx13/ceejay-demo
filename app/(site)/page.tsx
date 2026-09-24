@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getSiteContent, getLookups, getBranches } from "@/lib/db";
+import { PICKUP_DELIVERY_PUBLIC_ENABLED } from "@/lib/config";
 import InShopIllustration from "@/components/site/InShopIllustration";
 import HomeServiceIllustration from "@/components/site/HomeServiceIllustration";
 
@@ -38,10 +39,10 @@ export default async function HomePage() {
 
       <section className="mx-auto max-w-6xl px-4 py-16 sm:px-6">
         <div className="mb-10 text-center">
-          <p className="kicker">Two Ways to Get Fixed</p>
-          <h2 className="mt-1 text-2xl font-bold text-slate-900 sm:text-3xl">However works for you</h2>
+          <p className="kicker">However Works For You</p>
+          <h2 className="mt-1 text-2xl font-bold text-slate-900 sm:text-3xl">Three ways to get fixed</h2>
         </div>
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
           <div className="card overflow-hidden !p-0">
             <InShopIllustration className="w-full" />
             <div className="p-6">
@@ -70,6 +71,22 @@ export default async function HomePage() {
                 Book home service →
               </Link>
             </div>
+          </div>
+          <div className="card relative flex flex-col justify-center p-6">
+            {!PICKUP_DELIVERY_PUBLIC_ENABLED && (
+              <span className="badge absolute right-4 top-4 border border-amber-200 bg-amber-50 text-amber-700">Soon</span>
+            )}
+            <p className="font-semibold text-slate-800">Pickup &amp; Delivery</p>
+            <p className="mt-1.5 text-sm text-slate-400">
+              Too busy to wait around? A rider picks up your device, we repair it at the shop, then a rider brings it back to you.
+            </p>
+            {PICKUP_DELIVERY_PUBLIC_ENABLED ? (
+              <Link href="/pickup-delivery" className="mt-4 inline-block text-sm text-blue-500 hover:underline">
+                Book pickup &amp; delivery →
+              </Link>
+            ) : (
+              <span className="mt-4 inline-block text-sm text-slate-300">Book pickup &amp; delivery →</span>
+            )}
           </div>
         </div>
       </section>

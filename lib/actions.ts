@@ -4,7 +4,16 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import bcrypt from "bcryptjs";
-import { OTP_GATE_ENABLED, MAX_PRICE_EDITS, SITE_URL, BOOKING_CONFIRMATION_WINDOW_HOURS, ICLOUD_CHECK_PRICE_PESOS } from "@/lib/config";
+import {
+  OTP_GATE_ENABLED,
+  MAX_PRICE_EDITS,
+  SITE_URL,
+  BOOKING_CONFIRMATION_WINDOW_HOURS,
+  ICLOUD_CHECK_PRICE_PESOS,
+  PICKUP_DELIVERY_PUBLIC_ENABLED,
+  PICKUP_DELIVERY_SKIP_PAYMENT,
+  PICKUP_DELIVERY_SKIP_OTP,
+} from "@/lib/config";
 import { CHECKLIST_TEMPLATE } from "./checklist";
 import {
   query,
@@ -13,6 +22,7 @@ import {
   getUsers,
   getTechnicians,
   getBranches,
+  getRiders,
   getLookups,
   getCustomers,
   getDeviceModels,
@@ -32,6 +42,7 @@ import {
   notifyAdmins,
   notifyAdminsAboutWalkIn,
   notifyTechnician,
+  notifyRider,
   canManageHomeServiceRequests,
   canDeleteHomeServiceRequests,
   canAccessCrm,
@@ -47,26 +58,45 @@ import {
   markHomeServiceDownpaymentPending,
   markRepairRecordQrPaymentPending,
   getTodayCheckIn,
+  pickupDeliveryStage,
+  type PickupDeliveryStage,
 } from "./db";
 import { getCurrentUser, setSession, clearSession, requireRole } from "./auth";
-import { sendRepairReceiptEmail, sendCancellationEmail, sendQuotationEmail, sendLeadReplyEmail, sendBroadcastEmail, sendWalkInOtpEmail, sendPublicQuoteEmail, sendTechnicianOnTheWayEmail, emailConfigured } from "./email";
+import {
+  sendRepairReceiptEmail,
+  sendCancellationEmail,
+  sendQuotationEmail,
+  sendLeadReplyEmail,
+  sendBroadcastEmail,
+  sendWalkInOtpEmail,
+  sendPublicQuoteEmail,
+  sendTrackingLinkEmail,
+  sendTechnicianOnTheWayEmail,
+  emailConfigured,
+} from "./email";
 import { isOnTheWayStatus } from "./technicianTracking";
 import { sendSms, sendOtpSms, smsConfigured, normalizePhone, getAccountStatus, type SmsAccountStatus } from "./sms";
-import { SUNDAY_ONLY_PROVINCES, DOWNPAYMENT_PROVINCES, serviceFeeAmount } from "./homeServiceFees";
+import { SUNDAY_ONLY_PROVINCES, DOWNPAYMENT_PROVINCES, serviceFeeAmount, PICKUP_DELIVERY_FEE_PESOS } from "./homeServiceFees";
 import { getRepairQuote } from "./servicePricing";
 import { formatDate, isCheckInOpen } from "./format";
 import { createCheckoutSession as createPaymongoCheckoutSession, paymongoConfigured } from "./paymongo";
 import { confirmBookingRows, type ConfirmBookingResult } from "./paymentProcessing";
 import { checkIcloudStatus } from "./sickw";
-import type {
-  Role,
-  LookupKind,
-  CustomFieldType,
-  ChecklistItem,
-  ChecklistResult,
-  ChecklistPhase,
-  Expense,
-  HomeServiceRequest,
+import {
+  DEVICE_CONDITION_ITEMS,
+  REQUEST_EXCEPTION_KINDS,
+  REQUEST_EXCEPTION_LABELS,
+  type Role,
+  type LookupKind,
+  type CustomFieldType,
+  type ChecklistItem,
+  type ChecklistResult,
+  type ChecklistPhase,
+  type Expense,
+  type HomeServiceRequest,
+  type DeviceConditionChecklist,
+  type PickupPhoto,
+  type RequestExceptionKind,
 } from "./types";
 
 function str(fd: FormData, key: string) {
@@ -92,7 +122,7 @@ export async function loginAction(_prev: { error?: string } | undefined, formDat
   }
   await setSession(user.id, formData.get("remember") === "on");
   await query("insert into login_logs (user_id, user_name, user_email, role) values ($1,$2,$3,$4)", [user.id, user.name, user.email, user.role]);
-  redirect(user.role === "technician" ? "/technician" : "/admin");
+  redirect(user.role === "technician" ? "/technician" : user.role === "rider" ? "/rider" : "/admin");
 }
 
 export async function logoutAction() {
@@ -146,6 +176,7 @@ export async function createUser(formData: FormData) {
   const password = str(formData, "password");
   const role = str(formData, "role") as Role;
   let technicianId = str(formData, "technicianId") || null;
+  const riderId = role === "rider" ? str(formData, "riderId") || null : null;
   const assignedBranchIds = role === "branch_admin" ? formData.getAll("assignedBranchIds").map(String) : [];
   const canManageRequests = role === "branch_admin" ? formData.get("canManageRequests") === "on" : true;
   const canDeleteRequests = role === "branch_admin" ? formData.get("canDeleteRequests") === "on" : true;
@@ -156,6 +187,7 @@ export async function createUser(formData: FormData) {
   const canManageRepairPricingFlag = role === "branch_admin" ? formData.get("canManageRepairPricing") === "on" : true;
   const phone = str(formData, "phone");
   if (!name || !email || !password || !role) return;
+  if (role === "rider" && !riderId) return; // must link to an existing Rider record (Settings > Riders)
 
   const existing = await getUserAuthByEmail(email);
   if (existing) return;
@@ -176,13 +208,14 @@ export async function createUser(formData: FormData) {
 
   const passwordHash = await bcrypt.hash(password, 10);
   await query(
-    "insert into users (name, email, password_hash, role, technician_id, assigned_branch_ids, can_manage_requests, can_delete_requests, can_view_all_branches, can_access_crm, can_manage_walkins, can_waive_service_fee, can_manage_repair_pricing, phone) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)",
+    "insert into users (name, email, password_hash, role, technician_id, rider_id, assigned_branch_ids, can_manage_requests, can_delete_requests, can_view_all_branches, can_access_crm, can_manage_walkins, can_waive_service_fee, can_manage_repair_pricing, phone) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)",
     [
       name,
       email,
       passwordHash,
       role,
       role === "technician" ? technicianId : null,
+      riderId,
       assignedBranchIds,
       canManageRequests,
       canDeleteRequests,
@@ -196,6 +229,7 @@ export async function createUser(formData: FormData) {
   );
   revalidatePath("/admin/users");
   revalidatePath("/admin/technicians");
+  revalidatePath("/admin/riders");
 }
 
 export async function updateUser(formData: FormData) {
@@ -216,6 +250,7 @@ export async function updateUser(formData: FormData) {
   const name = str(formData, "name") || user.name;
   const role = (str(formData, "role") || user.role) as Role;
   let technicianId = str(formData, "technicianId") || null;
+  const riderId = role === "rider" ? str(formData, "riderId") || user.riderId : null;
   const password = str(formData, "password");
   const assignedBranchIds = role === "branch_admin" ? formData.getAll("assignedBranchIds").map(String) : [];
   const canManageRequests = role === "branch_admin" ? formData.get("canManageRequests") === "on" : true;
@@ -253,13 +288,14 @@ export async function updateUser(formData: FormData) {
   if (password) {
     const passwordHash = await bcrypt.hash(password, 10);
     await query(
-      "update users set name=$1, email=$2, password_hash=$3, role=$4, technician_id=$5, assigned_branch_ids=$6, can_manage_requests=$7, can_delete_requests=$8, can_view_all_branches=$9, can_access_crm=$10, can_manage_walkins=$11, can_waive_service_fee=$12, can_manage_repair_pricing=$13, phone=$14 where id=$15",
+      "update users set name=$1, email=$2, password_hash=$3, role=$4, technician_id=$5, rider_id=$6, assigned_branch_ids=$7, can_manage_requests=$8, can_delete_requests=$9, can_view_all_branches=$10, can_access_crm=$11, can_manage_walkins=$12, can_waive_service_fee=$13, can_manage_repair_pricing=$14, phone=$15 where id=$16",
       [
         name,
         email || user.email,
         passwordHash,
         role,
         role === "technician" ? technicianId : null,
+        riderId,
         assignedBranchIds,
         canManageRequests,
         canDeleteRequests,
@@ -274,12 +310,13 @@ export async function updateUser(formData: FormData) {
     );
   } else {
     await query(
-      "update users set name=$1, email=$2, role=$3, technician_id=$4, assigned_branch_ids=$5, can_manage_requests=$6, can_delete_requests=$7, can_view_all_branches=$8, can_access_crm=$9, can_manage_walkins=$10, can_waive_service_fee=$11, can_manage_repair_pricing=$12, phone=$13 where id=$14",
+      "update users set name=$1, email=$2, role=$3, technician_id=$4, rider_id=$5, assigned_branch_ids=$6, can_manage_requests=$7, can_delete_requests=$8, can_view_all_branches=$9, can_access_crm=$10, can_manage_walkins=$11, can_waive_service_fee=$12, can_manage_repair_pricing=$13, phone=$14 where id=$15",
       [
         name,
         email || user.email,
         role,
         role === "technician" ? technicianId : null,
+        riderId,
         assignedBranchIds,
         canManageRequests,
         canDeleteRequests,
@@ -295,6 +332,7 @@ export async function updateUser(formData: FormData) {
   }
   revalidatePath("/admin/users");
   revalidatePath("/admin/technicians");
+  revalidatePath("/admin/riders");
 }
 
 export async function toggleUserActive(formData: FormData) {
@@ -327,15 +365,26 @@ export async function deleteUser(formData: FormData) {
 
 // ---------- Branches ----------
 
+// Parses an optional decimal-coordinate field (lat or lng) — blank means
+// "no exact pin set, fall back to geocoding the address text."
+function floatOrNull(fd: FormData, key: string): number | null {
+  const raw = str(fd, key);
+  if (!raw) return null;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : null;
+}
+
 export async function createBranch(formData: FormData) {
   // Owner-only, same as the admin page that renders this form.
   if (!(await requireRole("owner_admin"))) return;
   const name = str(formData, "name");
   if (!name) return;
-  await query("insert into branches (name, address, contact_number) values ($1,$2,$3)", [
+  await query("insert into branches (name, address, contact_number, lat, lng) values ($1,$2,$3,$4,$5)", [
     name,
     str(formData, "address"),
     str(formData, "contactNumber"),
+    floatOrNull(formData, "lat"),
+    floatOrNull(formData, "lng"),
   ]);
   revalidatePath("/admin/branches");
   // Branch name/address/contact number is shown across the public site — the
@@ -351,10 +400,12 @@ export async function updateBranch(formData: FormData) {
   const branchId = str(formData, "id");
   const name = str(formData, "name");
   if (!name) return;
-  await query("update branches set name=$1, address=$2, contact_number=$3 where id=$4", [
+  await query("update branches set name=$1, address=$2, contact_number=$3, lat=$4, lng=$5 where id=$6", [
     name,
     str(formData, "address"),
     str(formData, "contactNumber"),
+    floatOrNull(formData, "lat"),
+    floatOrNull(formData, "lng"),
     branchId,
   ]);
   revalidatePath("/admin/branches");
@@ -447,6 +498,508 @@ export async function deleteTechnician(formData: FormData) {
   await query("delete from technicians where id=$1", [techId]);
   revalidatePath("/admin/technicians");
   revalidatePath("/admin/users");
+}
+
+// ---------- Riders (Pickup & Delivery couriers — separate role from Technician) ----------
+
+export async function createRider(formData: FormData) {
+  // Owner-only, same as the Admin > Riders page that renders this form.
+  if (!(await requireRole("owner_admin"))) return;
+  const name = str(formData, "name");
+  if (!name) return;
+  await query("insert into riders (name, contact_number, email, branch_id, vehicle) values ($1,$2,$3,$4,$5)", [
+    name,
+    str(formData, "contactNumber"),
+    str(formData, "email"),
+    str(formData, "branchId") || null,
+    str(formData, "vehicle") || "motorcycle",
+  ]);
+  revalidatePath("/admin/riders");
+}
+
+export async function updateRider(formData: FormData) {
+  if (!(await requireRole("owner_admin"))) return;
+  const riderId = str(formData, "id");
+  const name = str(formData, "name");
+  if (!name) return;
+  await query("update riders set name=$1, contact_number=$2, email=$3, branch_id=$4, vehicle=$5 where id=$6", [
+    name,
+    str(formData, "contactNumber"),
+    str(formData, "email"),
+    str(formData, "branchId") || null,
+    str(formData, "vehicle") || "motorcycle",
+    riderId,
+  ]);
+  revalidatePath("/admin/riders");
+}
+
+export async function toggleRiderActive(formData: FormData) {
+  if (!(await requireRole("owner_admin"))) return;
+  const riderId = str(formData, "id");
+  await query("update riders set active = not active where id=$1", [riderId]);
+  revalidatePath("/admin/riders");
+}
+
+// Admin override for a rider's on-duty status — e.g. a rider forgot to
+// toggle off before going home, and support needs to correct it so the
+// public booking check and the Pickup & Delivery board stop counting them
+// as available.
+export async function adminSetRiderOnDuty(formData: FormData) {
+  if (!(await requireRole("owner_admin"))) return;
+  const riderId = str(formData, "id");
+  await query("update riders set on_duty = not on_duty where id=$1", [riderId]);
+  revalidatePath("/admin/riders");
+  revalidatePath("/admin/pickup-delivery");
+}
+
+// The rider's own on-duty toggle (My Jobs page) — "I'm on shift and can
+// take jobs" vs "I'm off shift". Separate from the admin-controlled
+// `active` account flag above. Only the logged-in rider can flip their own
+// status.
+export async function setRiderOnDuty(formData: FormData) {
+  const user = await getCurrentUser();
+  if (!user || user.role !== "rider" || !user.riderId) return;
+  const onDuty = str(formData, "onDuty") === "true";
+  await query("update riders set on_duty=$1 where id=$2", [onDuty, user.riderId]);
+  revalidatePath("/rider");
+  revalidatePath("/admin/riders");
+  revalidatePath("/admin/pickup-delivery");
+}
+
+export async function deleteRider(formData: FormData) {
+  const actor = await requireRole("owner_admin");
+  if (!actor) return;
+
+  const riderId = str(formData, "id");
+
+  // Block deleting a rider still assigned to an in-flight pickup or delivery
+  // leg — same reasoning as deleteTechnician: reassign first rather than
+  // silently leaving a job's rider field pointing nowhere.
+  const requests = await getRequests();
+  const hasOpenLeg = requests.some(
+    (r) =>
+      r.fulfillmentMode === "pickup_delivery" &&
+      ((r.pickupRiderId === riderId && !r.pickedUpAt) || (r.deliveryRiderId === riderId && !r.deliveredAt))
+  );
+  if (hasOpenLeg) return;
+
+  await query("delete from riders where id=$1", [riderId]);
+  revalidatePath("/admin/riders");
+  revalidatePath("/admin/users");
+}
+
+// Admin assigns (or reassigns) a rider to a request's pickup leg — manual,
+// branch-wide (any active rider, not scoped to the request's own branch),
+// per how Ceejay wants dispatch to work for now.
+export async function assignPickupRider(formData: FormData) {
+  const user = await getCurrentUser();
+  if (!canManageHomeServiceRequests(user)) return;
+
+  const requestId = str(formData, "requestId");
+  const riderId = str(formData, "riderId");
+  const req = await getRequestById(requestId);
+  if (!req || req.fulfillmentMode !== "pickup_delivery" || !riderId) return;
+  // Can't dispatch a rider for a booking that hasn't paid its Booking &
+  // Diagnostic Fee yet — the UI already hides this job until then, this is
+  // just the server-side backstop.
+  if (req.downpaymentRequired && req.downpaymentStatus !== "paid") return;
+
+  await query("update home_service_requests set pickup_rider_id=$1, pickup_rider_accepted_at=null where id=$2", [riderId, requestId]);
+  const riderRow = await queryOne<{ name: string }>("select name from riders where id=$1", [riderId]);
+  await logActivity("home_service_request", requestId, `Pickup rider assigned: ${riderRow?.name ?? riderId} (by ${user?.name ?? ""}) — awaiting rider's Accept`, user?.name ?? "Admin");
+  await notifyRider(riderId, `New pickup: ${req.reference} — ${req.customerName}, ${req.street}, ${req.city}`, `/rider`);
+  revalidatePath("/admin/pickup-delivery");
+  revalidatePath(`/admin/requests/${requestId}`);
+}
+
+// Same as assignPickupRider, but only meaningful once the repair itself is
+// done (pickupDeliveryStage === "ready_for_delivery" or later, e.g. an admin
+// correcting an already-assigned rider) — re-checked here as a server-side
+// backstop, since a delivery rider dispatched before the repair is actually
+// done would hand back a device that was never fixed.
+const DELIVERY_NOT_READY_STAGES = new Set<PickupDeliveryStage>([
+  "requested",
+  "pickup_assigned",
+  "pickup_started",
+  "picked_up",
+  "heading_to_shop",
+  "at_shop",
+]);
+
+export async function assignDeliveryRider(formData: FormData) {
+  const user = await getCurrentUser();
+  if (!canManageHomeServiceRequests(user)) return;
+
+  const requestId = str(formData, "requestId");
+  const riderId = str(formData, "riderId");
+  const req = await getRequestById(requestId);
+  if (!req || req.fulfillmentMode !== "pickup_delivery" || !riderId) return;
+  const statusLbl = (await getLookups()).find((l) => l.id === req.statusId)?.label;
+  const stage = pickupDeliveryStage(req, statusLbl);
+  if (!stage || DELIVERY_NOT_READY_STAGES.has(stage)) return;
+
+  await query("update home_service_requests set delivery_rider_id=$1, delivery_rider_accepted_at=null where id=$2", [riderId, requestId]);
+  const riderRow = await queryOne<{ name: string }>("select name from riders where id=$1", [riderId]);
+  await logActivity("home_service_request", requestId, `Delivery rider assigned: ${riderRow?.name ?? riderId} (by ${user?.name ?? ""}) — awaiting rider's Accept`, user?.name ?? "Admin");
+  await notifyRider(riderId, `New delivery: ${req.reference} — ${req.customerName}, ${req.street}, ${req.city}`, `/rider`);
+  revalidatePath("/admin/pickup-delivery");
+  revalidatePath(`/admin/requests/${requestId}`);
+}
+
+// The rider's own actions (app/rider) — a single dropdown per leg (see
+// RiderStatusUpdateForm) instead of one button per step, so the rider picks
+// a status directly rather than clicking through steps in order. Each leg
+// still moves through the same checkpoints — On The Way -> has the device ->
+// arrived (shop or customer) — just settable in any order the rider picks;
+// each branch below only writes its own timestamp, and only if not already
+// set, so re-selecting an earlier status from the dropdown is a harmless no-op
+// rather than erasing a later one.
+
+export type PickupRiderStatus = "on_the_way" | "picked_up" | "heading_to_shop" | "delivered_to_branch";
+export type RiderStatusResult = { ok: true } | { ok: false; error: string };
+
+// A rider must Accept a job (assigned by admin) before they can start the
+// trip for it — Decline clears the assignment back to the unassigned pool
+// rather than leaving a "declined" flag on a job nobody's working, so it
+// shows back up for admin to hand to someone else. Blocked once the leg has
+// actually started (pickupStartedAt/outForDeliveryAt set) — accidentally
+// declining a trip already in progress would strand the customer.
+export async function riderAcceptPickup(formData: FormData) {
+  const user = await getCurrentUser();
+  if (!user || user.role !== "rider" || !user.riderId) return;
+  const requestId = str(formData, "requestId");
+  const req = await getRequestById(requestId);
+  if (!req || req.pickupRiderId !== user.riderId || req.pickupRiderAcceptedAt) return;
+
+  await query("update home_service_requests set pickup_rider_accepted_at=now() where id=$1", [requestId]);
+  await logActivity("home_service_request", requestId, `Rider ${user.name} accepted the pickup job`, user.name);
+  revalidatePath("/rider");
+  revalidatePath("/admin/pickup-delivery");
+  revalidatePath(`/admin/requests/${requestId}`);
+}
+
+export async function riderDeclinePickup(formData: FormData) {
+  const user = await getCurrentUser();
+  if (!user || user.role !== "rider" || !user.riderId) return;
+  const requestId = str(formData, "requestId");
+  const req = await getRequestById(requestId);
+  if (!req || req.pickupRiderId !== user.riderId || req.pickupStartedAt) return;
+
+  await query("update home_service_requests set pickup_rider_id=null, pickup_rider_accepted_at=null where id=$1", [requestId]);
+  await logActivity("home_service_request", requestId, `Rider ${user.name} declined the pickup job — back to the unassigned pool`, user.name);
+  await notifyAdmins("request_in_progress", requestId, `${user.name} declined the pickup for ${req.reference} (${req.customerName}) — needs reassignment.`);
+  revalidatePath("/rider");
+  revalidatePath("/admin/pickup-delivery");
+  revalidatePath(`/admin/requests/${requestId}`);
+}
+
+export async function riderAcceptDelivery(formData: FormData) {
+  const user = await getCurrentUser();
+  if (!user || user.role !== "rider" || !user.riderId) return;
+  const requestId = str(formData, "requestId");
+  const req = await getRequestById(requestId);
+  if (!req || req.deliveryRiderId !== user.riderId || req.deliveryRiderAcceptedAt) return;
+
+  await query("update home_service_requests set delivery_rider_accepted_at=now() where id=$1", [requestId]);
+  await logActivity("home_service_request", requestId, `Rider ${user.name} accepted the delivery job`, user.name);
+  revalidatePath("/rider");
+  revalidatePath("/admin/pickup-delivery");
+  revalidatePath(`/admin/requests/${requestId}`);
+}
+
+export async function riderDeclineDelivery(formData: FormData) {
+  const user = await getCurrentUser();
+  if (!user || user.role !== "rider" || !user.riderId) return;
+  const requestId = str(formData, "requestId");
+  const req = await getRequestById(requestId);
+  if (!req || req.deliveryRiderId !== user.riderId || req.outForDeliveryAt) return;
+
+  await query("update home_service_requests set delivery_rider_id=null, delivery_rider_accepted_at=null where id=$1", [requestId]);
+  await logActivity("home_service_request", requestId, `Rider ${user.name} declined the delivery job — back to the unassigned pool`, user.name);
+  await notifyAdmins("request_in_progress", requestId, `${user.name} declined the delivery for ${req.reference} (${req.customerName}) — needs reassignment.`);
+  revalidatePath("/rider");
+  revalidatePath("/admin/pickup-delivery");
+  revalidatePath(`/admin/requests/${requestId}`);
+}
+
+export async function riderUpdatePickupStatus(_prev: RiderStatusResult | undefined, formData: FormData): Promise<RiderStatusResult> {
+  const user = await getCurrentUser();
+  if (!user || user.role !== "rider" || !user.riderId) return { ok: false, error: "Not signed in as a rider." };
+
+  const requestId = str(formData, "requestId");
+  const status = str(formData, "status") as PickupRiderStatus;
+  const req = await getRequestById(requestId);
+  if (!req || req.pickupRiderId !== user.riderId) return { ok: false, error: "This job isn't assigned to you." };
+
+  switch (status) {
+    case "on_the_way": {
+      if (req.pickupStartedAt) break;
+      if (!req.pickupRiderAcceptedAt) return { ok: false, error: "Please accept this job before starting the trip." };
+      await query("update home_service_requests set pickup_started_at=now() where id=$1", [requestId]);
+      await logActivity("home_service_request", requestId, `Rider ${user.name} is on the way to pick up the device`, user.name);
+      if (req.email && emailConfigured()) {
+        try {
+          await sendTrackingLinkEmail(req.email, { customerName: req.customerName, reference: req.reference, phone: req.phone, stage: "heading_to_pickup" });
+        } catch {
+          // Best-effort — never blocks the rider's status update.
+        }
+      }
+      break;
+    }
+    case "picked_up": {
+      if (req.pickedUpAt) break;
+
+      // Full device-condition checklist — every item required, so a rider
+      // can't rush past a step they forgot to check.
+      const checklist: DeviceConditionChecklist = {};
+      for (const item of DEVICE_CONDITION_ITEMS) {
+        const v = str(formData, `condition_${item}`);
+        if (v === "ok" || v === "damaged") checklist[item] = v;
+      }
+      const missingItem = DEVICE_CONDITION_ITEMS.find((item) => !checklist[item]);
+      if (missingItem) return { ok: false, error: "Please complete the full device condition checklist before marking it picked up." };
+      const existingDamageNotes = str(formData, "existingDamageNotes");
+      if (existingDamageNotes) checklist.existingDamageNotes = existingDamageNotes;
+
+      // Labeled photos — front/back/sides/top-bottom required, a damage
+      // close-up only if there's actually damage to show.
+      const photoSlots: { key: string; label: string; required: boolean }[] = [
+        { key: "front", label: "the front", required: true },
+        { key: "back", label: "the back", required: true },
+        { key: "left", label: "the left side", required: true },
+        { key: "right", label: "the right side", required: true },
+        { key: "topBottom", label: "the top and bottom", required: true },
+        { key: "damage", label: "the damaged area(s)", required: false },
+      ];
+      const photos: PickupPhoto[] = [];
+      for (const slot of photoSlots) {
+        const dataUrl = str(formData, `photo_${slot.key}`);
+        if (!dataUrl) {
+          if (slot.required) return { ok: false, error: `Please take a photo of ${slot.label}.` };
+          continue;
+        }
+        photos.push({ label: slot.label, dataUrl });
+      }
+
+      await query(
+        "update home_service_requests set picked_up_at=now(), pickup_signature_data_url=$1, pickup_photo_data_url=$2, pickup_condition_checklist=$3, pickup_photos=$4, pickup_security_seal=$5 where id=$6",
+        [
+          str(formData, "signatureDataUrl") || null,
+          photos[0]?.dataUrl ?? null,
+          JSON.stringify(checklist),
+          JSON.stringify(photos),
+          str(formData, "securitySeal") || null,
+          requestId,
+        ]
+      );
+      await logActivity(
+        "home_service_request",
+        requestId,
+        `Picked up by rider ${user.name} — condition checklist and ${photos.length} photo(s) recorded`,
+        user.name
+      );
+      break;
+    }
+    case "heading_to_shop": {
+      if (req.headingToShopAt) break;
+      const destinationBranchId = str(formData, "deliveredBranchId");
+      if (!destinationBranchId) return { ok: false, error: "Please select which branch you're heading to." };
+      await query("update home_service_requests set heading_to_shop_at=now(), delivered_branch_id=$1 where id=$2", [
+        destinationBranchId,
+        requestId,
+      ]);
+      await logActivity("home_service_request", requestId, `Rider ${user.name} is on the way to the branch with the device`, user.name);
+      if (req.email && emailConfigured()) {
+        try {
+          await sendTrackingLinkEmail(req.email, { customerName: req.customerName, reference: req.reference, phone: req.phone, stage: "heading_to_shop" });
+        } catch {
+          // Best-effort — never blocks the rider's status update.
+        }
+      }
+      break;
+    }
+    case "delivered_to_branch": {
+      if (req.receivedAtShopAt) break;
+      const deliveredBranchId = str(formData, "deliveredBranchId");
+      if (!deliveredBranchId) return { ok: false, error: "Please select which branch you delivered the device to." };
+      await query("update home_service_requests set received_at_shop_at=now(), delivered_branch_id=$1 where id=$2", [deliveredBranchId, requestId]);
+      await logActivity("home_service_request", requestId, `Device delivered to the shop by rider ${user.name}`, user.name);
+      await notifyAdmins(
+        "request_in_progress",
+        requestId,
+        `${user.name} brought ${req.reference} (${req.customerName}) to the shop — ready to assign a technician.`
+      );
+      break;
+    }
+    default:
+      return { ok: false, error: "Invalid status." };
+  }
+  revalidatePath("/rider");
+  revalidatePath("/admin/pickup-delivery");
+  revalidatePath(`/admin/requests/${requestId}`);
+  return { ok: true };
+}
+
+// Lets the rider redirect to a different branch mid-trip — e.g. told to
+// bring it to Greenhills instead of Cubao after already leaving. Separate
+// from the "On The Way to Branch" step in riderUpdatePickupStatus above,
+// which only writes delivered_branch_id the first time (it no-ops once
+// heading_to_shop_at is set); this one is always available for as long as
+// the rider is actually still heading there, and never touches the
+// timestamps. /track and the admin board both read delivered_branch_id
+// fresh on every load, so the change shows up immediately — no new link,
+// no extra email, same tracking page the customer already has.
+export async function riderUpdateDestinationBranch(_prev: RiderStatusResult | undefined, formData: FormData): Promise<RiderStatusResult> {
+  const user = await getCurrentUser();
+  if (!user || user.role !== "rider" || !user.riderId) return { ok: false, error: "Not signed in as a rider." };
+
+  const requestId = str(formData, "requestId");
+  const deliveredBranchId = str(formData, "deliveredBranchId");
+  if (!deliveredBranchId) return { ok: false, error: "Please select a branch." };
+
+  const req = await getRequestById(requestId);
+  if (!req || req.pickupRiderId !== user.riderId) return { ok: false, error: "This job isn't assigned to you." };
+  if (!req.headingToShopAt || req.receivedAtShopAt) {
+    return { ok: false, error: "You can only change the destination branch while this trip is in progress." };
+  }
+  if (deliveredBranchId === req.deliveredBranchId) return { ok: true };
+
+  await query("update home_service_requests set delivered_branch_id=$1 where id=$2", [deliveredBranchId, requestId]);
+  await logActivity("home_service_request", requestId, `Rider ${user.name} redirected to a different branch mid-trip`, user.name);
+  revalidatePath("/rider");
+  revalidatePath("/admin/pickup-delivery");
+  revalidatePath(`/admin/requests/${requestId}`);
+  return { ok: true };
+}
+
+export type DeliveryRiderStatus = "on_the_way" | "delivered";
+
+export async function riderUpdateDeliveryStatus(_prev: RiderStatusResult | undefined, formData: FormData): Promise<RiderStatusResult> {
+  const user = await getCurrentUser();
+  if (!user || user.role !== "rider" || !user.riderId) return { ok: false, error: "Not signed in as a rider." };
+
+  const requestId = str(formData, "requestId");
+  const status = str(formData, "status") as DeliveryRiderStatus;
+  const req = await getRequestById(requestId);
+  if (!req || req.deliveryRiderId !== user.riderId) return { ok: false, error: "This job isn't assigned to you." };
+
+  switch (status) {
+    case "on_the_way": {
+      if (req.outForDeliveryAt) break;
+      if (!req.deliveryRiderAcceptedAt) return { ok: false, error: "Please accept this job before starting the trip." };
+      const statusLbl = (await getLookups()).find((l) => l.id === req.statusId)?.label;
+      const stage = pickupDeliveryStage(req, statusLbl);
+      if (!stage || DELIVERY_NOT_READY_STAGES.has(stage)) {
+        return { ok: false, error: "This device isn't marked repaired yet — please check with the shop before starting the delivery trip." };
+      }
+      await query("update home_service_requests set out_for_delivery_at=now() where id=$1", [requestId]);
+      await logActivity("home_service_request", requestId, `Rider ${user.name} is on the way to deliver the device`, user.name);
+      break;
+    }
+    case "delivered":
+      if (req.deliveredAt) break;
+      await query("update home_service_requests set delivered_at=now(), delivery_signature_data_url=$1 where id=$2", [
+        str(formData, "signatureDataUrl") || null,
+        requestId,
+      ]);
+      await logActivity("home_service_request", requestId, `Delivered by rider ${user.name}`, user.name);
+      await notifyAdmins("request_in_progress", requestId, `${user.name} delivered ${req.reference} (${req.customerName}) to the customer.`);
+      break;
+    default:
+      return { ok: false, error: "Invalid status." };
+  }
+  revalidatePath("/rider");
+  revalidatePath("/admin/pickup-delivery");
+  revalidatePath(`/admin/requests/${requestId}`);
+  return { ok: true };
+}
+
+export type ReportExceptionResult = { ok: true } | { ok: false; error: string };
+
+// Pickup & Delivery "Phase 5" — Exception Handling (FINAL FLOW spec item
+// 31). One shared action for every exception kind, usable by the rider
+// (for a job assigned to them) or admin/branch staff (for any pickup_delivery
+// request) — see components/ReportExceptionForm.tsx. Every kind gets a
+// request_exceptions row recording who/when/why/evidence; "cancel" and
+// "reschedule" additionally apply their real-world effect the same way the
+// rest of the app already does for a status change / schedule edit.
+export async function reportRequestException(_prev: ReportExceptionResult | undefined, formData: FormData): Promise<ReportExceptionResult> {
+  const user = await getCurrentUser();
+  if (!user) return { ok: false, error: "Not signed in." };
+
+  const requestId = str(formData, "requestId");
+  const kind = str(formData, "kind") as RequestExceptionKind;
+  const reason = str(formData, "reason");
+  const evidencePhotoDataUrl = str(formData, "evidencePhotoDataUrl") || null;
+  if (!(REQUEST_EXCEPTION_KINDS as readonly string[]).includes(kind)) return { ok: false, error: "Please choose a reason." };
+  if (!reason) return { ok: false, error: "Please describe what happened." };
+
+  const req = await getRequestById(requestId);
+  if (!req || req.fulfillmentMode !== "pickup_delivery") return { ok: false, error: "Request not found." };
+
+  const isAssignedRider = user.role === "rider" && !!user.riderId && (req.pickupRiderId === user.riderId || req.deliveryRiderId === user.riderId);
+  const isStaff = canManageHomeServiceRequests(user);
+  if (!isAssignedRider && !isStaff) return { ok: false, error: "You don't have access to report an issue on this job." };
+
+  await query(
+    "insert into request_exceptions (request_id, kind, reason, evidence_photo_data_url, reported_by, reported_by_role) values ($1,$2,$3,$4,$5,$6)",
+    [requestId, kind, reason, evidencePhotoDataUrl, user.name, user.role]
+  );
+  await logActivity("home_service_request", requestId, `${REQUEST_EXCEPTION_LABELS[kind]} — reported by ${user.name}: ${reason}`, user.name);
+
+  if (kind === "reschedule") {
+    const newPreferredDatetime = str(formData, "newPreferredDatetime");
+    if (newPreferredDatetime) {
+      await query("update home_service_requests set preferred_datetime=$1 where id=$2", [newPreferredDatetime, requestId]);
+    }
+  }
+
+  if (kind === "cancel") {
+    const lookups = await getLookups();
+    const cancelledStatus = lookups.find((l) => l.kind === "request_status" && l.label === "Cancelled");
+    if (cancelledStatus) {
+      const statusHistory = [...req.statusHistory, { statusId: cancelledStatus.id, at: new Date().toISOString() }];
+      // Cancelling auto-trashes the request, same convention as
+      // changeRequestStatus/technicianUpdateStatus.
+      await query("update home_service_requests set status_id=$1, status_history=$2, deleted_at=now() where id=$3", [
+        cancelledStatus.id,
+        JSON.stringify(statusHistory),
+        requestId,
+      ]);
+    }
+    if (req.email && emailConfigured()) {
+      try {
+        await sendCancellationEmail(req.email, { customerName: req.customerName, reference: req.reference, reason });
+      } catch {
+        // Best-effort — never blocks the cancellation itself.
+      }
+    }
+  }
+
+  await notifyAdmins(
+    "request_in_progress",
+    requestId,
+    `${REQUEST_EXCEPTION_LABELS[kind]} on ${req.reference} (${req.customerName}) — reported by ${user.name}.`
+  );
+
+  revalidatePath("/rider");
+  revalidatePath("/admin/pickup-delivery");
+  revalidatePath(`/admin/requests/${requestId}`);
+  return { ok: true };
+}
+
+// Admin clears an exception off the open-issues list once it's been dealt
+// with — the underlying request itself is untouched (an exception is a
+// record of what happened, not a status the request is "in").
+export async function resolveRequestException(formData: FormData) {
+  const user = await getCurrentUser();
+  if (!canManageHomeServiceRequests(user)) return;
+  const exceptionId = str(formData, "exceptionId");
+  await query("update request_exceptions set resolved_at=now(), resolved_by=$1 where id=$2 and resolved_at is null", [
+    user?.name ?? "Admin",
+    exceptionId,
+  ]);
+  revalidatePath("/admin/pickup-delivery");
 }
 
 // ---------- Device Brands / Models ----------
@@ -1144,8 +1697,26 @@ export async function verifyHomeServiceOtp(phoneInput: string, codeInput: string
 
 // ---------- Public Home Service Request ----------
 
+// Shown directly on the submission success screen (HomeServiceForm.tsx) so
+// the customer can decide whether to confirm without needing to open an
+// email at all — computed for every booking, not just ones with an email.
+export type QuotationSummary = {
+  devices: { reference: string; deviceLabel: string; serviceType: string; repairCost: number | null }[];
+  serviceFee: number | null;
+  total: number | null; // only set once every device's repairCost is known — same rule as the quotation email/PDF
+};
+
 export type SubmitResult =
-  | { ok: true; references: string[]; downpaymentRequired: boolean; downpaymentAmount: number | null; confirmationUrl: string | null }
+  | {
+      ok: true;
+      references: string[];
+      downpaymentRequired: boolean;
+      downpaymentAmount: number | null;
+      confirmationUrl: string | null;
+      confirmationToken: string | null;
+      needsConfirmation: boolean;
+      quotation: QuotationSummary;
+    }
   | { ok: false; error: string };
 
 // System fields carry fixed input names (independent of the admin's chosen
@@ -1162,6 +1733,24 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
   }
   const branches = await getBranches();
   const queueBranch = branches.find((b) => b.homeServiceQueue === serviceArea);
+
+  // The public form only ever renders "Pickup & Delivery" as selectable once
+  // PICKUP_DELIVERY_PUBLIC_ENABLED is on (see HomeServiceForm.tsx's "Soon"
+  // gate) — re-checked here too, so a hand-crafted submission can't get a
+  // pickup_delivery row past a production site that still has it off.
+  const requestedFulfillmentMode = str(formData, "fulfillmentMode");
+  const fulfillmentMode: "on_site" | "pickup_delivery" =
+    requestedFulfillmentMode === "pickup_delivery" && PICKUP_DELIVERY_PUBLIC_ENABLED ? "pickup_delivery" : "on_site";
+
+  // Don't take a paid Pickup & Delivery booking nobody can fulfill — the
+  // public page already hides the form when this is true, this is just the
+  // server-side backstop for a hand-crafted/stale submission.
+  if (fulfillmentMode === "pickup_delivery") {
+    const riders = await getRiders();
+    if (!riders.some((r) => r.active && r.onDuty)) {
+      return { ok: false, error: "No riders are available for Pickup & Delivery right now — please try again later, or book Home Service instead." };
+    }
+  }
 
   const name = str(formData, "name");
   const phone = str(formData, "phone");
@@ -1195,8 +1784,13 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
   if (isRequired("email") && !email) return { ok: false, error: `${label("email")} is required.` };
   // A misconfigured/missing Semaphore key must never be able to take the
   // public request form down — the gate only actually applies once SMS
-  // sending is really available.
-  if (OTP_GATE_ENABLED && smsConfigured() && isActive("phone") && phone) {
+  // sending is really available. Pickup & Delivery uses this same gate (per
+  // the FINAL FLOW spec: SMS OTP verifies the initial booking only) — see
+  // HomeServiceForm.tsx's matching client-side gate. TEMPORARY:
+  // PICKUP_DELIVERY_SKIP_OTP bypasses it entirely for pickup_delivery — see
+  // lib/config.ts.
+  const pickupDeliverySkipOtp = fulfillmentMode === "pickup_delivery" && PICKUP_DELIVERY_SKIP_OTP;
+  if (!pickupDeliverySkipOtp && OTP_GATE_ENABLED && smsConfigured() && isActive("phone") && phone) {
     const otpRow = await queryOne<{ verified: boolean }>("select verified from otp_codes where phone=$1", [normalizePhone(phone)]);
     if (!otpRow?.verified) return { ok: false, error: "Please verify your phone number before submitting." };
   }
@@ -1258,14 +1852,22 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
   // own confirmation_token (below) needs to be distinct.
   const pendingStatus = requestStatuses.find((s) => s.label === "Pending") ?? requestStatuses[0];
   const pendingConfirmationStatus = requestStatuses.find((s) => s.label === "Pending Confirmation");
-  const requiresDownpayment = DOWNPAYMENT_PROVINCES.has(province);
-  const initialStatus = (email || requiresDownpayment) && pendingConfirmationStatus ? pendingConfirmationStatus : pendingStatus;
+  // Pickup & Delivery always requires its flat Booking + Diagnostic Fee
+  // (PICKUP_DELIVERY_FEE_PESOS) — same QR Ph down-payment gate as
+  // DOWNPAYMENT_PROVINCES, just always on instead of province-gated.
+  // TEMPORARY: PICKUP_DELIVERY_SKIP_PAYMENT bypasses this (and the email-
+  // confirmation gate below) entirely, straight to "Pending" — see
+  // lib/config.ts for why.
+  const pickupDeliverySkipPayment = fulfillmentMode === "pickup_delivery" && PICKUP_DELIVERY_SKIP_PAYMENT;
+  const requiresDownpayment = !pickupDeliverySkipPayment && (DOWNPAYMENT_PROVINCES.has(province) || fulfillmentMode === "pickup_delivery");
+  const initialStatus =
+    !pickupDeliverySkipPayment && (email || requiresDownpayment) && pendingConfirmationStatus ? pendingConfirmationStatus : pendingStatus;
   const needsConfirmation = initialStatus.id === pendingConfirmationStatus?.id;
   // Only actually enforceable when needsConfirmation held true above (i.e.
   // a "Pending Confirmation" status exists) — otherwise there's no gate to
   // attach a down payment requirement to at all.
   const downpaymentActive = requiresDownpayment && needsConfirmation;
-  const downpaymentAmount = downpaymentActive ? serviceFeeAmount(province, city) : null;
+  const downpaymentAmount = downpaymentActive ? (fulfillmentMode === "pickup_delivery" ? PICKUP_DELIVERY_FEE_PESOS : serviceFeeAmount(province, city)) : null;
   const cancelledStatus = requestStatuses.find((s) => s.label === "Cancelled");
 
   // A customer can book several devices in one submission (the "+ Add
@@ -1418,11 +2020,25 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
     let created: { id: string } | null = null;
     let reference = "";
     for (let attempt = 1; attempt <= 5; attempt++) {
-      const max = await queryOne<{ n: number }>(
-        "select coalesce(max(split_part(reference, '-', 3)::int), 0)::int as n from home_service_requests where reference like $1",
-        [`HSR-${year}-%`]
-      );
-      reference = `HSR-${year}-${String((max?.n ?? 0) + 1).padStart(4, "0")}`;
+      // Pickup & Delivery gets its own "Job ID" format (CJ-YYMMDD-NNNNN,
+      // e.g. CJ-260924-00125) per the FINAL FLOW spec — a global running
+      // sequence (not reset by day/year, the date is already in the prefix)
+      // scoped to its own "CJ-" namespace so it never collides with the
+      // on-site "HSR-{year}-" numbering.
+      if (fulfillmentMode === "pickup_delivery") {
+        const max = await queryOne<{ n: number }>(
+          "select coalesce(max(split_part(reference, '-', 3)::int), 0)::int as n from home_service_requests where reference like 'CJ-%'"
+        );
+        const now2 = new Date();
+        const yymmdd = `${String(now2.getFullYear()).slice(-2)}${String(now2.getMonth() + 1).padStart(2, "0")}${String(now2.getDate()).padStart(2, "0")}`;
+        reference = `CJ-${yymmdd}-${String((max?.n ?? 0) + 1).padStart(5, "0")}`;
+      } else {
+        const max = await queryOne<{ n: number }>(
+          "select coalesce(max(split_part(reference, '-', 3)::int), 0)::int as n from home_service_requests where reference like $1",
+          [`HSR-${year}-%`]
+        );
+        reference = `HSR-${year}-${String((max?.n ?? 0) + 1).padStart(4, "0")}`;
+      }
       try {
         created = await queryOne<{ id: string }>(
           `insert into home_service_requests (
@@ -1430,8 +2046,8 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
             issue_description, photo_data_url, street, landmark, province, city, barangay, lat, lng, preferred_datetime,
             status_id, status_history, custom_fields, vlog_consent, vlog_blur_preference, screen_quality, back_housing_color,
             assigned_technician_id, auto_assigned, branch_id, queue_branch_id, confirmation_token, confirmation_expires_at, booking_group_id,
-            downpayment_required, downpayment_amount, downpayment_status
-          ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36)
+            downpayment_required, downpayment_amount, downpayment_status, fulfillment_mode
+          ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37)
           returning id`,
           [
             reference,
@@ -1470,6 +2086,7 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
             downpaymentActive,
             downpaymentAmount,
             downpaymentActive ? "pending" : "not_required",
+            fulfillmentMode,
           ]
         );
         break;
@@ -1483,12 +2100,42 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
   }
 
   const referenceList = createdRequests.map((r) => r.reference).join(", ");
+
+  // Quotation breakdown — computed for every booking now, not just ones with
+  // an email, since the success screen (HomeServiceForm.tsx) shows it
+  // directly so the customer can decide whether to confirm right there,
+  // without needing to open an email at all. One combined quotation for the
+  // whole booking, not one per device — the service fee is for the
+  // technician's single visit to one address, so it must only ever appear
+  // (and be charged) once, no matter how many devices are in the booking;
+  // each device still gets its own line with its own estimated repair cost.
+  const address = [street, barangay, city, province].filter(Boolean).join(", ") || "Not specified";
+  const serviceFee = serviceFeeAmount(province, city);
+  const [deviceModels, servicePrices] = await Promise.all([getDeviceModels(), getServicePrices()]);
+  const quotationDevices = createdRequests.map((cr) => {
+    const brand = allLookups.find((l) => l.id === cr.device.validDeviceBrandId);
+    const deviceModel = deviceModels.find((m) => m.id === cr.device.validDeviceModelId);
+    const deviceLabel = brand ? `${brand.label} ${deviceModel?.name ?? ""}`.trim() : cr.device.finalDeviceOther || "Not specified";
+    const repairCost = cr.device.serviceTypeLabel
+      ? getRepairQuote(servicePrices, cr.device.serviceTypeLabel, cr.device.validDeviceModelId ?? "", cr.device.screenQuality)
+      : null;
+    return {
+      reference: cr.reference,
+      deviceLabel,
+      serviceType: cr.device.serviceTypeLabel || "Not specified",
+      issueDescription: cr.device.issueDescription || "—",
+      repairCost,
+    };
+  });
+  const allCostsKnown = quotationDevices.every((d) => d.repairCost !== null);
+  const quotationTotal = allCostsKnown ? quotationDevices.reduce((s, d) => s + (d.repairCost ?? 0), 0) + (serviceFee ?? 0) : null;
+
   let smsNote = "";
   if (phone && smsConfigured()) {
     const confirmMessage =
       createdRequests.length > 1
-        ? `Hi ${name || "there"}, your Ceejay repair requests ${referenceList} have been received! Please check your email and tap Confirm within ${BOOKING_CONFIRMATION_WINDOW_HOURS} hours to keep your booking, or it will be automatically cancelled.`
-        : `Hi ${name || "there"}, your Ceejay repair request ${referenceList} has been received! Please check your email and tap Confirm within ${BOOKING_CONFIRMATION_WINDOW_HOURS} hours to keep your booking, or it will be automatically cancelled.`;
+        ? `Hi ${name || "there"}, your Ceejay repair requests ${referenceList} have been received! Please confirm your booking within ${BOOKING_CONFIRMATION_WINDOW_HOURS} hours on the confirmation page shown after you submitted, or it will be automatically cancelled.`
+        : `Hi ${name || "there"}, your Ceejay repair request ${referenceList} has been received! Please confirm your booking within ${BOOKING_CONFIRMATION_WINDOW_HOURS} hours on the confirmation page shown after you submitted, or it will be automatically cancelled.`;
     try {
       await sendSms(phone, confirmMessage);
       smsNote = ` — confirmation SMS sent to ${phone}`;
@@ -1498,35 +2145,16 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
   }
 
   // Automatic quotation email — best-effort, same as the SMS confirmation
-  // above: a missing RESEND_API_KEY, an unmatched device/service (no price
-  // on file), or any other failure here must never block the request
-  // itself from saving, so this always falls through to logActivity below.
-  // One combined email for the whole booking, not one per device — the
-  // service fee is for the technician's single visit to one address, so it
-  // must only ever appear (and be charged) once, no matter how many
-  // devices are in the booking; each device still gets its own line with
-  // its own estimated repair cost.
-  const address = [street, barangay, city, province].filter(Boolean).join(", ") || "Not specified";
-  const serviceFee = serviceFeeAmount(province, city);
+  // above: a missing RESEND_API_KEY or any other failure here must never
+  // block the request itself from saving, so this always falls through to
+  // logActivity below. Sent as a record/reference copy only now — the
+  // customer confirms right on the success screen instead of clicking a
+  // link in this email, so confirmationUrl is only ever passed through for
+  // a down-payment booking (where paying via QR Ph, not a plain click, is
+  // still the real next step and worth a reminder if they navigate away).
   let quoteNote = "";
   if (email) {
     try {
-      const [deviceModels, servicePrices] = await Promise.all([getDeviceModels(), getServicePrices()]);
-      const quotationDevices = createdRequests.map((cr) => {
-        const brand = allLookups.find((l) => l.id === cr.device.validDeviceBrandId);
-        const deviceModel = deviceModels.find((m) => m.id === cr.device.validDeviceModelId);
-        const deviceLabel = brand ? `${brand.label} ${deviceModel?.name ?? ""}`.trim() : cr.device.finalDeviceOther || "Not specified";
-        const repairCost = cr.device.serviceTypeLabel
-          ? getRepairQuote(servicePrices, cr.device.serviceTypeLabel, cr.device.validDeviceModelId ?? "", cr.device.screenQuality)
-          : null;
-        return {
-          reference: cr.reference,
-          deviceLabel,
-          serviceType: cr.device.serviceTypeLabel || "Not specified",
-          issueDescription: cr.device.issueDescription || "—",
-          repairCost,
-        };
-      });
       await sendQuotationEmail(email, {
         customerName: name || "Customer",
         referenceList,
@@ -1535,10 +2163,11 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
         preferredDate: preferredDatetime ? formatDate(preferredDatetime) : "To be confirmed",
         address,
         serviceFee,
-        confirmationUrl: confirmationToken ? `${SITE_URL}/confirm-booking/${confirmationToken}` : null,
+        confirmationUrl: downpaymentActive && confirmationToken ? `${SITE_URL}/confirm-booking/${confirmationToken}` : null,
         confirmationWindowHours: BOOKING_CONFIRMATION_WINDOW_HOURS,
         downpaymentRequired: downpaymentActive,
         downpaymentAmount,
+        fulfillmentMode,
       });
       quoteNote = " — quotation emailed";
     } catch (err) {
@@ -1557,7 +2186,7 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
       "new_request",
       cr.id,
       needsConfirmation
-        ? `${name || "A customer"} submitted a new Home Service Request ${cr.reference} — awaiting their confirmation email click.`
+        ? `${name || "A customer"} submitted a new Home Service Request ${cr.reference} — awaiting their confirmation.`
         : `${name || "A customer"} submitted a new Home Service Request ${cr.reference} — now in the Unassigned queue.`
     );
   }
@@ -1572,11 +2201,21 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
     downpaymentRequired: downpaymentActive,
     downpaymentAmount,
     confirmationUrl: confirmationToken ? `${SITE_URL}/confirm-booking/${confirmationToken}` : null,
+    confirmationToken,
+    needsConfirmation,
+    quotation: {
+      devices: quotationDevices.map((d) => ({ reference: d.reference, deviceLabel: d.deviceLabel, serviceType: d.serviceType, repairCost: d.repairCost })),
+      serviceFee,
+      total: quotationTotal,
+    },
   };
 }
 
 export type { ConfirmBookingResult };
 
+// confirmBookingRows now lives in lib/paymentProcessing.ts (see that file)
+// — moved out of this "use server" module so it can't be invoked directly
+// from the browser, same as the other payment-settlement functions.
 
 // Called from the public confirm-booking page when the customer clicks the
 // link in their quotation email (or, for a booking with no email, the link
@@ -1602,6 +2241,16 @@ export async function confirmBooking(token: string): Promise<ConfirmBookingResul
   }
 
   return confirmBookingRows(reqs);
+}
+
+// Wraps confirmBooking() in the (prevState, formData) => result shape
+// useActionState needs, so the submission success screen (HomeServiceForm.tsx)
+// can confirm the booking with one on-page button right after submitting —
+// no email click required.
+export async function confirmBookingFromForm(_prev: ConfirmBookingResult | undefined, formData: FormData): Promise<ConfirmBookingResult> {
+  const token = str(formData, "token");
+  if (!token) return { ok: false, error: "not_found" };
+  return confirmBooking(token);
 }
 
 export type StartHomeServiceDownpaymentResult = { ok: false; error: string };
@@ -1632,8 +2281,12 @@ export async function startHomeServiceDownpayment(token: string): Promise<StartH
     session = await createPaymongoCheckoutSession({
       metadata: { kind: "home_service_downpayment", token },
       amountPesos: first.downpaymentAmount,
-      description: `Home Service down payment — ${reqs.map((r) => r.reference).join(", ")}`,
-      lineItemName: "Home Service Down Payment",
+      description:
+        first.fulfillmentMode === "pickup_delivery"
+          ? `Ceejay Pickup & Delivery — Booking, Diagnostic & Delivery Fee — ${reqs.map((r) => r.reference).join(", ")}`
+          : `Home Service down payment — ${reqs.map((r) => r.reference).join(", ")}`,
+      lineItemName:
+        first.fulfillmentMode === "pickup_delivery" ? "Pickup & Delivery Booking, Diagnostic & Delivery Fee" : "Home Service Down Payment",
       paymentMethodTypes: ["qrph"],
       // Both point back to the same confirm-booking page — it always
       // re-derives payment status from the DB (with a fallback
@@ -2156,10 +2809,15 @@ export async function reassignRequest(formData: FormData) {
   }
 
   // A technician does the whole visit to one address, so (re)assigning one
-  // device in a multi-device booking cascades the same technician to every
-  // other device in that booking still open enough to move (see
-  // CASCADE_EXCLUDED_STATUSES) — same for clearing an assignment.
-  if (req.bookingGroupId) {
+  // device in a multi-device Home Service booking cascades the same
+  // technician to every other device in that booking still open enough to
+  // move (see CASCADE_EXCLUDED_STATUSES) — same for clearing an assignment.
+  // Doesn't apply to Pickup & Delivery: each device in a multi-device P&D
+  // booking is picked up, repaired, and delivered independently (different
+  // riders, different timing), so one device reaching the shop and getting
+  // a technician assigned says nothing about whether a sibling device has
+  // even been picked up yet.
+  if (req.bookingGroupId && req.fulfillmentMode !== "pickup_delivery") {
     const siblings = (await getRequestsByBookingGroup(req.bookingGroupId)).filter(
       (s) => s.id !== req.id && !CASCADE_EXCLUDED_STATUSES.has(statusLabel(s.statusId))
     );
@@ -2179,6 +2837,10 @@ export async function reassignRequest(formData: FormData) {
 
   revalidatePath("/admin/requests");
   revalidatePath(`/admin/requests/${requestId}`);
+  if (req.fulfillmentMode === "pickup_delivery") {
+    revalidatePath("/admin/pickup-delivery");
+    revalidatePath(`/admin/pickup-delivery/${requestId}`);
+  }
 }
 
 export async function changeRequestStatus(formData: FormData) {
@@ -2657,6 +3319,12 @@ export async function addConversationMessage(formData: FormData) {
 // mints its tracking token and emails the customer the live map link
 // (/track-technician/<token>). Returns a note for the activity log.
 async function startTechnicianTrackingIfOnTheWay(req: HomeServiceRequest, newStatusLabel: string): Promise<string> {
+  // Pickup & Delivery devices are repaired in-shop, not visited at the
+  // customer's address — a technician going "En Route" there just means
+  // walking to their bench, not heading to the customer, so this (Home
+  // Service-only) "technician is on the way to you" tracking/email must
+  // never fire for it. The delivery leg has its own rider tracking instead.
+  if (req.fulfillmentMode === "pickup_delivery") return "";
   if (!isOnTheWayStatus(newStatusLabel) || req.trackingToken) return "";
   const token = crypto.randomUUID().replace(/-/g, "");
   await query("update home_service_requests set tracking_token=$1 where id=$2", [token, req.id]);

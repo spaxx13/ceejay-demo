@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getBranches } from "@/lib/db";
+import { PICKUP_DELIVERY_PUBLIC_ENABLED } from "@/lib/config";
 import Logo from "@/components/Logo";
 
 export default async function SiteFooter() {
@@ -36,6 +37,16 @@ export default async function SiteFooter() {
             <li><Link href="/services" className="hover:text-slate-700">Services</Link></li>
             <li><Link href="/branches" className="hover:text-slate-700">Branch Locations</Link></li>
             <li><Link href="/request" className="hover:text-slate-700">Book Home Service</Link></li>
+            <li>
+              {PICKUP_DELIVERY_PUBLIC_ENABLED ? (
+                <Link href="/pickup-delivery" className="hover:text-slate-700">Pickup &amp; Delivery</Link>
+              ) : (
+                <span className="text-slate-300">Pickup &amp; Delivery (Soon)</span>
+              )}
+            </li>
+            {PICKUP_DELIVERY_PUBLIC_ENABLED && (
+              <li><Link href="/track" className="hover:text-slate-700">Track Your Order</Link></li>
+            )}
             <li><Link href="/contact" className="hover:text-slate-700">Contact Us</Link></li>
             <li><Link href="/login" className="hover:text-slate-700">Staff Login</Link></li>
           </ul>

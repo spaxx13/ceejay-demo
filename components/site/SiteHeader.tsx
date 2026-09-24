@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import Logo from "@/components/Logo";
+import { PICKUP_DELIVERY_PUBLIC_ENABLED } from "@/lib/config";
 
 const LINKS = [
   { href: "/", label: "Home" },
@@ -11,6 +12,7 @@ const LINKS = [
   { href: "/quote", label: "Get a Quote" },
   { href: "/branches", label: "Branches" },
   { href: "/panic-log-checker", label: "Panic Log Checker" },
+  ...(PICKUP_DELIVERY_PUBLIC_ENABLED ? [{ href: "/track", label: "Track Order" }] : []),
   { href: "/about", label: "About" },
   { href: "/contact", label: "Contact" },
 ];

@@ -1,4 +1,4 @@
-export type Role = "owner_admin" | "branch_admin" | "technician";
+export type Role = "owner_admin" | "branch_admin" | "technician" | "rider";
 
 export type User = {
   id: string;
@@ -6,6 +6,7 @@ export type User = {
   email: string;
   role: Role;
   technicianId: string | null; // set when role === "technician"
+  riderId: string | null; // set when role === "rider"
   assignedBranchIds: string[]; // branches this account is allowed to access (branch_admin scoping) — empty means no restriction, sees all
   canManageRequests: boolean; // whether this account can access/manage Home Service Requests (branch_admin scoping)
   canDeleteRequests: boolean; // whether this account can permanently delete Home Service Requests (branch_admin scoping) — owner_admin always can regardless
@@ -145,6 +146,12 @@ export type Branch = {
   contactNumber: string;
   homeServiceQueue: HomeServiceQueue | null;
   active: boolean;
+  // Optional exact pin, copied from Google Maps (Admin > Branches) — used
+  // instead of geocoding `address` for the live tracking map on /track,
+  // since a plain address string sometimes resolves to the wrong nearby
+  // landmark for informal local place names.
+  lat: number | null;
+  lng: number | null;
 };
 
 export type EmploymentStatus = "full_time" | "part_time" | "contractor";
@@ -164,6 +171,23 @@ export type Technician = {
   // Falls back to 50 for a technician name with no matching record (e.g. a
   // typo, or a name no longer in the system).
   earningsSharePercent: number;
+};
+
+// A courier who handles the pickup/delivery legs of a Pickup & Delivery
+// request — a separate role from Technician, who only ever does the repair
+// itself. `branchId` is just where the rider is based for display/roster
+// purposes; assignment is branch-wide and manual (Admin > Pickup & Delivery),
+// not restricted to that branch's own requests.
+export type VehicleType = "motorcycle" | "car" | "bicycle";
+export type Rider = {
+  id: string;
+  name: string;
+  contactNumber: string;
+  email: string;
+  branchId: string | null;
+  vehicle: VehicleType;
+  active: boolean; // account enabled/disabled, admin-controlled
+  onDuty: boolean; // "available for a job right now" — rider self-toggles this from /rider
 };
 
 export type CustomerSource = string; // admin-addable lookup value ("Walk-in", "Home Service", "Referral", ...)
@@ -347,6 +371,107 @@ export type HomeServiceRequest = {
   techLng: number | null;
   techLocationAt: string | null;
   serviceFeeWaived: boolean; // set by a staff account with canWaiveServiceFee — treats the province-computed visit fee (lib/homeServiceFees.ts) as ₱0 wherever it's quoted/displayed, without changing the underlying province fee table
+  // Pickup & Delivery — a second fulfillment mode alongside the default
+  // "on_site" (technician visits the address). "pickup_delivery" reuses this
+  // same request row and the same technician assignment/status machinery for
+  // the repair itself; only the rider legs are new. See
+  // lib/db.ts's pickupDeliveryStage() for how these fields (plus the
+  // request's own statusId) collapse into one display stage.
+  fulfillmentMode: "on_site" | "pickup_delivery";
+  pickupRiderId: string | null;
+  deliveryRiderId: string | null; // can differ from pickupRiderId — assigned separately, once the repair is done
+  pickupStartedAt: string | null; // rider marked "on the way" to the customer for pickup
+  pickedUpAt: string | null; // rider has the device, in hand at the customer's address
+  headingToShopAt: string | null; // rider marked "on the way" to the branch with the device
+  receivedAtShopAt: string | null; // rider handed the device off at the shop — pickup leg complete
+  outForDeliveryAt: string | null; // rider marked "on the way" to the customer for delivery
+  deliveredAt: string | null; // rider handed the device to the customer — delivery leg complete
+  pickupSignatureDataUrl: string | null;
+  deliverySignatureDataUrl: string | null;
+  // Live location, pinged by the rider's own browser (Geolocation API) while
+  // the pickup leg is "On The Way" or "On The Way to Branch" — see
+  // components/RiderLocationReporter.tsx and app/api/rider/location. Stale
+  // once the leg moves past those two stages; not cleared, just ignored.
+  riderLat: number | null;
+  riderLng: number | null;
+  riderLocationUpdatedAt: string | null;
+  pickupPhotoDataUrl: string | null; // required proof-of-pickup photo, captured when the rider marks "Picked Up"
+  deliveredBranchId: string | null; // which branch the rider actually dropped the device off at ("Delivered to Branch")
+  // Rider must Accept a job before starting the trip for it (see
+  // riderAcceptPickup/riderAcceptDelivery in lib/actions.ts) — Declining
+  // clears the rider assignment back to the unassigned pool instead of
+  // setting a "declined" flag here.
+  pickupRiderAcceptedAt: string | null;
+  deliveryRiderAcceptedAt: string | null;
+  // Structured device-condition checklist + labeled photos, captured by the
+  // rider at the "Picked Up" step (components/DeviceConditionForm.tsx) —
+  // supersedes the single pickupPhotoDataUrl above for pickup_delivery jobs.
+  pickupConditionChecklist: DeviceConditionChecklist | null;
+  pickupPhotos: PickupPhoto[] | null;
+  // Optional security seal number the rider records when packaging the
+  // device at pickup (FINAL FLOW spec item 12) — shown alongside the QR
+  // code so shop staff can verify the package wasn't opened in transit.
+  pickupSecuritySeal: string | null;
+};
+
+export const DEVICE_CONDITION_ITEMS = [
+  "front",
+  "back",
+  "leftSide",
+  "rightSide",
+  "top",
+  "bottom",
+  "lcd",
+  "touch",
+  "camera",
+  "housing",
+  "buttons",
+  "chargingPort",
+] as const;
+export type DeviceConditionItem = (typeof DEVICE_CONDITION_ITEMS)[number];
+export type DeviceConditionChecklist = Partial<Record<DeviceConditionItem, "ok" | "damaged">> & { existingDamageNotes?: string };
+export type PickupPhoto = { label: string; dataUrl: string };
+
+// Pickup & Delivery "Phase 5" — Exception Handling (FINAL FLOW spec item
+// 31). One generic kind of record covers every exception the spec lists —
+// see REQUEST_EXCEPTION_LABELS for what each means and who can report it
+// (components/ReportExceptionForm.tsx).
+export const REQUEST_EXCEPTION_KINDS = [
+  "reschedule",
+  "contact_attempted",
+  "cancel",
+  "flag_damage",
+  "return_device",
+  "payment_hold",
+  "stop_review",
+  "incident",
+  "stop_delivery",
+] as const;
+export type RequestExceptionKind = (typeof REQUEST_EXCEPTION_KINDS)[number];
+
+export const REQUEST_EXCEPTION_LABELS: Record<RequestExceptionKind, string> = {
+  reschedule: "Customer Unavailable — Rescheduled",
+  contact_attempted: "Rider Couldn't Find Customer",
+  cancel: "Booking Cancelled",
+  flag_damage: "Additional Damage Found",
+  return_device: "Customer Declined Quotation — Return Device",
+  payment_hold: "Payment Issue — On Hold",
+  stop_review: "Wrong Customer/Device — Needs Review",
+  incident: "Rider Incident Report",
+  stop_delivery: "Wrong Unit Completed — Delivery Stopped",
+};
+
+export type RequestException = {
+  id: string;
+  requestId: string;
+  kind: RequestExceptionKind;
+  reason: string;
+  evidencePhotoDataUrl: string | null;
+  reportedBy: string;
+  reportedByRole: string;
+  resolvedAt: string | null;
+  resolvedBy: string | null;
+  createdAt: string;
 };
 
 export type SaleLineItem = {

@@ -94,6 +94,7 @@ export async function sendQuotationEmail(
     confirmationWindowHours: number;
     downpaymentRequired: boolean;
     downpaymentAmount: number | null;
+    fulfillmentMode: "on_site" | "pickup_delivery";
   }
 ) {
   const client = getClient();
@@ -137,7 +138,17 @@ export async function sendQuotationEmail(
 
   const downpaymentBlock =
     opts.downpaymentRequired && opts.downpaymentAmount !== null
-      ? `
+      ? opts.fulfillmentMode === "pickup_delivery"
+        ? `
+      <div style="margin: 16px 0; padding: 16px; border: 2px solid #f59e0b; border-radius: 8px; background: #fffbeb;">
+        <p style="font-size: 14px; font-weight: 700; color: #92400e; margin: 0 0 6px;">💳 Booking, Diagnostic &amp; Delivery Fee required</p>
+        <p style="font-size: 13px; color: #78350f; margin: 0; line-height: 1.5;">
+          We require a ${peso(opts.downpaymentAmount)} payment to confirm your booking and assign a rider. This one payment covers the
+          pickup trip, the initial diagnosis, and delivery of your repaired device back to you — nothing more to pay when it comes back.
+        </p>
+      </div>
+    `
+        : `
       <div style="margin: 16px 0; padding: 16px; border: 2px solid #f59e0b; border-radius: 8px; background: #fffbeb;">
         <p style="font-size: 14px; font-weight: 700; color: #92400e; margin: 0 0 6px;">💳 Down payment required to secure your slot</p>
         <p style="font-size: 13px; color: #78350f; margin: 0 0 8px; line-height: 1.5;">
@@ -363,6 +374,93 @@ export async function sendCancellationEmail(to: string, opts: { customerName: st
           ${opts.reason ? `<br/><br/><strong>Reason:</strong> ${escapeHtml(opts.reason)}` : ""}
         </p>
         <p style="font-size: 13px; color: #64748b;">If you have any questions, just reply to this email or contact the branch you visited.</p>
+      </div>
+    `,
+  });
+  if (error) throw new Error(error.message);
+}
+
+// Sent twice per Pickup & Delivery pickup leg — once when the rider marks
+// "On The Way" (heading to the customer), again when they mark "On The Way
+// to Branch" (heading to the shop with the device) — each time pointing at
+// the same /track page, which shows whichever leg is actually live right
+// now rather than needing two different URLs.
+export async function sendTrackingLinkEmail(
+  to: string,
+  opts: { customerName: string; reference: string; phone: string; stage: "heading_to_pickup" | "heading_to_shop" }
+) {
+  const client = getClient();
+  const trackingUrl = `${SITE_URL}/track?reference=${encodeURIComponent(opts.reference)}&phone=${encodeURIComponent(opts.phone)}`;
+  const heading =
+    opts.stage === "heading_to_pickup" ? "Your rider is on the way!" : "Your device is on its way to the shop!";
+  const body =
+    opts.stage === "heading_to_pickup"
+      ? "A rider is heading to your address now to pick up your device. You can follow their live location on the tracking page below."
+      : "Your rider has your device and is on the way to the shop. You can follow their live location on the tracking page below.";
+
+  const { error } = await client.emails.send({
+    from: FROM,
+    to,
+    subject: `${heading} — ${opts.reference}`,
+    html: `
+      <div style="font-family: -apple-system, sans-serif; max-width: 480px; margin: 0 auto; color: #1e293b;">
+        <p style="font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8;">Ceejay Cellphone Repair Shop</p>
+        <h2 style="margin: 4px 0 16px;">${heading}</h2>
+        <p style="font-size: 14px; line-height: 1.5;">
+          Hi ${escapeHtml(opts.customerName)}, ${body}
+        </p>
+        <p style="margin: 20px 0;">
+          <a href="${trackingUrl}" style="display: inline-block; background: #0071e3; color: #fff; padding: 10px 20px; border-radius: 999px; text-decoration: none; font-size: 14px; font-weight: 600;">
+            Track My Request
+          </a>
+        </p>
+        <p style="font-size: 13px; color: #64748b;">Reference: <strong>${escapeHtml(opts.reference)}</strong></p>
+      </div>
+    `,
+  });
+  if (error) throw new Error(error.message);
+}
+
+// Sent once when a Pickup & Delivery booking's Booking & Diagnostic Fee
+// clears (see confirmBookingRows in lib/paymentProcessing.ts) — the FINAL
+// FLOW spec's "Ceejay Repair Booking Confirmed" email. The quotation email
+// sent at submission time already asked for this payment; this one
+// confirms it went through and hands over the tracking link.
+export async function sendPickupDeliveryBookingConfirmedEmail(
+  to: string,
+  opts: { customerName: string; reference: string; phone: string; deviceLabel: string; preferredDate: string; address: string; amountPaid: number }
+) {
+  const client = getClient();
+  const trackingUrl = `${SITE_URL}/track?reference=${encodeURIComponent(opts.reference)}&phone=${encodeURIComponent(opts.phone)}`;
+  const peso = (n: number) => `₱${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+  const { error } = await client.emails.send({
+    from: FROM,
+    to,
+    subject: `Ceejay Repair Booking Confirmed — ${opts.reference}`,
+    html: `
+      <div style="font-family: -apple-system, sans-serif; max-width: 480px; margin: 0 auto; color: #1e293b;">
+        <p style="font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8;">Ceejay Cellphone Repair Shop</p>
+        <h2 style="margin: 4px 0 16px;">Your booking is confirmed!</h2>
+        <p style="font-size: 14px; line-height: 1.5;">
+          Hi ${escapeHtml(opts.customerName)}, your ${peso(opts.amountPaid)} payment went through and your Pickup &amp; Delivery booking is
+          confirmed. We're assigning a rider now — you'll get another email once they're on the way.
+        </p>
+        <p style="font-size: 13px; line-height: 1.5; color: #64748b;">
+          This payment covers pickup, diagnosis, and delivery back to you — nothing more to pay when your repaired device comes back.
+        </p>
+        <table style="width: 100%; font-size: 13px; margin: 16px 0; border-collapse: collapse;">
+          <tr><td style="padding: 4px 0; color: #64748b;">Job ID</td><td style="padding: 4px 0; text-align: right; font-weight: 600;">${escapeHtml(opts.reference)}</td></tr>
+          <tr><td style="padding: 4px 0; color: #64748b;">Device</td><td style="padding: 4px 0; text-align: right;">${escapeHtml(opts.deviceLabel)}</td></tr>
+          <tr><td style="padding: 4px 0; color: #64748b;">Pickup Schedule</td><td style="padding: 4px 0; text-align: right;">${escapeHtml(opts.preferredDate)}</td></tr>
+          <tr><td style="padding: 4px 0; color: #64748b;">Pickup Address</td><td style="padding: 4px 0; text-align: right;">${escapeHtml(opts.address)}</td></tr>
+          <tr><td style="padding: 4px 0; color: #64748b;">Amount Paid</td><td style="padding: 4px 0; text-align: right;">${peso(opts.amountPaid)}</td></tr>
+        </table>
+        <p style="margin: 20px 0;">
+          <a href="${trackingUrl}" style="display: inline-block; background: #0071e3; color: #fff; padding: 10px 20px; border-radius: 999px; text-decoration: none; font-size: 14px; font-weight: 600;">
+            Track My Request
+          </a>
+        </p>
       </div>
     `,
   });

@@ -18,3 +18,32 @@ export const MAX_PRICE_EDITS = 3;
 // Price (pesos) charged for the public iCloud ON/OFF checker (lib/paymongo.ts,
 // lib/sickw.ts) — see app/(site)/check-icloud.
 export const ICLOUD_CHECK_PRICE_PESOS = 10;
+
+// Public-site gate for the Pickup & Delivery fulfillment mode — still being
+// tested internally, so it stays OFF (unset) on production: the public
+// request form shows it as a disabled "Soon" option instead of hiding it
+// outright. Set NEXT_PUBLIC_PICKUP_DELIVERY_ENABLED=true in a local/preview
+// .env to make it fully bookable there for testing. This only gates the
+// public entry point — Admin > Riders, Admin > Pickup & Delivery, and the
+// Rider app all work regardless, for any request already in that mode.
+export const PICKUP_DELIVERY_PUBLIC_ENABLED = process.env.NEXT_PUBLIC_PICKUP_DELIVERY_ENABLED === "true";
+
+// TEMPORARY testing toggle — set PICKUP_DELIVERY_SKIP_PAYMENT=true (Preview
+// only) to skip the PayMongo Booking & Diagnostic Fee gate for Pickup &
+// Delivery bookings entirely, so a test booking goes straight to "Pending"
+// (ready for admin to assign a rider) without a real PayMongo transaction.
+// Turn back off (or unset) once done testing the rest of the flow — the
+// live keys are shared with the rest of the app, so this is the only way
+// to test repeatedly without moving real money each time. Hard-gated to
+// never apply on Production (VERCEL_ENV) regardless of the env var, so a
+// copy-pasted env setting can't silently waive real payments in prod.
+export const PICKUP_DELIVERY_SKIP_PAYMENT =
+  process.env.PICKUP_DELIVERY_SKIP_PAYMENT === "true" && process.env.VERCEL_ENV !== "production";
+
+// TEMPORARY testing toggle — set PICKUP_DELIVERY_SKIP_OTP=true (Preview
+// only) to skip SMS OTP verification for Pickup & Delivery bookings, same
+// reasoning as PICKUP_DELIVERY_SKIP_PAYMENT above (no real SMS sent while
+// testing). Turn back off (or unset) once done. Same hard Production gate
+// as PICKUP_DELIVERY_SKIP_PAYMENT above.
+export const PICKUP_DELIVERY_SKIP_OTP =
+  process.env.PICKUP_DELIVERY_SKIP_OTP === "true" && process.env.VERCEL_ENV !== "production";

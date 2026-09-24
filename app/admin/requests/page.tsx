@@ -55,7 +55,10 @@ export default async function RequestsPage({
 
   // Queue scoping — a branch admin assigned to only one queue's backend
   // branch never sees the other queue's requests here, even via filters.
-  const visibleRequests = allRequests.filter((r) => !isBranchHidden(user, r.queueBranchId));
+  // Pickup & Delivery jobs are a separate fulfillment mode with their own
+  // admin page/queue (Admin > Pickup & Delivery) and aren't home visits, so
+  // they're excluded from this list entirely rather than mixed in.
+  const visibleRequests = allRequests.filter((r) => !isBranchHidden(user, r.queueBranchId) && r.fulfillmentMode !== "pickup_delivery");
 
   // A request still awaiting the customer's confirmation-email click isn't
   // actually assignable yet, so it's excluded from "unassigned" here —

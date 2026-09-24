@@ -1,13 +1,14 @@
 "use client";
 
 import { Fragment, useActionState, useEffect, useRef, useState } from "react";
-import { submitHomeServiceRequest, sendHomeServiceOtp, verifyHomeServiceOtp } from "@/lib/actions";
+import { submitHomeServiceRequest, sendHomeServiceOtp, verifyHomeServiceOtp, confirmBookingFromForm } from "@/lib/actions";
 import { OTP_GATE_ENABLED, BOOKING_CONFIRMATION_WINDOW_HOURS } from "@/lib/config";
 import {
   PROVINCE_FEES,
   SUNDAY_ONLY_PROVINCES,
   DOWNPAYMENT_PROVINCES,
   EXCLUDED_FROM_HOME_SERVICE,
+  PICKUP_DELIVERY_FEE_PESOS,
   nextSunday,
   minPreferredDateStr,
 } from "@/lib/homeServiceFees";
@@ -16,11 +17,18 @@ import PhotoUpload from "./PhotoUpload";
 import DynamicFormField from "./DynamicFormField";
 import type { RequestFormContent, CustomFormField, HomeServiceQueue } from "@/lib/types";
 
+const peso = (n: number) => `₱${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
 // Shared styling for every customer-facing note/reminder on this form —
 // bolder border, background, and text than a plain hint so it actually
 // gets noticed instead of blending into the surrounding whitespace.
-function FormNotice({ children, tone = "amber", icon = "⚠️" }: { children: React.ReactNode; tone?: "amber" | "blue"; icon?: string }) {
-  const toneClasses = tone === "blue" ? "border-blue-300 bg-blue-50 text-blue-900" : "border-amber-300 bg-amber-50 text-amber-900";
+function FormNotice({ children, tone = "amber", icon = "⚠️" }: { children: React.ReactNode; tone?: "amber" | "blue" | "green"; icon?: string }) {
+  const toneClasses =
+    tone === "blue"
+      ? "border-blue-300 bg-blue-50 text-blue-900"
+      : tone === "green"
+        ? "border-green-300 bg-green-50 text-green-900"
+        : "border-amber-300 bg-amber-50 text-amber-900";
   return (
     <div className={`flex items-start gap-2 rounded-lg border-2 p-3 text-sm font-medium leading-snug ${toneClasses}`}>
       <span aria-hidden="true" className="shrink-0">
@@ -71,6 +79,7 @@ export default function HomeServiceForm({
   fields,
   area,
   smsAvailable,
+  mode = "on_site",
 }: {
   brands: Brand[];
   models: Model[];
@@ -79,8 +88,16 @@ export default function HomeServiceForm({
   fields: CustomFormField[];
   area: HomeServiceQueue;
   smsAvailable: boolean;
+  // Which fulfillment mode this page books — fixed per page, not a
+  // user-facing toggle (Pickup & Delivery has its own separate page,
+  // app/(site)/pickup-delivery, distinct from this Home Service form).
+  mode?: "on_site" | "pickup_delivery";
 }) {
   const [state, formAction, pending] = useActionState(submitHomeServiceRequest, undefined);
+  // Confirming right on the success screen below (state?.ok), instead of
+  // requiring an email click — confirmBookingFromForm just wraps the same
+  // confirmBooking() the emailed link and the down-payment webhook both use.
+  const [confirmState, confirmFormAction, confirmPending] = useActionState(confirmBookingFromForm, undefined);
   const formRef = useRef<HTMLFormElement>(null);
   const [city, setCity] = useState("");
   const [province, setProvince] = useState("");
@@ -117,28 +134,40 @@ export default function HomeServiceForm({
     const file = area === "near" ? "/ph-addresses-near.json" : "/ph-addresses-far.json";
     fetch(file)
       .then((r) => r.json())
+      // Pickup & Delivery only covers Metro Manila for now — trim the
+      // near queue's other 6 provinces out rather than fetching a
+      // separate dataset just for this.
+      .then((data: PhProvince[]) => (mode === "pickup_delivery" ? data.filter((p) => p.key === "metro_manila") : data))
       .then(setPhData)
       .catch(() => setPhData([]));
-  }, [area]);
-  const selectedPhProvince = phData?.find((p) => p.label === province) ?? null;
+  }, [area, mode]);
+  // Only one province to pick from in Pickup & Delivery mode (Metro Manila,
+  // filtered above) — treat it as selected without making the customer
+  // choose among one option, rather than setting state from an effect.
+  const effectiveProvince = mode === "pickup_delivery" && phData?.length === 1 ? phData[0].label : province;
+  const selectedPhProvince = phData?.find((p) => p.label === effectiveProvince) ?? null;
   const selectedPhCity = selectedPhProvince?.cities.find((c) => c.name === city) ?? null;
 
   // Shown in the notice right above Submit — reflects whichever area is
   // actually selected instead of a fixed Metro Manila figure, since the
   // flat rate differs by province (and, for some provinces, by town).
   function serviceFeeNote(): string | null {
-    const fee = PROVINCE_FEES[province];
+    // Pickup & Delivery has its own flat Booking & Diagnostic Fee (shown
+    // separately below, after OTP verification) instead of the on-site
+    // per-province visit fee this note is otherwise about.
+    if (mode === "pickup_delivery") return null;
+    const fee = PROVINCE_FEES[effectiveProvince];
     if (!fee) return null;
     const peso = (n: number) => `₱${n.toLocaleString()}.00`;
     if (fee.higherTowns && fee.higherFee) {
       if (city && fee.higherTowns.includes(city)) {
-        return `A flat rate service fee of ${peso(fee.higherFee)} is applicable for ${city}, ${province}.`;
+        return `A flat rate service fee of ${peso(fee.higherFee)} is applicable for ${city}, ${effectiveProvince}.`;
       }
-      return `A flat rate service fee of ${peso(fee.base)} is applicable within ${province}, except for ${fee.higherTowns.join(
+      return `A flat rate service fee of ${peso(fee.base)} is applicable within ${effectiveProvince}, except for ${fee.higherTowns.join(
         ", "
       )}, where the service fee is ${peso(fee.higherFee)}.`;
     }
-    return `A flat rate service fee of ${peso(fee.base)} is applicable within ${province} area.`;
+    return `A flat rate service fee of ${peso(fee.base)} is applicable within ${effectiveProvince} area.`;
   }
 
   // SMS OTP verification — anti-spam gate, run at submit time: the
@@ -252,7 +281,9 @@ export default function HomeServiceForm({
   // so the form degrades gracefully — with no SMS provider configured,
   // customers submit without an OTP step instead of being stuck on a "send
   // code" button that can only ever fail. Matches the server-side check in
-  // submitHomeServiceRequest, which skips the gate the same way.
+  // submitHomeServiceRequest, which skips the gate the same way. Pickup &
+  // Delivery uses this gate too (per the FINAL FLOW spec: SMS OTP verifies
+  // the initial booking only — every update after that goes out by email).
   const phoneGateActive = OTP_GATE_ENABLED && smsAvailable && (phoneField?.active ?? false);
 
   if (state?.ok) {
@@ -266,30 +297,94 @@ export default function HomeServiceForm({
           <span className="font-mono text-base font-semibold text-blue-300">{state.references.join(", ")}</span>
         </p>
         <p className="text-sm text-slate-400">{content.successBody}</p>
+        {mode === "pickup_delivery" && state.downpaymentRequired && state.confirmationUrl && (
+          <FormNotice tone="green" icon="🛵">
+            <p className="font-semibold">A rider is available for your pickup</p>
+            <p className="mt-1">We checked before accepting your booking — go ahead and pay below to confirm it and get one assigned.</p>
+          </FormNotice>
+        )}
         {state.downpaymentRequired && state.confirmationUrl && (
           <FormNotice tone="amber" icon="💳">
-            <p className="font-semibold">Down payment required to confirm your booking</p>
+            <p className="font-semibold">
+              {mode === "pickup_delivery" ? "Booking, Diagnostic & Delivery Fee required to confirm your booking" : "Down payment required to confirm your booking"}
+            </p>
             <p className="mt-1">
-              Home Service bookings in your area require a ₱{(state.downpaymentAmount ?? 0).toLocaleString()}.00 down payment via QR Ph
-              before we can confirm your booking. Please pay within {BOOKING_CONFIRMATION_WINDOW_HOURS} hours, or your request will be
-              automatically cancelled.
+              {mode === "pickup_delivery"
+                ? `Pickup & Delivery bookings require a ₱${(state.downpaymentAmount ?? 0).toLocaleString()}.00 Booking, Diagnostic & Delivery Fee via QR Ph before we can confirm your booking and assign a rider — this covers pickup, diagnosis, and delivery back to you, so there's nothing more to pay when your device comes back.`
+                : `Home Service bookings in your area require a ₱${(state.downpaymentAmount ?? 0).toLocaleString()}.00 down payment via QR Ph before we can confirm your booking.`}{" "}
+              Please pay within {BOOKING_CONFIRMATION_WINDOW_HOURS} hours, or your request will be automatically cancelled.
             </p>
             <a href={state.confirmationUrl} className="btn-primary mt-3 inline-block">
-              Pay Down Payment Now
+              {mode === "pickup_delivery" ? "Pay Booking, Diagnostic & Delivery Fee Now" : "Pay Down Payment Now"}
             </a>
           </FormNotice>
         )}
-        {sentEmail && (
-          <FormNotice tone="blue" icon="📧">
-            <p className="font-semibold">Check your email to confirm your booking</p>
-            <p className="mt-1">
-              We sent your repair quotation to <span className="font-semibold">{sentEmail}</span>. Please open it and click{" "}
-              <span className="font-semibold">Confirm My Booking</span> within {BOOKING_CONFIRMATION_WINDOW_HOURS} hours, or your
-              request will be automatically cancelled.
-            </p>
-          </FormNotice>
+        {state.needsConfirmation && !state.downpaymentRequired && state.confirmationToken && (
+          <>
+            {confirmState?.ok ? (
+              <FormNotice tone="blue" icon="✅">
+                <p className="font-semibold">Booking confirmed!</p>
+                <p className="mt-1">We&apos;ve moved your request to our queue for a technician to be assigned.</p>
+              </FormNotice>
+            ) : (
+              <div className="w-full space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4 text-left">
+                <p className="text-sm font-semibold text-slate-800">Your Quotation</p>
+                <ul className="space-y-2 text-sm">
+                  {state.quotation.devices.map((d) => (
+                    <li key={d.reference} className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-medium text-slate-700">{d.deviceLabel}</p>
+                        <p className="text-xs text-slate-400">
+                          {d.serviceType} · {d.reference}
+                        </p>
+                      </div>
+                      <span className="shrink-0 font-medium text-slate-700">{d.repairCost !== null ? peso(d.repairCost) : "Upon inspection"}</span>
+                    </li>
+                  ))}
+                  {state.quotation.serviceFee !== null && (
+                    <li className="flex items-center justify-between gap-3 border-t border-slate-200 pt-2 text-xs text-slate-500">
+                      <span>Home service visit fee</span>
+                      <span>{peso(state.quotation.serviceFee)}</span>
+                    </li>
+                  )}
+                </ul>
+                {state.quotation.total !== null && (
+                  <div className="flex items-center justify-between border-t border-slate-200 pt-2">
+                    <span className="text-sm font-semibold text-slate-800">Estimated Total</span>
+                    <span className="text-lg font-bold text-blue-300">{peso(state.quotation.total)}</span>
+                  </div>
+                )}
+                <p className="text-xs text-slate-400">
+                  This is an estimate based on our standard price list. Final pricing will be confirmed by our technician before any
+                  repair work begins.
+                </p>
+                {confirmState?.ok === false && (
+                  <p className="text-xs font-medium text-red-600">
+                    {confirmState.error === "expired"
+                      ? "This confirmation window has expired — please submit a new request."
+                      : "Something went wrong confirming your booking. Please try again."}
+                  </p>
+                )}
+                <form action={confirmFormAction}>
+                  <input type="hidden" name="token" value={state.confirmationToken} />
+                  <button type="submit" disabled={confirmPending} className="btn-primary w-full">
+                    {confirmPending ? "Confirming..." : "Confirm Booking"}
+                  </button>
+                </form>
+                <p className="text-center text-[11px] text-slate-400">
+                  Please confirm within {BOOKING_CONFIRMATION_WINDOW_HOURS} hours, or your request will be automatically cancelled.
+                  {sentEmail && <> We also emailed a copy of this quotation to {sentEmail} for your records.</>}
+                </p>
+              </div>
+            )}
+          </>
         )}
-        <a href={`/request?area=${area}`} className="btn-secondary inline-block">
+        {mode === "pickup_delivery" && state.references.length === 1 && (
+          <a href={`/track?reference=${encodeURIComponent(state.references[0])}`} className="btn-secondary inline-block">
+            Track this request
+          </a>
+        )}
+        <a href={`/${mode === "pickup_delivery" ? "pickup-delivery" : "request"}?area=${area}`} className="btn-secondary inline-block">
           Submit another request
         </a>
       </div>
@@ -398,14 +493,14 @@ export default function HomeServiceForm({
               <select
                 name="province"
                 required={req}
-                value={province}
+                value={effectiveProvince}
                 onChange={(e) => {
                   setProvince(e.target.value);
                   setCity("");
                   setBarangay("");
                 }}
                 className="input"
-                disabled={!phData}
+                disabled={!phData || mode === "pickup_delivery"}
               >
                 <option value="">{phData ? "Select province..." : "Loading..."}</option>
                 {provinces.map((p) => (
@@ -517,6 +612,12 @@ export default function HomeServiceForm({
               {field.label} {asterisk}
             </label>
             <input type="date" name="preferredDatetime" required={req} min={minPreferredDateStr()} className="input" />
+            {mode === "pickup_delivery" && (
+              <p className="text-xs text-slate-400">
+                Pickup happens sometime within the day you choose — we don&apos;t give a specific time estimate. Our rider will message
+                you once they&apos;re on the way.
+              </p>
+            )}
           </div>
         );
       // device_brand, device_model, service_type, issue, and photo are
@@ -536,16 +637,21 @@ export default function HomeServiceForm({
             <input name="street" required={req} className="input" placeholder={field.placeholder} />
             {!GOOGLE_MAPS_KEY && (
               <FormNotice tone="blue" icon="📍">
-                Please also fill in your Landmark below — this helps our technician find you accurately.
+                Please also fill in your Landmark below — this helps our {mode === "pickup_delivery" ? "rider" : "technician"} find you
+                accurately.
               </FormNotice>
             )}
             <input type="hidden" name="lat" value={lat ?? ""} />
             <input type="hidden" name="lng" value={lng ?? ""} />
             <div ref={pinSectionRef} className="space-y-1.5 pt-2">
               <p className="text-xs font-medium text-slate-500">
-                Pin your exact location on the map {pinRequired && <span className="text-red-600">*</span>}
+                {mode === "pickup_delivery" ? "Pin your exact pickup location — this is what the rider follows" : "Pin your exact location on the map"}{" "}
+                {pinRequired && <span className="text-red-600">*</span>}
               </p>
-              <p className="text-xs text-slate-400">Search your area, then drag the pin to your gate/door so our technician finds you easily.</p>
+              <p className="text-xs text-slate-400">
+                Search your area, then drag the pin to your gate/door so our {mode === "pickup_delivery" ? "rider" : "technician"} finds
+                you easily.
+              </p>
               <LocationPinMap
                 value={lat !== null && lng !== null ? { lat, lng } : null}
                 onChange={(pos) => {
@@ -638,10 +744,16 @@ export default function HomeServiceForm({
             <label className="text-xs font-medium text-slate-500">
               {field.label} {asterisk}
             </label>
-            <FormNotice>
-              We do not offer backglass replacement, camera repair, and board/power related issues on home service. You may contact our
-              branches for any concerns that is not listed on the dropdown list below.
-            </FormNotice>
+            {mode === "pickup_delivery" ? (
+              <FormNotice tone="blue">
+                Since your device comes to the shop either way, every repair service is available — not just the on-site-friendly ones.
+              </FormNotice>
+            ) : (
+              <FormNotice>
+                We do not offer backglass replacement, camera repair, and board/power related issues on home service. You may contact our
+                branches for any concerns that is not listed on the dropdown list below.
+              </FormNotice>
+            )}
             <select
               name={`serviceTypeId_${index}`}
               required={req}
@@ -651,7 +763,7 @@ export default function HomeServiceForm({
             >
               <option value="">Select service type...</option>
               {serviceTypes
-                .filter((s) => !EXCLUDED_FROM_HOME_SERVICE.has(s.label))
+                .filter((s) => mode === "pickup_delivery" || !EXCLUDED_FROM_HOME_SERVICE.has(s.label))
                 .map((s) => (
                   <option key={s.id} value={s.id}>
                     {s.label}
@@ -743,6 +855,16 @@ export default function HomeServiceForm({
     >
       <input type="hidden" name="serviceArea" value={area} />
       <input type="hidden" name="deviceCount" value={devices.length} />
+      <input type="hidden" name="fulfillmentMode" value={mode} />
+
+      {mode === "pickup_delivery" && (
+        <FormNotice tone="blue" icon="🚚">
+          A rider will pick up your device at the address below, we&apos;ll repair it at the shop, then a rider delivers it back to you.
+          The delivery fee is already included in the Booking, Diagnostic &amp; Delivery Fee below — nothing more to pay when it comes
+          back.
+        </FormNotice>
+      )}
+
       {fieldsBeforeDevices.map((f) => (f.systemKey ? renderSystemField(f) : <DynamicFormField key={f.id} field={f} />))}
 
       {devices.map((device, index) => (
@@ -772,6 +894,12 @@ export default function HomeServiceForm({
           please expect a call from us.
         </p>
         {serviceFeeNote() && <p className="mt-2 font-semibold">{serviceFeeNote()}</p>}
+        {mode === "pickup_delivery" && (
+          <p className="mt-2 font-semibold">
+            A ₱{PICKUP_DELIVERY_FEE_PESOS.toLocaleString()}.00 Booking, Diagnostic &amp; Delivery Fee (pickup + diagnosis + delivery back
+            to you, all included) is required via QR Ph after phone verification, before we confirm your booking and assign a rider.
+          </p>
+        )}
       </FormNotice>
 
       {!phoneGateActive && (
