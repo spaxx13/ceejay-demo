@@ -1676,8 +1676,26 @@ export async function verifyHomeServiceOtp(phoneInput: string, codeInput: string
 
 // ---------- Public Home Service Request ----------
 
+// Shown directly on the submission success screen (HomeServiceForm.tsx) so
+// the customer can decide whether to confirm without needing to open an
+// email at all — computed for every booking, not just ones with an email.
+export type QuotationSummary = {
+  devices: { reference: string; deviceLabel: string; serviceType: string; repairCost: number | null }[];
+  serviceFee: number | null;
+  total: number | null; // only set once every device's repairCost is known — same rule as the quotation email/PDF
+};
+
 export type SubmitResult =
-  | { ok: true; references: string[]; downpaymentRequired: boolean; downpaymentAmount: number | null; confirmationUrl: string | null }
+  | {
+      ok: true;
+      references: string[];
+      downpaymentRequired: boolean;
+      downpaymentAmount: number | null;
+      confirmationUrl: string | null;
+      confirmationToken: string | null;
+      needsConfirmation: boolean;
+      quotation: QuotationSummary;
+    }
   | { ok: false; error: string };
 
 // System fields carry fixed input names (independent of the admin's chosen
@@ -2055,12 +2073,42 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
   }
 
   const referenceList = createdRequests.map((r) => r.reference).join(", ");
+
+  // Quotation breakdown — computed for every booking now, not just ones with
+  // an email, since the success screen (HomeServiceForm.tsx) shows it
+  // directly so the customer can decide whether to confirm right there,
+  // without needing to open an email at all. One combined quotation for the
+  // whole booking, not one per device — the service fee is for the
+  // technician's single visit to one address, so it must only ever appear
+  // (and be charged) once, no matter how many devices are in the booking;
+  // each device still gets its own line with its own estimated repair cost.
+  const address = [street, barangay, city, province].filter(Boolean).join(", ") || "Not specified";
+  const serviceFee = serviceFeeAmount(province, city);
+  const [deviceModels, servicePrices] = await Promise.all([getDeviceModels(), getServicePrices()]);
+  const quotationDevices = createdRequests.map((cr) => {
+    const brand = allLookups.find((l) => l.id === cr.device.validDeviceBrandId);
+    const deviceModel = deviceModels.find((m) => m.id === cr.device.validDeviceModelId);
+    const deviceLabel = brand ? `${brand.label} ${deviceModel?.name ?? ""}`.trim() : cr.device.finalDeviceOther || "Not specified";
+    const repairCost = cr.device.serviceTypeLabel
+      ? getRepairQuote(servicePrices, cr.device.serviceTypeLabel, cr.device.validDeviceModelId ?? "", cr.device.screenQuality)
+      : null;
+    return {
+      reference: cr.reference,
+      deviceLabel,
+      serviceType: cr.device.serviceTypeLabel || "Not specified",
+      issueDescription: cr.device.issueDescription || "—",
+      repairCost,
+    };
+  });
+  const allCostsKnown = quotationDevices.every((d) => d.repairCost !== null);
+  const quotationTotal = allCostsKnown ? quotationDevices.reduce((s, d) => s + (d.repairCost ?? 0), 0) + (serviceFee ?? 0) : null;
+
   let smsNote = "";
   if (phone && smsConfigured()) {
     const confirmMessage =
       createdRequests.length > 1
-        ? `Hi ${name || "there"}, your Ceejay repair requests ${referenceList} have been received! Please check your email and tap Confirm within ${BOOKING_CONFIRMATION_WINDOW_HOURS} hours to keep your booking, or it will be automatically cancelled.`
-        : `Hi ${name || "there"}, your Ceejay repair request ${referenceList} has been received! Please check your email and tap Confirm within ${BOOKING_CONFIRMATION_WINDOW_HOURS} hours to keep your booking, or it will be automatically cancelled.`;
+        ? `Hi ${name || "there"}, your Ceejay repair requests ${referenceList} have been received! Please confirm your booking within ${BOOKING_CONFIRMATION_WINDOW_HOURS} hours on the confirmation page shown after you submitted, or it will be automatically cancelled.`
+        : `Hi ${name || "there"}, your Ceejay repair request ${referenceList} has been received! Please confirm your booking within ${BOOKING_CONFIRMATION_WINDOW_HOURS} hours on the confirmation page shown after you submitted, or it will be automatically cancelled.`;
     try {
       await sendSms(phone, confirmMessage);
       smsNote = ` — confirmation SMS sent to ${phone}`;
@@ -2070,35 +2118,16 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
   }
 
   // Automatic quotation email — best-effort, same as the SMS confirmation
-  // above: a missing RESEND_API_KEY, an unmatched device/service (no price
-  // on file), or any other failure here must never block the request
-  // itself from saving, so this always falls through to logActivity below.
-  // One combined email for the whole booking, not one per device — the
-  // service fee is for the technician's single visit to one address, so it
-  // must only ever appear (and be charged) once, no matter how many
-  // devices are in the booking; each device still gets its own line with
-  // its own estimated repair cost.
-  const address = [street, barangay, city, province].filter(Boolean).join(", ") || "Not specified";
-  const serviceFee = serviceFeeAmount(province, city);
+  // above: a missing RESEND_API_KEY or any other failure here must never
+  // block the request itself from saving, so this always falls through to
+  // logActivity below. Sent as a record/reference copy only now — the
+  // customer confirms right on the success screen instead of clicking a
+  // link in this email, so confirmationUrl is only ever passed through for
+  // a down-payment booking (where paying via QR Ph, not a plain click, is
+  // still the real next step and worth a reminder if they navigate away).
   let quoteNote = "";
   if (email) {
     try {
-      const [deviceModels, servicePrices] = await Promise.all([getDeviceModels(), getServicePrices()]);
-      const quotationDevices = createdRequests.map((cr) => {
-        const brand = allLookups.find((l) => l.id === cr.device.validDeviceBrandId);
-        const deviceModel = deviceModels.find((m) => m.id === cr.device.validDeviceModelId);
-        const deviceLabel = brand ? `${brand.label} ${deviceModel?.name ?? ""}`.trim() : cr.device.finalDeviceOther || "Not specified";
-        const repairCost = cr.device.serviceTypeLabel
-          ? getRepairQuote(servicePrices, cr.device.serviceTypeLabel, cr.device.validDeviceModelId ?? "", cr.device.screenQuality)
-          : null;
-        return {
-          reference: cr.reference,
-          deviceLabel,
-          serviceType: cr.device.serviceTypeLabel || "Not specified",
-          issueDescription: cr.device.issueDescription || "—",
-          repairCost,
-        };
-      });
       await sendQuotationEmail(email, {
         customerName: name || "Customer",
         referenceList,
@@ -2107,7 +2136,7 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
         preferredDate: preferredDatetime ? formatDate(preferredDatetime) : "To be confirmed",
         address,
         serviceFee,
-        confirmationUrl: confirmationToken ? `${SITE_URL}/confirm-booking/${confirmationToken}` : null,
+        confirmationUrl: downpaymentActive && confirmationToken ? `${SITE_URL}/confirm-booking/${confirmationToken}` : null,
         confirmationWindowHours: BOOKING_CONFIRMATION_WINDOW_HOURS,
         downpaymentRequired: downpaymentActive,
         downpaymentAmount,
@@ -2130,7 +2159,7 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
       "new_request",
       cr.id,
       needsConfirmation
-        ? `${name || "A customer"} submitted a new Home Service Request ${cr.reference} — awaiting their confirmation email click.`
+        ? `${name || "A customer"} submitted a new Home Service Request ${cr.reference} — awaiting their confirmation.`
         : `${name || "A customer"} submitted a new Home Service Request ${cr.reference} — now in the Unassigned queue.`
     );
   }
@@ -2145,6 +2174,13 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
     downpaymentRequired: downpaymentActive,
     downpaymentAmount,
     confirmationUrl: confirmationToken ? `${SITE_URL}/confirm-booking/${confirmationToken}` : null,
+    confirmationToken,
+    needsConfirmation,
+    quotation: {
+      devices: quotationDevices.map((d) => ({ reference: d.reference, deviceLabel: d.deviceLabel, serviceType: d.serviceType, repairCost: d.repairCost })),
+      serviceFee,
+      total: quotationTotal,
+    },
   };
 }
 
@@ -2178,6 +2214,16 @@ export async function confirmBooking(token: string): Promise<ConfirmBookingResul
   }
 
   return confirmBookingRows(reqs);
+}
+
+// Wraps confirmBooking() in the (prevState, formData) => result shape
+// useActionState needs, so the submission success screen (HomeServiceForm.tsx)
+// can confirm the booking with one on-page button right after submitting —
+// no email click required.
+export async function confirmBookingFromForm(_prev: ConfirmBookingResult | undefined, formData: FormData): Promise<ConfirmBookingResult> {
+  const token = str(formData, "token");
+  if (!token) return { ok: false, error: "not_found" };
+  return confirmBooking(token);
 }
 
 export type StartHomeServiceDownpaymentResult = { ok: false; error: string };
