@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useActionState, useEffect, useRef, useState } from "react";
-import { submitHomeServiceRequest, sendHomeServiceOtp, verifyHomeServiceOtp } from "@/lib/actions";
+import { submitHomeServiceRequest, sendHomeServiceOtp, verifyHomeServiceOtp, confirmBookingFromForm } from "@/lib/actions";
 import { OTP_GATE_ENABLED, BOOKING_CONFIRMATION_WINDOW_HOURS } from "@/lib/config";
 import {
   PROVINCE_FEES,
@@ -15,6 +15,8 @@ import dynamic from "next/dynamic";
 import PhotoUpload from "./PhotoUpload";
 import DynamicFormField from "./DynamicFormField";
 import type { RequestFormContent, CustomFormField, HomeServiceQueue } from "@/lib/types";
+
+const peso = (n: number) => `₱${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 // Shared styling for every customer-facing note/reminder on this form —
 // bolder border, background, and text than a plain hint so it actually
@@ -81,6 +83,10 @@ export default function HomeServiceForm({
   smsAvailable: boolean;
 }) {
   const [state, formAction, pending] = useActionState(submitHomeServiceRequest, undefined);
+  // Confirming right on the success screen below (state?.ok), instead of
+  // requiring an email click — confirmBookingFromForm just wraps the same
+  // confirmBooking() the emailed link and the down-payment webhook both use.
+  const [confirmState, confirmFormAction, confirmPending] = useActionState(confirmBookingFromForm, undefined);
   const formRef = useRef<HTMLFormElement>(null);
   const [city, setCity] = useState("");
   const [province, setProvince] = useState("");
@@ -255,15 +261,65 @@ export default function HomeServiceForm({
             </a>
           </FormNotice>
         )}
-        {sentEmail && (
-          <FormNotice tone="blue" icon="📧">
-            <p className="font-semibold">Check your email to confirm your booking</p>
-            <p className="mt-1">
-              We sent your repair quotation to <span className="font-semibold">{sentEmail}</span>. Please open it and click{" "}
-              <span className="font-semibold">Confirm My Booking</span> within {BOOKING_CONFIRMATION_WINDOW_HOURS} hours, or your
-              request will be automatically cancelled.
-            </p>
-          </FormNotice>
+        {state.needsConfirmation && !state.downpaymentRequired && state.confirmationToken && (
+          <>
+            {confirmState?.ok ? (
+              <FormNotice tone="blue" icon="✅">
+                <p className="font-semibold">Booking confirmed!</p>
+                <p className="mt-1">We&apos;ve moved your request to our queue for a technician to be assigned.</p>
+              </FormNotice>
+            ) : (
+              <div className="w-full space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4 text-left">
+                <p className="text-sm font-semibold text-slate-800">Your Quotation</p>
+                <ul className="space-y-2 text-sm">
+                  {state.quotation.devices.map((d) => (
+                    <li key={d.reference} className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-medium text-slate-700">{d.deviceLabel}</p>
+                        <p className="text-xs text-slate-400">
+                          {d.serviceType} · {d.reference}
+                        </p>
+                      </div>
+                      <span className="shrink-0 font-medium text-slate-700">{d.repairCost !== null ? peso(d.repairCost) : "Upon inspection"}</span>
+                    </li>
+                  ))}
+                  {state.quotation.serviceFee !== null && (
+                    <li className="flex items-center justify-between gap-3 border-t border-slate-200 pt-2 text-xs text-slate-500">
+                      <span>Home service visit fee</span>
+                      <span>{peso(state.quotation.serviceFee)}</span>
+                    </li>
+                  )}
+                </ul>
+                {state.quotation.total !== null && (
+                  <div className="flex items-center justify-between border-t border-slate-200 pt-2">
+                    <span className="text-sm font-semibold text-slate-800">Estimated Total</span>
+                    <span className="text-lg font-bold text-blue-300">{peso(state.quotation.total)}</span>
+                  </div>
+                )}
+                <p className="text-xs text-slate-400">
+                  This is an estimate based on our standard price list. Final pricing will be confirmed by our technician before any
+                  repair work begins.
+                </p>
+                {confirmState?.ok === false && (
+                  <p className="text-xs font-medium text-red-600">
+                    {confirmState.error === "expired"
+                      ? "This confirmation window has expired — please submit a new request."
+                      : "Something went wrong confirming your booking. Please try again."}
+                  </p>
+                )}
+                <form action={confirmFormAction}>
+                  <input type="hidden" name="token" value={state.confirmationToken} />
+                  <button type="submit" disabled={confirmPending} className="btn-primary w-full">
+                    {confirmPending ? "Confirming..." : "Confirm Booking"}
+                  </button>
+                </form>
+                <p className="text-center text-[11px] text-slate-400">
+                  Please confirm within {BOOKING_CONFIRMATION_WINDOW_HOURS} hours, or your request will be automatically cancelled.
+                  {sentEmail && <> We also emailed a copy of this quotation to {sentEmail} for your records.</>}
+                </p>
+              </div>
+            )}
+          </>
         )}
         <a href={`/request?area=${area}`} className="btn-secondary inline-block">
           Submit another request
