@@ -21,8 +21,13 @@ import type { RequestFormContent, CustomFormField, HomeServiceQueue } from "@/li
 // Shared styling for every customer-facing note/reminder on this form —
 // bolder border, background, and text than a plain hint so it actually
 // gets noticed instead of blending into the surrounding whitespace.
-function FormNotice({ children, tone = "amber", icon = "⚠️" }: { children: React.ReactNode; tone?: "amber" | "blue"; icon?: string }) {
-  const toneClasses = tone === "blue" ? "border-blue-300 bg-blue-50 text-blue-900" : "border-amber-300 bg-amber-50 text-amber-900";
+function FormNotice({ children, tone = "amber", icon = "⚠️" }: { children: React.ReactNode; tone?: "amber" | "blue" | "green"; icon?: string }) {
+  const toneClasses =
+    tone === "blue"
+      ? "border-blue-300 bg-blue-50 text-blue-900"
+      : tone === "green"
+        ? "border-green-300 bg-green-50 text-green-900"
+        : "border-amber-300 bg-amber-50 text-amber-900";
   return (
     <div className={`flex items-start gap-2 rounded-lg border-2 p-3 text-sm font-medium leading-snug ${toneClasses}`}>
       <span aria-hidden="true" className="shrink-0">
@@ -263,6 +268,12 @@ export default function HomeServiceForm({
           <span className="font-mono text-base font-semibold text-blue-300">{state.references.join(", ")}</span>
         </p>
         <p className="text-sm text-slate-400">{content.successBody}</p>
+        {mode === "pickup_delivery" && state.downpaymentRequired && state.confirmationUrl && (
+          <FormNotice tone="green" icon="🛵">
+            <p className="font-semibold">A rider is available for your pickup</p>
+            <p className="mt-1">We checked before accepting your booking — go ahead and pay below to confirm it and get one assigned.</p>
+          </FormNotice>
+        )}
         {state.downpaymentRequired && state.confirmationUrl && (
           <FormNotice tone="amber" icon="💳">
             <p className="font-semibold">{mode === "pickup_delivery" ? "Booking & Diagnostic Fee required to confirm your booking" : "Down payment required to confirm your booking"}</p>
@@ -555,22 +566,27 @@ export default function HomeServiceForm({
             )}
             <input type="hidden" name="lat" value={lat ?? ""} />
             <input type="hidden" name="lng" value={lng ?? ""} />
-            <div className="space-y-1.5 pt-2">
-              <p className="text-xs font-medium text-slate-500">Pin your exact location on the map</p>
-              <p className="text-xs text-slate-400">Search your area, then drag the pin to your gate/door so our technician finds you easily.</p>
-              <LocationPinMap
-                value={lat !== null && lng !== null ? { lat, lng } : null}
-                onChange={(pos) => {
-                  setLat(pos.lat);
-                  setLng(pos.lng);
-                }}
-              />
-              {lat !== null && lng !== null && (
-                <p className="text-xs font-medium text-green-700">
-                  ✓ Location pinned ({lat.toFixed(5)}, {lng.toFixed(5)})
-                </p>
-              )}
-            </div>
+            {/* Pickup & Delivery already pins the location with MapPinPicker
+                further down (after Barangay) — skip this second, separate
+                map here so the customer isn't asked to pin twice. */}
+            {mode !== "pickup_delivery" && (
+              <div className="space-y-1.5 pt-2">
+                <p className="text-xs font-medium text-slate-500">Pin your exact location on the map</p>
+                <p className="text-xs text-slate-400">Search your area, then drag the pin to your gate/door so our technician finds you easily.</p>
+                <LocationPinMap
+                  value={lat !== null && lng !== null ? { lat, lng } : null}
+                  onChange={(pos) => {
+                    setLat(pos.lat);
+                    setLng(pos.lng);
+                  }}
+                />
+                {lat !== null && lng !== null && (
+                  <p className="text-xs font-medium text-green-700">
+                    ✓ Location pinned ({lat.toFixed(5)}, {lng.toFixed(5)})
+                  </p>
+                )}
+              </div>
+            )}
           </div>
         );
       case "city":
