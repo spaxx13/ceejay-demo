@@ -297,6 +297,7 @@ type RequestRow = {
   pickup_photo_data_url: string | null; delivered_branch_id: string | null;
   pickup_rider_accepted_at: Date | null; delivery_rider_accepted_at: Date | null;
   pickup_condition_checklist: HomeServiceRequest["pickupConditionChecklist"]; pickup_photos: HomeServiceRequest["pickupPhotos"];
+  pickup_security_seal: string | null;
 };
 function mapRequest(r: RequestRow): HomeServiceRequest {
   return {
@@ -323,6 +324,7 @@ function mapRequest(r: RequestRow): HomeServiceRequest {
     pickupPhotoDataUrl: r.pickup_photo_data_url, deliveredBranchId: r.delivered_branch_id,
     pickupRiderAcceptedAt: toIsoOrNull(r.pickup_rider_accepted_at), deliveryRiderAcceptedAt: toIsoOrNull(r.delivery_rider_accepted_at),
     pickupConditionChecklist: r.pickup_condition_checklist ?? null, pickupPhotos: r.pickup_photos ?? null,
+    pickupSecuritySeal: r.pickup_security_seal,
   };
 }
 

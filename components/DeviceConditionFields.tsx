@@ -52,6 +52,11 @@ export default function DeviceConditionFields() {
       <PhotoUpload name="photo_right" label="Right Side" required />
       <PhotoUpload name="photo_topBottom" label="Top / Bottom" required />
       <PhotoUpload name="photo_damage" label="Damaged Area(s) (if any)" />
+      <div className="space-y-1.5 pt-1">
+        <label className="text-xs font-medium text-slate-500">Security Seal # (optional)</label>
+        <input name="securitySeal" className="input" placeholder="e.g. Seal #004829" />
+        <p className="text-[11px] text-slate-400">If you sealed the package, write the seal number here so the shop can verify it on arrival.</p>
+      </div>
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import { assignPickupRider, assignDeliveryRider } from "@/lib/actions";
 import { formatDateTime } from "@/lib/format";
 import type { PickupDeliveryStage } from "@/lib/db";
+import JobQrCode from "./JobQrCode";
 
 type Job = {
   id: string;
@@ -26,6 +27,7 @@ type Job = {
   outForDeliveryAt: string | null;
   deliveredAt: string | null;
   pickupPhotoDataUrl: string | null;
+  pickupSecuritySeal: string | null;
   deliveredBranchName: string | null;
   createdAt: string;
 };
@@ -161,11 +163,18 @@ export default function PickupDeliveryBoard({ jobs, riders }: { jobs: Job[]; rid
                           </p>
                         )}
                         <p>Technician: {job.technicianName ? <span className="font-medium text-slate-700">{job.technicianName}</span> : "Not yet assigned"}</p>
+                        {job.pickupSecuritySeal && (
+                          <p>
+                            Security seal: <span className="font-mono font-medium text-slate-700">{job.pickupSecuritySeal}</span> — verify it
+                            matches before opening.
+                          </p>
+                        )}
                       </div>
                       {job.pickupPhotoDataUrl && (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img src={job.pickupPhotoDataUrl} alt="Unit picked up" className="h-20 w-20 rounded-lg border border-slate-200 object-cover" />
                       )}
+                      <JobQrCode requestId={job.id} reference={job.reference} />
                     </div>
                   )}
 

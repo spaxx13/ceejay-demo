@@ -401,6 +401,10 @@ export type HomeServiceRequest = {
   // supersedes the single pickupPhotoDataUrl above for pickup_delivery jobs.
   pickupConditionChecklist: DeviceConditionChecklist | null;
   pickupPhotos: PickupPhoto[] | null;
+  // Optional security seal number the rider records when packaging the
+  // device at pickup (FINAL FLOW spec item 12) — shown alongside the QR
+  // code so shop staff can verify the package wasn't opened in transit.
+  pickupSecuritySeal: string | null;
 };
 
 export const DEVICE_CONDITION_ITEMS = [

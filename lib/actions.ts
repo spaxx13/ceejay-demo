@@ -713,8 +713,15 @@ export async function riderUpdatePickupStatus(_prev: RiderStatusResult | undefin
       }
 
       await query(
-        "update home_service_requests set picked_up_at=now(), pickup_signature_data_url=$1, pickup_photo_data_url=$2, pickup_condition_checklist=$3, pickup_photos=$4 where id=$5",
-        [str(formData, "signatureDataUrl") || null, photos[0]?.dataUrl ?? null, JSON.stringify(checklist), JSON.stringify(photos), requestId]
+        "update home_service_requests set picked_up_at=now(), pickup_signature_data_url=$1, pickup_photo_data_url=$2, pickup_condition_checklist=$3, pickup_photos=$4, pickup_security_seal=$5 where id=$6",
+        [
+          str(formData, "signatureDataUrl") || null,
+          photos[0]?.dataUrl ?? null,
+          JSON.stringify(checklist),
+          JSON.stringify(photos),
+          str(formData, "securitySeal") || null,
+          requestId,
+        ]
       );
       await logActivity(
         "home_service_request",

@@ -13,6 +13,7 @@ import RiderStatusUpdateForm from "@/components/RiderStatusUpdateForm";
 import RiderLocationReporter from "@/components/RiderLocationReporter";
 import RiderBranchRedirectForm from "@/components/RiderBranchRedirectForm";
 import RiderAcceptDeclineForm from "@/components/RiderAcceptDeclineForm";
+import JobQrCode from "@/components/JobQrCode";
 
 const PICKUP_STATUS_OPTIONS = [
   { value: "on_the_way", label: "On The Way" },
@@ -94,6 +95,17 @@ export default async function RiderPage() {
                 <RiderAcceptDeclineForm requestId={r.id} onAccept={riderAcceptPickup} onDecline={riderDeclinePickup} />
               ) : (
                 <>
+                  {r.pickedUpAt && !r.receivedAtShopAt && (
+                    <div className="space-y-1.5 border-t border-slate-200 pt-3">
+                      <p className="text-xs font-medium text-slate-500">Package Label — attach to the package</p>
+                      <JobQrCode requestId={r.id} reference={r.reference} />
+                      {r.pickupSecuritySeal && (
+                        <p className="text-xs text-slate-500">
+                          Security seal: <span className="font-mono font-medium text-slate-700">{r.pickupSecuritySeal}</span>
+                        </p>
+                      )}
+                    </div>
+                  )}
                   {r.pickupStartedAt && !r.receivedAtShopAt && <RiderLocationReporter requestId={r.id} />}
                   {r.headingToShopAt && !r.receivedAtShopAt && (
                     <RiderBranchRedirectForm

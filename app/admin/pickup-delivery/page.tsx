@@ -58,6 +58,7 @@ export default async function PickupDeliveryPage() {
         outForDeliveryAt: r.outForDeliveryAt,
         deliveredAt: r.deliveredAt,
         pickupPhotoDataUrl: r.pickupPhotoDataUrl,
+        pickupSecuritySeal: r.pickupSecuritySeal,
         deliveredBranchName: deliveredBranch?.name ?? null,
         createdAt: r.createdAt,
       };
