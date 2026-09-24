@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Ceejay</string>
+    <string name="title_activity_main">Ceejay</string>
+    <string name="package_name">com.ceejayrepair.app</string>
+    <string name="custom_url_scheme">com.ceejayrepair.app</string>
+</resources>

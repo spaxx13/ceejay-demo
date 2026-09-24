@@ -3346,20 +3346,6 @@ async function startTechnicianTrackingIfOnTheWay(req: HomeServiceRequest, newSta
   }
 }
 
-// GPS fix pushed from the assigned technician's phone while their job is
-// En Route (components/TechnicianLocationSharer.tsx). `stop` tells the
-// phone to stop sharing once the job is no longer En Route.
-export async function updateTechnicianLocation(requestId: string, lat: number, lng: number): Promise<{ ok: boolean; stop?: boolean }> {
-  const user = await getCurrentUser();
-  if (!user || user.role !== "technician") return { ok: false, stop: true };
-  if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) return { ok: false };
-  const req = await getRequestById(requestId);
-  if (!req || req.assignedTechnicianId !== user.technicianId) return { ok: false, stop: true };
-  const status = (await getLookups()).find((l) => l.id === req.statusId);
-  if (!isOnTheWayStatus(status?.label)) return { ok: false, stop: true };
-  await query("update home_service_requests set tech_lat=$1, tech_lng=$2, tech_location_at=now() where id=$3", [lat, lng, requestId]);
-  return { ok: true };
-}
 
 export async function technicianUpdateStatus(formData: FormData) {
   const user = await getCurrentUser();
