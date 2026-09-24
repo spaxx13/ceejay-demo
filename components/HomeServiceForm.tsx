@@ -261,10 +261,10 @@ export default function HomeServiceForm({
   // so the form degrades gracefully — with no SMS provider configured,
   // customers submit without an OTP step instead of being stuck on a "send
   // code" button that can only ever fail. Matches the server-side check in
-  // submitHomeServiceRequest, which skips the gate the same way.
-  // Pickup & Delivery skips the OTP gate entirely — still being tested, and
-  // the rider already confirms identity in person at pickup.
-  const phoneGateActive = mode !== "pickup_delivery" && OTP_GATE_ENABLED && smsAvailable && (phoneField?.active ?? false);
+  // submitHomeServiceRequest, which skips the gate the same way. Pickup &
+  // Delivery uses this gate too (per the FINAL FLOW spec: SMS OTP verifies
+  // the initial booking only — every update after that goes out by email).
+  const phoneGateActive = OTP_GATE_ENABLED && smsAvailable && (phoneField?.active ?? false);
 
   useEffect(() => {
     if (!GOOGLE_MAPS_KEY || !streetActive) return;
