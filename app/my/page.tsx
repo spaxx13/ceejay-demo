@@ -15,6 +15,9 @@ export default async function MyBookingsPage() {
   return (
     <main className="grid-bg min-h-screen px-4 py-10 sm:px-6">
       <div className="mx-auto max-w-lg space-y-6">
+        <Link href="/app-home" className="inline-block text-sm text-slate-400 hover:underline">
+          ← Back
+        </Link>
         <div className="flex items-center justify-between">
           <div>
             <p className="kicker">Ceejay Account</p>

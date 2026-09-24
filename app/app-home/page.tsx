@@ -11,7 +11,7 @@ export default async function AppHomePage() {
   const customer = await getCurrentCustomer();
 
   return (
-    <main className="grid-bg flex min-h-screen flex-col items-center justify-center px-4 py-10 sm:px-6">
+    <main className="grid-bg flex min-h-screen flex-col items-center justify-center px-4 py-10 pb-20 sm:px-6">
       <div className="mx-auto w-full max-w-sm space-y-8 text-center">
         <div className="space-y-3">
           <Image src="/contact-widget-icon.png" alt="Ceejay" width={88} height={88} className="mx-auto rounded-2xl" priority />
@@ -30,7 +30,14 @@ export default async function AppHomePage() {
           </Link>
         </div>
 
-        <Link href={customer ? "/my" : "/my/login"} className="block text-sm font-semibold text-blue-600 hover:underline">
+        {/* A padded block (not a bare text link) — a thin one-line link sitting
+            this close to the bottom of the screen is a easy to miss / hard to
+            tap precisely on a real phone, especially near the home indicator
+            gesture area on notched iPhones. */}
+        <Link
+          href={customer ? "/my" : "/my/login"}
+          className="block rounded-xl px-4 py-3 text-sm font-semibold text-blue-600 hover:bg-blue-50 hover:underline"
+        >
           {customer ? `👤 My Bookings — Hi, ${customer.name.split(" ")[0] || "there"}` : "👤 Sign In to Track Your Repair"}
         </Link>
       </div>
