@@ -260,9 +260,9 @@ function mapTechnician(r: TechnicianRow): Technician {
   };
 }
 
-type RiderRow = { id: string; name: string; contact_number: string; email: string; branch_id: string | null; vehicle: Rider["vehicle"]; active: boolean };
+type RiderRow = { id: string; name: string; contact_number: string; email: string; branch_id: string | null; vehicle: Rider["vehicle"]; active: boolean; on_duty: boolean };
 function mapRider(r: RiderRow): Rider {
-  return { id: r.id, name: r.name, contactNumber: r.contact_number, email: r.email, branchId: r.branch_id, vehicle: r.vehicle, active: r.active };
+  return { id: r.id, name: r.name, contactNumber: r.contact_number, email: r.email, branchId: r.branch_id, vehicle: r.vehicle, active: r.active, onDuty: r.on_duty };
 }
 
 type CustomerRow = { id: string; name: string; phone: string; email: string; street: string; province: string; landmark: string; source: string; notes: string; created_at: Date };

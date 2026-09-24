@@ -16,6 +16,7 @@ export default async function RidersPage() {
     branchId: r.branchId,
     vehicle: r.vehicle,
     active: r.active,
+    onDuty: r.onDuty,
   }));
   const branches = allBranches.filter((b) => b.active).map((b) => ({ id: b.id, name: b.name }));
 

@@ -32,7 +32,7 @@ type Job = {
   deliveredBranchName: string | null;
   createdAt: string;
 };
-type Rider = { id: string; name: string };
+type Rider = { id: string; name: string; onDuty: boolean };
 
 const COLUMNS: { key: string; label: string; stages: PickupDeliveryStage[] }[] = [
   { key: "awaiting_pickup", label: "Awaiting Pickup", stages: ["requested", "pickup_assigned", "pickup_started", "picked_up", "heading_to_shop"] },
@@ -63,9 +63,10 @@ function RiderAssignForm({
           <option value="" disabled>
             {currentRiderName ? `Reassign (currently ${currentRiderName})` : "Select a rider…"}
           </option>
-          {riders.map((r) => (
+          {[...riders].sort((a, b) => Number(b.onDuty) - Number(a.onDuty)).map((r) => (
             <option key={r.id} value={r.id}>
-              {r.name}
+              {r.onDuty ? "🟢" : "⚪"} {r.name}
+              {!r.onDuty ? " (off duty)" : ""}
             </option>
           ))}
         </select>

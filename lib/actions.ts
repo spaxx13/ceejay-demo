@@ -492,6 +492,8 @@ export async function deleteTechnician(formData: FormData) {
 // ---------- Riders (Pickup & Delivery couriers — separate role from Technician) ----------
 
 export async function createRider(formData: FormData) {
+  // Owner-only, same as the Admin > Riders page that renders this form.
+  if (!(await requireRole("owner_admin"))) return;
   const name = str(formData, "name");
   if (!name) return;
   await query("insert into riders (name, contact_number, email, branch_id, vehicle) values ($1,$2,$3,$4,$5)", [
@@ -505,6 +507,7 @@ export async function createRider(formData: FormData) {
 }
 
 export async function updateRider(formData: FormData) {
+  if (!(await requireRole("owner_admin"))) return;
   const riderId = str(formData, "id");
   const name = str(formData, "name");
   if (!name) return;
@@ -520,9 +523,36 @@ export async function updateRider(formData: FormData) {
 }
 
 export async function toggleRiderActive(formData: FormData) {
+  if (!(await requireRole("owner_admin"))) return;
   const riderId = str(formData, "id");
   await query("update riders set active = not active where id=$1", [riderId]);
   revalidatePath("/admin/riders");
+}
+
+// Admin override for a rider's on-duty status — e.g. a rider forgot to
+// toggle off before going home, and support needs to correct it so the
+// public booking check and the Pickup & Delivery board stop counting them
+// as available.
+export async function adminSetRiderOnDuty(formData: FormData) {
+  if (!(await requireRole("owner_admin"))) return;
+  const riderId = str(formData, "id");
+  await query("update riders set on_duty = not on_duty where id=$1", [riderId]);
+  revalidatePath("/admin/riders");
+  revalidatePath("/admin/pickup-delivery");
+}
+
+// The rider's own on-duty toggle (My Jobs page) — "I'm on shift and can
+// take jobs" vs "I'm off shift". Separate from the admin-controlled
+// `active` account flag above. Only the logged-in rider can flip their own
+// status.
+export async function setRiderOnDuty(formData: FormData) {
+  const user = await getCurrentUser();
+  if (!user || user.role !== "rider" || !user.riderId) return;
+  const onDuty = str(formData, "onDuty") === "true";
+  await query("update riders set on_duty=$1 where id=$2", [onDuty, user.riderId]);
+  revalidatePath("/rider");
+  revalidatePath("/admin/riders");
+  revalidatePath("/admin/pickup-delivery");
 }
 
 export async function deleteRider(formData: FormData) {
@@ -1669,7 +1699,7 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
   // server-side backstop for a hand-crafted/stale submission.
   if (fulfillmentMode === "pickup_delivery") {
     const riders = await getRiders();
-    if (!riders.some((r) => r.active)) {
+    if (!riders.some((r) => r.active && r.onDuty)) {
       return { ok: false, error: "No riders are available for Pickup & Delivery right now — please try again later, or book Home Service instead." };
     }
   }
