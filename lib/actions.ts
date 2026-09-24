@@ -53,9 +53,20 @@ import {
   getTodayCheckIn,
 } from "./db";
 import { getCurrentUser, setSession, clearSession, requireRole } from "./auth";
-import { sendRepairReceiptEmail, sendCancellationEmail, sendQuotationEmail, sendLeadReplyEmail, sendBroadcastEmail, sendWalkInOtpEmail, sendPublicQuoteEmail, sendTrackingLinkEmail, emailConfigured } from "./email";
+import {
+  sendRepairReceiptEmail,
+  sendCancellationEmail,
+  sendQuotationEmail,
+  sendLeadReplyEmail,
+  sendBroadcastEmail,
+  sendWalkInOtpEmail,
+  sendPublicQuoteEmail,
+  sendTrackingLinkEmail,
+  sendPickupDeliveryBookingConfirmedEmail,
+  emailConfigured,
+} from "./email";
 import { sendSms, sendOtpSms, smsConfigured, normalizePhone, getAccountStatus, type SmsAccountStatus } from "./sms";
-import { SUNDAY_ONLY_PROVINCES, DOWNPAYMENT_PROVINCES, serviceFeeAmount } from "./homeServiceFees";
+import { SUNDAY_ONLY_PROVINCES, DOWNPAYMENT_PROVINCES, serviceFeeAmount, PICKUP_DELIVERY_FEE_PESOS } from "./homeServiceFees";
 import { getRepairQuote } from "./servicePricing";
 import { formatDate, isCheckInOpen } from "./format";
 import { createCheckoutSession as createPaymongoCheckoutSession, paymongoConfigured } from "./paymongo";
@@ -532,6 +543,10 @@ export async function assignPickupRider(formData: FormData) {
   const riderId = str(formData, "riderId");
   const req = await getRequestById(requestId);
   if (!req || req.fulfillmentMode !== "pickup_delivery" || !riderId) return;
+  // Can't dispatch a rider for a booking that hasn't paid its Booking &
+  // Diagnostic Fee yet — the UI already hides this job until then, this is
+  // just the server-side backstop.
+  if (req.downpaymentRequired && req.downpaymentStatus !== "paid") return;
 
   await query("update home_service_requests set pickup_rider_id=$1, pickup_rider_accepted_at=null where id=$2", [riderId, requestId]);
   const riderRow = await queryOne<{ name: string }>("select name from riders where id=$1", [riderId]);
@@ -1619,14 +1634,17 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
   // own confirmation_token (below) needs to be distinct.
   const pendingStatus = requestStatuses.find((s) => s.label === "Pending") ?? requestStatuses[0];
   const pendingConfirmationStatus = requestStatuses.find((s) => s.label === "Pending Confirmation");
-  const requiresDownpayment = DOWNPAYMENT_PROVINCES.has(province);
+  // Pickup & Delivery always requires its flat Booking + Diagnostic Fee
+  // (PICKUP_DELIVERY_FEE_PESOS) — same QR Ph down-payment gate as
+  // DOWNPAYMENT_PROVINCES, just always on instead of province-gated.
+  const requiresDownpayment = DOWNPAYMENT_PROVINCES.has(province) || fulfillmentMode === "pickup_delivery";
   const initialStatus = (email || requiresDownpayment) && pendingConfirmationStatus ? pendingConfirmationStatus : pendingStatus;
   const needsConfirmation = initialStatus.id === pendingConfirmationStatus?.id;
   // Only actually enforceable when needsConfirmation held true above (i.e.
   // a "Pending Confirmation" status exists) — otherwise there's no gate to
   // attach a down payment requirement to at all.
   const downpaymentActive = requiresDownpayment && needsConfirmation;
-  const downpaymentAmount = downpaymentActive ? serviceFeeAmount(province, city) : null;
+  const downpaymentAmount = downpaymentActive ? (fulfillmentMode === "pickup_delivery" ? PICKUP_DELIVERY_FEE_PESOS : serviceFeeAmount(province, city)) : null;
   const cancelledStatus = requestStatuses.find((s) => s.label === "Cancelled");
 
   // A customer can book several devices in one submission (the "+ Add
@@ -1978,6 +1996,22 @@ async function confirmBookingRows(reqs: HomeServiceRequest[]): Promise<ConfirmBo
     );
     await logActivity("home_service_request", req.id, `Request ${req.reference} confirmed by customer — moved to the Unassigned queue`, "System");
     await notifyAdmins("new_request", req.id, `${req.customerName || "A customer"} confirmed Home Service Request ${req.reference} — now in the Unassigned queue.`);
+
+    if (req.fulfillmentMode === "pickup_delivery" && req.email && emailConfigured()) {
+      try {
+        await sendPickupDeliveryBookingConfirmedEmail(req.email, {
+          customerName: req.customerName,
+          reference: req.reference,
+          phone: req.phone,
+          deviceLabel: req.deviceOther || "Device not specified",
+          preferredDate: req.preferredDatetime ? formatDate(req.preferredDatetime) : "To be scheduled",
+          address: [req.street, req.barangay, req.city, req.province].filter(Boolean).join(", "),
+          amountPaid: req.downpaymentAmount ?? 0,
+        });
+      } catch {
+        // Best-effort — never blocks booking confirmation.
+      }
+    }
   }
 
   revalidatePath("/admin/requests");
@@ -2039,8 +2073,11 @@ export async function startHomeServiceDownpayment(token: string): Promise<StartH
     session = await createPaymongoCheckoutSession({
       metadata: { kind: "home_service_downpayment", token },
       amountPesos: first.downpaymentAmount,
-      description: `Home Service down payment — ${reqs.map((r) => r.reference).join(", ")}`,
-      lineItemName: "Home Service Down Payment",
+      description:
+        first.fulfillmentMode === "pickup_delivery"
+          ? `Ceejay Pickup & Delivery — Booking & Diagnostic Fee — ${reqs.map((r) => r.reference).join(", ")}`
+          : `Home Service down payment — ${reqs.map((r) => r.reference).join(", ")}`,
+      lineItemName: first.fulfillmentMode === "pickup_delivery" ? "Pickup & Delivery Booking & Diagnostic Fee" : "Home Service Down Payment",
       paymentMethodTypes: ["qrph"],
       // Both point back to the same confirm-booking page — it always
       // re-derives payment status from the DB (with a fallback

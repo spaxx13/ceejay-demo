@@ -409,3 +409,46 @@ export async function sendTrackingLinkEmail(
   });
   if (error) throw new Error(error.message);
 }
+
+// Sent once when a Pickup & Delivery booking's Booking & Diagnostic Fee
+// clears (see confirmBookingRows in lib/actions.ts) — the FINAL FLOW spec's
+// "Ceejay Repair Booking Confirmed" email. The quotation email sent at
+// submission time already asked for this payment; this one confirms it
+// went through and hands over the tracking link.
+export async function sendPickupDeliveryBookingConfirmedEmail(
+  to: string,
+  opts: { customerName: string; reference: string; phone: string; deviceLabel: string; preferredDate: string; address: string; amountPaid: number }
+) {
+  const client = getClient();
+  const trackingUrl = `${SITE_URL}/track?reference=${encodeURIComponent(opts.reference)}&phone=${encodeURIComponent(opts.phone)}`;
+  const peso = (n: number) => `₱${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+  const { error } = await client.emails.send({
+    from: FROM,
+    to,
+    subject: `Ceejay Repair Booking Confirmed — ${opts.reference}`,
+    html: `
+      <div style="font-family: -apple-system, sans-serif; max-width: 480px; margin: 0 auto; color: #1e293b;">
+        <p style="font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8;">Ceejay Cellphone Repair Shop</p>
+        <h2 style="margin: 4px 0 16px;">Your booking is confirmed!</h2>
+        <p style="font-size: 14px; line-height: 1.5;">
+          Hi ${opts.customerName}, your ${peso(opts.amountPaid)} payment went through and your Pickup &amp; Delivery booking is confirmed.
+          We're assigning a rider now — you'll get another email once they're on the way.
+        </p>
+        <table style="width: 100%; font-size: 13px; margin: 16px 0; border-collapse: collapse;">
+          <tr><td style="padding: 4px 0; color: #64748b;">Job ID</td><td style="padding: 4px 0; text-align: right; font-weight: 600;">${opts.reference}</td></tr>
+          <tr><td style="padding: 4px 0; color: #64748b;">Device</td><td style="padding: 4px 0; text-align: right;">${opts.deviceLabel}</td></tr>
+          <tr><td style="padding: 4px 0; color: #64748b;">Pickup Schedule</td><td style="padding: 4px 0; text-align: right;">${opts.preferredDate}</td></tr>
+          <tr><td style="padding: 4px 0; color: #64748b;">Pickup Address</td><td style="padding: 4px 0; text-align: right;">${opts.address}</td></tr>
+          <tr><td style="padding: 4px 0; color: #64748b;">Amount Paid</td><td style="padding: 4px 0; text-align: right;">${peso(opts.amountPaid)}</td></tr>
+        </table>
+        <p style="margin: 20px 0;">
+          <a href="${trackingUrl}" style="display: inline-block; background: #0071e3; color: #fff; padding: 10px 20px; border-radius: 999px; text-decoration: none; font-size: 14px; font-weight: 600;">
+            Track My Request
+          </a>
+        </p>
+      </div>
+    `,
+  });
+  if (error) throw new Error(error.message);
+}

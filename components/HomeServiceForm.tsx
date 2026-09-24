@@ -319,14 +319,15 @@ export default function HomeServiceForm({
         <p className="text-sm text-slate-400">{content.successBody}</p>
         {state.downpaymentRequired && state.confirmationUrl && (
           <FormNotice tone="amber" icon="💳">
-            <p className="font-semibold">Down payment required to confirm your booking</p>
+            <p className="font-semibold">{mode === "pickup_delivery" ? "Booking & Diagnostic Fee required to confirm your booking" : "Down payment required to confirm your booking"}</p>
             <p className="mt-1">
-              Home Service bookings in your area require a ₱{(state.downpaymentAmount ?? 0).toLocaleString()}.00 down payment via QR Ph
-              before we can confirm your booking. Please pay within {BOOKING_CONFIRMATION_WINDOW_HOURS} hours, or your request will be
-              automatically cancelled.
+              {mode === "pickup_delivery"
+                ? `Pickup & Delivery bookings require a ₱${(state.downpaymentAmount ?? 0).toLocaleString()}.00 Booking & Diagnostic Fee via QR Ph before we can confirm your booking and assign a rider.`
+                : `Home Service bookings in your area require a ₱${(state.downpaymentAmount ?? 0).toLocaleString()}.00 down payment via QR Ph before we can confirm your booking.`}{" "}
+              Please pay within {BOOKING_CONFIRMATION_WINDOW_HOURS} hours, or your request will be automatically cancelled.
             </p>
             <a href={state.confirmationUrl} className="btn-primary mt-3 inline-block">
-              Pay Down Payment Now
+              {mode === "pickup_delivery" ? "Pay Booking & Diagnostic Fee Now" : "Pay Down Payment Now"}
             </a>
           </FormNotice>
         )}

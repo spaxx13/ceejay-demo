@@ -17,7 +17,17 @@ export default async function PickupDeliveryPage() {
   const statuses = lookups.filter((l) => l.kind === "request_status");
 
   const jobs = allRequests
-    .filter((r) => r.fulfillmentMode === "pickup_delivery" && !isBranchHidden(user, r.queueBranchId))
+    // Only paid bookings show up here for dispatch — one still awaiting its
+    // Booking & Diagnostic Fee isn't a real job yet (see the FINAL FLOW
+    // spec: the Job ID/rider assignment step only happens after payment
+    // clears). It's still visible to the customer on their own
+    // confirm-booking page while they pay.
+    .filter(
+      (r) =>
+        r.fulfillmentMode === "pickup_delivery" &&
+        !isBranchHidden(user, r.queueBranchId) &&
+        (!r.downpaymentRequired || r.downpaymentStatus === "paid")
+    )
     .map((r) => {
       const statusLabel = statuses.find((s) => s.id === r.statusId)?.label;
       const technician = technicians.find((t) => t.id === r.assignedTechnicianId);
