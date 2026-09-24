@@ -8,6 +8,7 @@ import {
   SUNDAY_ONLY_PROVINCES,
   DOWNPAYMENT_PROVINCES,
   EXCLUDED_FROM_HOME_SERVICE,
+  PICKUP_DELIVERY_FEE_PESOS,
   nextSunday,
   minPreferredDateStr,
 } from "@/lib/homeServiceFees";
@@ -159,6 +160,10 @@ export default function HomeServiceForm({
   // actually selected instead of a fixed Metro Manila figure, since the
   // flat rate differs by province (and, for some provinces, by town).
   function serviceFeeNote(): string | null {
+    // Pickup & Delivery has its own flat Booking & Diagnostic Fee (shown
+    // separately below, after OTP verification) instead of the on-site
+    // per-province visit fee this note is otherwise about.
+    if (mode === "pickup_delivery") return null;
     const fee = PROVINCE_FEES[effectiveProvince];
     if (!fee) return null;
     const peso = (n: number) => `₱${n.toLocaleString()}.00`;
@@ -828,6 +833,12 @@ export default function HomeServiceForm({
           please expect a call from us.
         </p>
         {serviceFeeNote() && <p className="mt-2 font-semibold">{serviceFeeNote()}</p>}
+        {mode === "pickup_delivery" && (
+          <p className="mt-2 font-semibold">
+            A ₱{PICKUP_DELIVERY_FEE_PESOS.toLocaleString()}.00 Booking &amp; Diagnostic Fee is required via QR Ph after phone verification,
+            before we confirm your booking and assign a rider.
+          </p>
+        )}
       </FormNotice>
 
       {!phoneGateActive && (
