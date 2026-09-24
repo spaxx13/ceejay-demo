@@ -36,7 +36,7 @@ export default async function TrackPage({ searchParams }: { searchParams: Promis
           <form className="card space-y-3">
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-slate-500">Reference Number</label>
-              <input name="reference" required className="input" placeholder="e.g. HSR-2026-0001" defaultValue={reference} />
+              <input name="reference" required className="input" placeholder="e.g. CJ-260924-00125" defaultValue={reference} />
             </div>
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-slate-500">Mobile Number</label>

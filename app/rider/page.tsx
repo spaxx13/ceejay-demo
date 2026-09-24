@@ -1,13 +1,22 @@
 import { getCurrentUser } from "@/lib/auth";
 import { getRequests, getBranches } from "@/lib/db";
-import { riderUpdatePickupStatus, riderUpdateDeliveryStatus, riderUpdateDestinationBranch } from "@/lib/actions";
+import {
+  riderUpdatePickupStatus,
+  riderUpdateDeliveryStatus,
+  riderUpdateDestinationBranch,
+  riderAcceptPickup,
+  riderDeclinePickup,
+  riderAcceptDelivery,
+  riderDeclineDelivery,
+} from "@/lib/actions";
 import RiderStatusUpdateForm from "@/components/RiderStatusUpdateForm";
 import RiderLocationReporter from "@/components/RiderLocationReporter";
 import RiderBranchRedirectForm from "@/components/RiderBranchRedirectForm";
+import RiderAcceptDeclineForm from "@/components/RiderAcceptDeclineForm";
 
 const PICKUP_STATUS_OPTIONS = [
   { value: "on_the_way", label: "On The Way" },
-  { value: "picked_up", label: "Picked Up", needsSignature: true, needsPhoto: true },
+  { value: "picked_up", label: "Picked Up", needsSignature: true, needsConditionCheck: true },
   { value: "heading_to_shop", label: "On The Way to Branch", needsBranch: true },
   { value: "delivered_to_branch", label: "Delivered to Branch", needsBranch: true },
 ];
@@ -57,13 +66,15 @@ export default async function RiderPage() {
               <div className="flex items-center justify-between">
                 <span className="font-mono text-xs text-slate-400">{r.reference}</span>
                 <span className="badge border border-blue-200 bg-blue-50 text-blue-300">
-                  {r.headingToShopAt
-                    ? "Heading to branch"
-                    : r.pickedUpAt
-                      ? "Has device"
-                      : r.pickupStartedAt
-                        ? "On the way"
-                        : "Pickup"}
+                  {!r.pickupRiderAcceptedAt
+                    ? "Awaiting your response"
+                    : r.headingToShopAt
+                      ? "Heading to branch"
+                      : r.pickedUpAt
+                        ? "Has device"
+                        : r.pickupStartedAt
+                          ? "On the way"
+                          : "Pickup"}
                 </span>
               </div>
               <p className="text-base font-semibold text-slate-900">{r.customerName}</p>
@@ -79,23 +90,29 @@ export default async function RiderPage() {
                   Call {r.phone}
                 </a>
               )}
-              {r.pickupStartedAt && !r.receivedAtShopAt && <RiderLocationReporter requestId={r.id} />}
-              {r.headingToShopAt && !r.receivedAtShopAt && (
-                <RiderBranchRedirectForm
-                  action={riderUpdateDestinationBranch}
-                  requestId={r.id}
-                  branches={branches}
-                  currentBranchId={r.deliveredBranchId}
-                />
+              {!r.pickupRiderAcceptedAt ? (
+                <RiderAcceptDeclineForm requestId={r.id} onAccept={riderAcceptPickup} onDecline={riderDeclinePickup} />
+              ) : (
+                <>
+                  {r.pickupStartedAt && !r.receivedAtShopAt && <RiderLocationReporter requestId={r.id} />}
+                  {r.headingToShopAt && !r.receivedAtShopAt && (
+                    <RiderBranchRedirectForm
+                      action={riderUpdateDestinationBranch}
+                      requestId={r.id}
+                      branches={branches}
+                      currentBranchId={r.deliveredBranchId}
+                    />
+                  )}
+                  <RiderStatusUpdateForm
+                    action={riderUpdatePickupStatus}
+                    requestId={r.id}
+                    options={PICKUP_STATUS_OPTIONS}
+                    defaultValue={defaultStatus}
+                    branches={branches}
+                    defaultBranchId={r.deliveredBranchId ?? undefined}
+                  />
+                </>
               )}
-              <RiderStatusUpdateForm
-                action={riderUpdatePickupStatus}
-                requestId={r.id}
-                options={PICKUP_STATUS_OPTIONS}
-                defaultValue={defaultStatus}
-                branches={branches}
-                defaultBranchId={r.deliveredBranchId ?? undefined}
-              />
             </div>
           );
         })}
@@ -110,7 +127,9 @@ export default async function RiderPage() {
             <div key={r.id} className="card space-y-3">
               <div className="flex items-center justify-between">
                 <span className="font-mono text-xs text-slate-400">{r.reference}</span>
-                <span className="badge border border-green-200 bg-green-50 text-green-700">{r.outForDeliveryAt ? "On the way" : "Delivery"}</span>
+                <span className="badge border border-green-200 bg-green-50 text-green-700">
+                  {!r.deliveryRiderAcceptedAt ? "Awaiting your response" : r.outForDeliveryAt ? "On the way" : "Delivery"}
+                </span>
               </div>
               <p className="text-base font-semibold text-slate-900">{r.customerName}</p>
               <p className="text-sm text-slate-600">
@@ -125,7 +144,11 @@ export default async function RiderPage() {
                   Call {r.phone}
                 </a>
               )}
-              <RiderStatusUpdateForm action={riderUpdateDeliveryStatus} requestId={r.id} options={DELIVERY_STATUS_OPTIONS} defaultValue={defaultStatus} />
+              {!r.deliveryRiderAcceptedAt ? (
+                <RiderAcceptDeclineForm requestId={r.id} onAccept={riderAcceptDelivery} onDecline={riderDeclineDelivery} />
+              ) : (
+                <RiderStatusUpdateForm action={riderUpdateDeliveryStatus} requestId={r.id} options={DELIVERY_STATUS_OPTIONS} defaultValue={defaultStatus} />
+              )}
             </div>
           );
         })}

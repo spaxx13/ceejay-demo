@@ -390,7 +390,36 @@ export type HomeServiceRequest = {
   riderLocationUpdatedAt: string | null;
   pickupPhotoDataUrl: string | null; // required proof-of-pickup photo, captured when the rider marks "Picked Up"
   deliveredBranchId: string | null; // which branch the rider actually dropped the device off at ("Delivered to Branch")
+  // Rider must Accept a job before starting the trip for it (see
+  // riderAcceptPickup/riderAcceptDelivery in lib/actions.ts) — Declining
+  // clears the rider assignment back to the unassigned pool instead of
+  // setting a "declined" flag here.
+  pickupRiderAcceptedAt: string | null;
+  deliveryRiderAcceptedAt: string | null;
+  // Structured device-condition checklist + labeled photos, captured by the
+  // rider at the "Picked Up" step (components/DeviceConditionForm.tsx) —
+  // supersedes the single pickupPhotoDataUrl above for pickup_delivery jobs.
+  pickupConditionChecklist: DeviceConditionChecklist | null;
+  pickupPhotos: PickupPhoto[] | null;
 };
+
+export const DEVICE_CONDITION_ITEMS = [
+  "front",
+  "back",
+  "leftSide",
+  "rightSide",
+  "top",
+  "bottom",
+  "lcd",
+  "touch",
+  "camera",
+  "housing",
+  "buttons",
+  "chargingPort",
+] as const;
+export type DeviceConditionItem = (typeof DEVICE_CONDITION_ITEMS)[number];
+export type DeviceConditionChecklist = Partial<Record<DeviceConditionItem, "ok" | "damaged">> & { existingDamageNotes?: string };
+export type PickupPhoto = { label: string; dataUrl: string };
 
 export type SaleLineItem = {
   id: string;

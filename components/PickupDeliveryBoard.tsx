@@ -15,8 +15,10 @@ type Job = {
   technicianName: string | null;
   pickupRiderId: string | null;
   pickupRiderName: string | null;
+  pickupRiderAcceptedAt: string | null;
   deliveryRiderId: string | null;
   deliveryRiderName: string | null;
+  deliveryRiderAcceptedAt: string | null;
   pickupStartedAt: string | null;
   pickedUpAt: string | null;
   headingToShopAt: string | null;
@@ -108,13 +110,18 @@ export default function PickupDeliveryBoard({ jobs, riders }: { jobs: Job[]; rid
                   </p>
 
                   {(job.stage === "requested" || job.stage === "pickup_assigned") && (
-                    <RiderAssignForm
-                      action={assignPickupRider}
-                      requestId={job.id}
-                      riders={riders}
-                      currentRiderName={job.pickupRiderName}
-                      label="Pickup rider"
-                    />
+                    <>
+                      {job.pickupRiderId && !job.pickupRiderAcceptedAt && (
+                        <p className="text-xs text-amber-600">Awaiting {job.pickupRiderName}&apos;s Accept…</p>
+                      )}
+                      <RiderAssignForm
+                        action={assignPickupRider}
+                        requestId={job.id}
+                        riders={riders}
+                        currentRiderName={job.pickupRiderName}
+                        label="Pickup rider"
+                      />
+                    </>
                   )}
 
                   {job.stage === "pickup_started" && (
@@ -167,6 +174,9 @@ export default function PickupDeliveryBoard({ jobs, riders }: { jobs: Job[]; rid
                       <p className="text-xs text-slate-500">
                         Repaired by <span className="font-medium text-slate-700">{job.technicianName ?? "—"}</span>
                       </p>
+                      {job.deliveryRiderId && !job.deliveryRiderAcceptedAt && (
+                        <p className="text-xs text-amber-600">Awaiting {job.deliveryRiderName}&apos;s Accept…</p>
+                      )}
                       <RiderAssignForm
                         action={assignDeliveryRider}
                         requestId={job.id}

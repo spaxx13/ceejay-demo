@@ -3,9 +3,17 @@
 import { useActionState, useState } from "react";
 import SignaturePad from "./SignaturePad";
 import PhotoUpload from "./PhotoUpload";
+import DeviceConditionFields from "./DeviceConditionFields";
 import type { RiderStatusResult } from "@/lib/actions";
 
-type Option = { value: string; label: string; needsSignature?: boolean; needsPhoto?: boolean; needsBranch?: boolean };
+type Option = {
+  value: string;
+  label: string;
+  needsSignature?: boolean;
+  needsPhoto?: boolean;
+  needsConditionCheck?: boolean;
+  needsBranch?: boolean;
+};
 type Branch = { id: string; name: string };
 
 // A single "update status" dropdown per job leg, instead of one button per
@@ -44,6 +52,7 @@ export default function RiderStatusUpdateForm({
           ))}
         </select>
       </div>
+      {selected?.needsConditionCheck && <DeviceConditionFields />}
       {selected?.needsPhoto && <PhotoUpload name="photoDataUrl" label="Photo of the Unit" required />}
       {selected?.needsBranch && (
         <div className="space-y-1.5">

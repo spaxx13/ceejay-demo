@@ -60,15 +60,18 @@ import { getRepairQuote } from "./servicePricing";
 import { formatDate, isCheckInOpen } from "./format";
 import { createCheckoutSession as createPaymongoCheckoutSession, paymongoConfigured } from "./paymongo";
 import { checkIcloudStatus } from "./sickw";
-import type {
-  Role,
-  LookupKind,
-  CustomFieldType,
-  ChecklistItem,
-  ChecklistResult,
-  ChecklistPhase,
-  Expense,
-  HomeServiceRequest,
+import {
+  DEVICE_CONDITION_ITEMS,
+  type Role,
+  type LookupKind,
+  type CustomFieldType,
+  type ChecklistItem,
+  type ChecklistResult,
+  type ChecklistPhase,
+  type Expense,
+  type HomeServiceRequest,
+  type DeviceConditionChecklist,
+  type PickupPhoto,
 } from "./types";
 
 function str(fd: FormData, key: string) {
@@ -530,9 +533,9 @@ export async function assignPickupRider(formData: FormData) {
   const req = await getRequestById(requestId);
   if (!req || req.fulfillmentMode !== "pickup_delivery" || !riderId) return;
 
-  await query("update home_service_requests set pickup_rider_id=$1 where id=$2", [riderId, requestId]);
+  await query("update home_service_requests set pickup_rider_id=$1, pickup_rider_accepted_at=null where id=$2", [riderId, requestId]);
   const riderRow = await queryOne<{ name: string }>("select name from riders where id=$1", [riderId]);
-  await logActivity("home_service_request", requestId, `Pickup rider assigned: ${riderRow?.name ?? riderId} (by ${user?.name ?? ""})`, user?.name ?? "Admin");
+  await logActivity("home_service_request", requestId, `Pickup rider assigned: ${riderRow?.name ?? riderId} (by ${user?.name ?? ""}) — awaiting rider's Accept`, user?.name ?? "Admin");
   await notifyRider(riderId, `New pickup: ${req.reference} — ${req.customerName}, ${req.street}, ${req.city}`, `/rider`);
   revalidatePath("/admin/pickup-delivery");
   revalidatePath(`/admin/requests/${requestId}`);
@@ -551,9 +554,9 @@ export async function assignDeliveryRider(formData: FormData) {
   const req = await getRequestById(requestId);
   if (!req || req.fulfillmentMode !== "pickup_delivery" || !riderId) return;
 
-  await query("update home_service_requests set delivery_rider_id=$1 where id=$2", [riderId, requestId]);
+  await query("update home_service_requests set delivery_rider_id=$1, delivery_rider_accepted_at=null where id=$2", [riderId, requestId]);
   const riderRow = await queryOne<{ name: string }>("select name from riders where id=$1", [riderId]);
-  await logActivity("home_service_request", requestId, `Delivery rider assigned: ${riderRow?.name ?? riderId} (by ${user?.name ?? ""})`, user?.name ?? "Admin");
+  await logActivity("home_service_request", requestId, `Delivery rider assigned: ${riderRow?.name ?? riderId} (by ${user?.name ?? ""}) — awaiting rider's Accept`, user?.name ?? "Admin");
   await notifyRider(riderId, `New delivery: ${req.reference} — ${req.customerName}, ${req.street}, ${req.city}`, `/rider`);
   revalidatePath("/admin/pickup-delivery");
   revalidatePath(`/admin/requests/${requestId}`);
@@ -571,6 +574,70 @@ export async function assignDeliveryRider(formData: FormData) {
 export type PickupRiderStatus = "on_the_way" | "picked_up" | "heading_to_shop" | "delivered_to_branch";
 export type RiderStatusResult = { ok: true } | { ok: false; error: string };
 
+// A rider must Accept a job (assigned by admin) before they can start the
+// trip for it — Decline clears the assignment back to the unassigned pool
+// rather than leaving a "declined" flag on a job nobody's working, so it
+// shows back up for admin to hand to someone else. Blocked once the leg has
+// actually started (pickupStartedAt/outForDeliveryAt set) — accidentally
+// declining a trip already in progress would strand the customer.
+export async function riderAcceptPickup(formData: FormData) {
+  const user = await getCurrentUser();
+  if (!user || user.role !== "rider" || !user.riderId) return;
+  const requestId = str(formData, "requestId");
+  const req = await getRequestById(requestId);
+  if (!req || req.pickupRiderId !== user.riderId || req.pickupRiderAcceptedAt) return;
+
+  await query("update home_service_requests set pickup_rider_accepted_at=now() where id=$1", [requestId]);
+  await logActivity("home_service_request", requestId, `Rider ${user.name} accepted the pickup job`, user.name);
+  revalidatePath("/rider");
+  revalidatePath("/admin/pickup-delivery");
+  revalidatePath(`/admin/requests/${requestId}`);
+}
+
+export async function riderDeclinePickup(formData: FormData) {
+  const user = await getCurrentUser();
+  if (!user || user.role !== "rider" || !user.riderId) return;
+  const requestId = str(formData, "requestId");
+  const req = await getRequestById(requestId);
+  if (!req || req.pickupRiderId !== user.riderId || req.pickupStartedAt) return;
+
+  await query("update home_service_requests set pickup_rider_id=null, pickup_rider_accepted_at=null where id=$1", [requestId]);
+  await logActivity("home_service_request", requestId, `Rider ${user.name} declined the pickup job — back to the unassigned pool`, user.name);
+  await notifyAdmins("request_in_progress", requestId, `${user.name} declined the pickup for ${req.reference} (${req.customerName}) — needs reassignment.`);
+  revalidatePath("/rider");
+  revalidatePath("/admin/pickup-delivery");
+  revalidatePath(`/admin/requests/${requestId}`);
+}
+
+export async function riderAcceptDelivery(formData: FormData) {
+  const user = await getCurrentUser();
+  if (!user || user.role !== "rider" || !user.riderId) return;
+  const requestId = str(formData, "requestId");
+  const req = await getRequestById(requestId);
+  if (!req || req.deliveryRiderId !== user.riderId || req.deliveryRiderAcceptedAt) return;
+
+  await query("update home_service_requests set delivery_rider_accepted_at=now() where id=$1", [requestId]);
+  await logActivity("home_service_request", requestId, `Rider ${user.name} accepted the delivery job`, user.name);
+  revalidatePath("/rider");
+  revalidatePath("/admin/pickup-delivery");
+  revalidatePath(`/admin/requests/${requestId}`);
+}
+
+export async function riderDeclineDelivery(formData: FormData) {
+  const user = await getCurrentUser();
+  if (!user || user.role !== "rider" || !user.riderId) return;
+  const requestId = str(formData, "requestId");
+  const req = await getRequestById(requestId);
+  if (!req || req.deliveryRiderId !== user.riderId || req.outForDeliveryAt) return;
+
+  await query("update home_service_requests set delivery_rider_id=null, delivery_rider_accepted_at=null where id=$1", [requestId]);
+  await logActivity("home_service_request", requestId, `Rider ${user.name} declined the delivery job — back to the unassigned pool`, user.name);
+  await notifyAdmins("request_in_progress", requestId, `${user.name} declined the delivery for ${req.reference} (${req.customerName}) — needs reassignment.`);
+  revalidatePath("/rider");
+  revalidatePath("/admin/pickup-delivery");
+  revalidatePath(`/admin/requests/${requestId}`);
+}
+
 export async function riderUpdatePickupStatus(_prev: RiderStatusResult | undefined, formData: FormData): Promise<RiderStatusResult> {
   const user = await getCurrentUser();
   if (!user || user.role !== "rider" || !user.riderId) return { ok: false, error: "Not signed in as a rider." };
@@ -583,6 +650,7 @@ export async function riderUpdatePickupStatus(_prev: RiderStatusResult | undefin
   switch (status) {
     case "on_the_way": {
       if (req.pickupStartedAt) break;
+      if (!req.pickupRiderAcceptedAt) return { ok: false, error: "Please accept this job before starting the trip." };
       await query("update home_service_requests set pickup_started_at=now() where id=$1", [requestId]);
       await logActivity("home_service_request", requestId, `Rider ${user.name} is on the way to pick up the device`, user.name);
       if (req.email && emailConfigured()) {
@@ -596,14 +664,49 @@ export async function riderUpdatePickupStatus(_prev: RiderStatusResult | undefin
     }
     case "picked_up": {
       if (req.pickedUpAt) break;
-      const photoDataUrl = str(formData, "photoDataUrl");
-      if (!photoDataUrl) return { ok: false, error: "Please take a photo of the unit before marking it picked up." };
-      await query("update home_service_requests set picked_up_at=now(), pickup_signature_data_url=$1, pickup_photo_data_url=$2 where id=$3", [
-        str(formData, "signatureDataUrl") || null,
-        photoDataUrl,
+
+      // Full device-condition checklist — every item required, so a rider
+      // can't rush past a step they forgot to check.
+      const checklist: DeviceConditionChecklist = {};
+      for (const item of DEVICE_CONDITION_ITEMS) {
+        const v = str(formData, `condition_${item}`);
+        if (v === "ok" || v === "damaged") checklist[item] = v;
+      }
+      const missingItem = DEVICE_CONDITION_ITEMS.find((item) => !checklist[item]);
+      if (missingItem) return { ok: false, error: "Please complete the full device condition checklist before marking it picked up." };
+      const existingDamageNotes = str(formData, "existingDamageNotes");
+      if (existingDamageNotes) checklist.existingDamageNotes = existingDamageNotes;
+
+      // Labeled photos — front/back/sides/top-bottom required, a damage
+      // close-up only if there's actually damage to show.
+      const photoSlots: { key: string; label: string; required: boolean }[] = [
+        { key: "front", label: "the front", required: true },
+        { key: "back", label: "the back", required: true },
+        { key: "left", label: "the left side", required: true },
+        { key: "right", label: "the right side", required: true },
+        { key: "topBottom", label: "the top and bottom", required: true },
+        { key: "damage", label: "the damaged area(s)", required: false },
+      ];
+      const photos: PickupPhoto[] = [];
+      for (const slot of photoSlots) {
+        const dataUrl = str(formData, `photo_${slot.key}`);
+        if (!dataUrl) {
+          if (slot.required) return { ok: false, error: `Please take a photo of ${slot.label}.` };
+          continue;
+        }
+        photos.push({ label: slot.label, dataUrl });
+      }
+
+      await query(
+        "update home_service_requests set picked_up_at=now(), pickup_signature_data_url=$1, pickup_photo_data_url=$2, pickup_condition_checklist=$3, pickup_photos=$4 where id=$5",
+        [str(formData, "signatureDataUrl") || null, photos[0]?.dataUrl ?? null, JSON.stringify(checklist), JSON.stringify(photos), requestId]
+      );
+      await logActivity(
+        "home_service_request",
         requestId,
-      ]);
-      await logActivity("home_service_request", requestId, `Picked up by rider ${user.name}`, user.name);
+        `Picked up by rider ${user.name} — condition checklist and ${photos.length} photo(s) recorded`,
+        user.name
+      );
       break;
     }
     case "heading_to_shop": {
@@ -692,6 +795,7 @@ export async function riderUpdateDeliveryStatus(_prev: RiderStatusResult | undef
   switch (status) {
     case "on_the_way":
       if (req.outForDeliveryAt) break;
+      if (!req.deliveryRiderAcceptedAt) return { ok: false, error: "Please accept this job before starting the trip." };
       await query("update home_service_requests set out_for_delivery_at=now() where id=$1", [requestId]);
       await logActivity("home_service_request", requestId, `Rider ${user.name} is on the way to deliver the device`, user.name);
       break;
@@ -1676,11 +1780,25 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
     let created: { id: string } | null = null;
     let reference = "";
     for (let attempt = 1; attempt <= 5; attempt++) {
-      const max = await queryOne<{ n: number }>(
-        "select coalesce(max(split_part(reference, '-', 3)::int), 0)::int as n from home_service_requests where reference like $1",
-        [`HSR-${year}-%`]
-      );
-      reference = `HSR-${year}-${String((max?.n ?? 0) + 1).padStart(4, "0")}`;
+      // Pickup & Delivery gets its own "Job ID" format (CJ-YYMMDD-NNNNN,
+      // e.g. CJ-260924-00125) per the FINAL FLOW spec — a global running
+      // sequence (not reset by day/year, the date is already in the prefix)
+      // scoped to its own "CJ-" namespace so it never collides with the
+      // on-site "HSR-{year}-" numbering.
+      if (fulfillmentMode === "pickup_delivery") {
+        const max = await queryOne<{ n: number }>(
+          "select coalesce(max(split_part(reference, '-', 3)::int), 0)::int as n from home_service_requests where reference like 'CJ-%'"
+        );
+        const now2 = new Date();
+        const yymmdd = `${String(now2.getFullYear()).slice(-2)}${String(now2.getMonth() + 1).padStart(2, "0")}${String(now2.getDate()).padStart(2, "0")}`;
+        reference = `CJ-${yymmdd}-${String((max?.n ?? 0) + 1).padStart(5, "0")}`;
+      } else {
+        const max = await queryOne<{ n: number }>(
+          "select coalesce(max(split_part(reference, '-', 3)::int), 0)::int as n from home_service_requests where reference like $1",
+          [`HSR-${year}-%`]
+        );
+        reference = `HSR-${year}-${String((max?.n ?? 0) + 1).padStart(4, "0")}`;
+      }
       try {
         created = await queryOne<{ id: string }>(
           `insert into home_service_requests (
