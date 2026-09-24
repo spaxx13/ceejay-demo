@@ -99,14 +99,18 @@ export default async function TrackPage({ searchParams }: { searchParams: Promis
   const deliveryRider = riders.find((r) => r.id === req.deliveryRiderId);
   const technician = technicians.find((t) => t.id === req.assignedTechnicianId);
   const deliveredBranch = branches.find((b) => b.id === req.deliveredBranchId);
-  const isLiveStage = stage === "pickup_started" || stage === "picked_up" || stage === "heading_to_shop";
+  const isLiveStage = stage === "pickup_started" || stage === "picked_up" || stage === "heading_to_shop" || stage === "out_for_delivery";
   const customerAddress = [req.street, req.barangay, req.city, req.province].filter(Boolean).join(", ");
-  const destinationAddress = stage === "pickup_started" ? customerAddress : stage === "heading_to_shop" ? deliveredBranch?.address : undefined;
+  const destinationAddress =
+    stage === "pickup_started" || stage === "out_for_delivery" ? customerAddress : stage === "heading_to_shop" ? deliveredBranch?.address : undefined;
   // Exact pin, when one's on file — the customer's own geocoded address
   // (captured at booking time via Places Autocomplete) or the branch's pin
   // set in Admin > Branches. Preferred over the address text on the map.
-  const destinationLat = stage === "pickup_started" ? req.lat : stage === "heading_to_shop" ? (deliveredBranch?.lat ?? null) : null;
-  const destinationLng = stage === "pickup_started" ? req.lng : stage === "heading_to_shop" ? (deliveredBranch?.lng ?? null) : null;
+  // "out_for_delivery" heads back to the same customer pin as "pickup_started".
+  const destinationLat =
+    stage === "pickup_started" || stage === "out_for_delivery" ? req.lat : stage === "heading_to_shop" ? (deliveredBranch?.lat ?? null) : null;
+  const destinationLng =
+    stage === "pickup_started" || stage === "out_for_delivery" ? req.lng : stage === "heading_to_shop" ? (deliveredBranch?.lng ?? null) : null;
   const activeRider =
     stage === "out_for_delivery" || stage === "delivery_assigned"
       ? deliveryRider

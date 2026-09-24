@@ -170,6 +170,7 @@ export default async function RiderPage() {
                 <RiderAcceptDeclineForm requestId={r.id} onAccept={riderAcceptDelivery} onDecline={riderDeclineDelivery} />
               ) : (
                 <>
+                  {r.outForDeliveryAt && <RiderLocationReporter requestId={r.id} />}
                   <RiderStatusUpdateForm action={riderUpdateDeliveryStatus} requestId={r.id} options={DELIVERY_STATUS_OPTIONS} defaultValue={defaultStatus} />
                   <ReportExceptionForm action={reportRequestException} requestId={r.id} role="rider" />
                 </>

@@ -4,8 +4,9 @@ import { getRequestById, updateRiderLiveLocation } from "@/lib/db";
 
 // Pinged every ~10-15s by components/RiderLocationReporter.tsx (the rider's
 // own browser, via the Geolocation API) while a job's pickup leg is "On The
-// Way" or "On The Way to Branch" — a plain fetch, not a server action, so a
-// dropped/slow ping never triggers a full page navigation or revalidation.
+// Way" or "On The Way to Branch", or its delivery leg is "On The Way" back
+// to the customer — a plain fetch, not a server action, so a dropped/slow
+// ping never triggers a full page navigation or revalidation.
 export async function POST(req: NextRequest) {
   const user = await getCurrentUser();
   if (!user || user.role !== "rider" || !user.riderId) {
@@ -26,7 +27,7 @@ export async function POST(req: NextRequest) {
   }
 
   const hsr = await getRequestById(requestId);
-  if (!hsr || hsr.pickupRiderId !== user.riderId) {
+  if (!hsr || (hsr.pickupRiderId !== user.riderId && hsr.deliveryRiderId !== user.riderId)) {
     return NextResponse.json({ error: "This job isn't assigned to you" }, { status: 403 });
   }
 

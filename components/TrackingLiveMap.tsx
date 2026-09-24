@@ -48,7 +48,8 @@ function loadGoogleMaps(onReady: () => void) {
 }
 
 // Shown on /track while the pickup leg is actually "On The Way", "Picked
-// Up", or "On The Way to Branch" — the page itself is a Server Component,
+// Up", or "On The Way to Branch", or the delivery leg is "On The Way" back
+// to the customer — the page itself is a Server Component,
 // so "live" here means re-fetching the whole page on an interval (cheap —
 // this is a single row lookup) rather than a client-side socket. Each
 // refresh re-renders this with fresh lat/lng from the DB, which is enough
