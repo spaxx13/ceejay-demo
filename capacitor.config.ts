@@ -9,7 +9,11 @@ const config: CapacitorConfig = {
   appName: "Ceejay",
   webDir: "capacitor-www",
   server: {
-    url: "https://ceejayrepair.vercel.app",
+    // The app's own dedicated entry screen (just Home Service + Pickup &
+    // Delivery — see app/app-home/page.tsx) rather than the full marketing
+    // homepage; every deeper page (booking forms, tracking, etc.) is the
+    // same live site, so nothing else about the site needed to change.
+    url: "https://ceejayrepair.vercel.app/app-home",
     cleartext: false,
   },
 };
