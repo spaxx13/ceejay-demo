@@ -15,7 +15,6 @@ import {
 import dynamic from "next/dynamic";
 import PhotoUpload from "./PhotoUpload";
 import DynamicFormField from "./DynamicFormField";
-import MapPinPicker from "./MapPinPicker";
 import type { RequestFormContent, CustomFormField, HomeServiceQueue } from "@/lib/types";
 
 // Shared styling for every customer-facing note/reminder on this form —
@@ -470,17 +469,6 @@ export default function HomeServiceForm({
                 ))}
               </select>
             </div>
-            {mode === "pickup_delivery" && (
-              <MapPinPicker
-                defaultLat={lat ?? undefined}
-                defaultLng={lng ?? undefined}
-                label="Pin your exact pickup location — this is what the rider follows"
-                onChange={(pickedLat, pickedLng) => {
-                  setLat(pickedLat);
-                  setLng(pickedLng);
-                }}
-              />
-            )}
           </div>
         );
       }
@@ -561,32 +549,33 @@ export default function HomeServiceForm({
             <input name="street" required={req} className="input" placeholder={field.placeholder} />
             {!GOOGLE_MAPS_KEY && (
               <FormNotice tone="blue" icon="📍">
-                Please also fill in your Landmark below — this helps our technician find you accurately.
+                Please also fill in your Landmark below — this helps our {mode === "pickup_delivery" ? "rider" : "technician"} find you
+                accurately.
               </FormNotice>
             )}
             <input type="hidden" name="lat" value={lat ?? ""} />
             <input type="hidden" name="lng" value={lng ?? ""} />
-            {/* Pickup & Delivery already pins the location with MapPinPicker
-                further down (after Barangay) — skip this second, separate
-                map here so the customer isn't asked to pin twice. */}
-            {mode !== "pickup_delivery" && (
-              <div className="space-y-1.5 pt-2">
-                <p className="text-xs font-medium text-slate-500">Pin your exact location on the map</p>
-                <p className="text-xs text-slate-400">Search your area, then drag the pin to your gate/door so our technician finds you easily.</p>
-                <LocationPinMap
-                  value={lat !== null && lng !== null ? { lat, lng } : null}
-                  onChange={(pos) => {
-                    setLat(pos.lat);
-                    setLng(pos.lng);
-                  }}
-                />
-                {lat !== null && lng !== null && (
-                  <p className="text-xs font-medium text-green-700">
-                    ✓ Location pinned ({lat.toFixed(5)}, {lng.toFixed(5)})
-                  </p>
-                )}
-              </div>
-            )}
+            <div className="space-y-1.5 pt-2">
+              <p className="text-xs font-medium text-slate-500">
+                {mode === "pickup_delivery" ? "Pin your exact pickup location — this is what the rider follows" : "Pin your exact location on the map"}
+              </p>
+              <p className="text-xs text-slate-400">
+                Search your area, then drag the pin to your gate/door so our {mode === "pickup_delivery" ? "rider" : "technician"} finds
+                you easily.
+              </p>
+              <LocationPinMap
+                value={lat !== null && lng !== null ? { lat, lng } : null}
+                onChange={(pos) => {
+                  setLat(pos.lat);
+                  setLng(pos.lng);
+                }}
+              />
+              {lat !== null && lng !== null && (
+                <p className="text-xs font-medium text-green-700">
+                  ✓ Location pinned ({lat.toFixed(5)}, {lng.toFixed(5)})
+                </p>
+              )}
+            </div>
           </div>
         );
       case "city":
