@@ -184,10 +184,30 @@ export default function HomeServiceForm({
   // the success screen — independent of the phone-based OTP gate above.
   const [sentEmail, setSentEmail] = useState("");
 
+  // Same admin toggle as the Street field's own "required" setting (they're
+  // rendered together, the pin being the more exact of the two) — checked
+  // at every submit path below since the lat/lng hidden inputs can't carry
+  // native HTML5 "required" validation (hidden inputs are excluded from
+  // constraint validation entirely).
+  const streetField = fields.find((f) => f.systemKey === "street");
+  const pinRequired = streetField?.active === true && streetField.required;
+  const [pinError, setPinError] = useState("");
+  const pinSectionRef = useRef<HTMLDivElement>(null);
+  function validatePin(required: boolean): boolean {
+    if (required && (lat === null || lng === null)) {
+      setPinError("Please pin your exact location on the map.");
+      pinSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      return false;
+    }
+    setPinError("");
+    return true;
+  }
+
   async function handleProceedToOtp() {
     const form = formRef.current;
     if (!form) return;
     if (!form.reportValidity()) return; // surfaces the browser's native "please fill this in" on any missing required field
+    if (!validatePin(pinRequired)) return;
     const phone = String(new FormData(form).get("phone") ?? "").trim();
     setOtpError("");
     setSendingOtp(true);
@@ -242,6 +262,10 @@ export default function HomeServiceForm({
       // Surface that explicitly instead of failing silently.
       if (!form.reportValidity()) {
         setOtpError("Some details above are missing or invalid — please scroll up, fix the highlighted field, and try again.");
+        return;
+      }
+      if (!validatePin(pinRequired)) {
+        setOtpError("Please pin your exact location on the map, then try again.");
         return;
       }
       form.requestSubmit();
@@ -619,9 +643,10 @@ export default function HomeServiceForm({
             )}
             <input type="hidden" name="lat" value={lat ?? ""} />
             <input type="hidden" name="lng" value={lng ?? ""} />
-            <div className="space-y-1.5 pt-2">
+            <div ref={pinSectionRef} className="space-y-1.5 pt-2">
               <p className="text-xs font-medium text-slate-500">
-                {mode === "pickup_delivery" ? "Pin your exact pickup location — this is what the rider follows" : "Pin your exact location on the map"}
+                {mode === "pickup_delivery" ? "Pin your exact pickup location — this is what the rider follows" : "Pin your exact location on the map"}{" "}
+                {pinRequired && <span className="text-red-600">*</span>}
               </p>
               <p className="text-xs text-slate-400">
                 Search your area, then drag the pin to your gate/door so our {mode === "pickup_delivery" ? "rider" : "technician"} finds
@@ -632,6 +657,7 @@ export default function HomeServiceForm({
                 onChange={(pos) => {
                   setLat(pos.lat);
                   setLng(pos.lng);
+                  setPinError("");
                 }}
               />
               {lat !== null && lng !== null && (
@@ -639,6 +665,7 @@ export default function HomeServiceForm({
                   ✓ Location pinned ({lat.toFixed(5)}, {lng.toFixed(5)})
                 </p>
               )}
+              {pinError && <p className="text-xs font-medium text-red-600">{pinError}</p>}
             </div>
           </div>
         );
@@ -817,7 +844,13 @@ export default function HomeServiceForm({
     <form
       ref={formRef}
       action={formAction}
-      onSubmit={(e) => setSentEmail(String(new FormData(e.currentTarget).get("email") ?? "").trim())}
+      onSubmit={(e) => {
+        if (!validatePin(pinRequired)) {
+          e.preventDefault();
+          return;
+        }
+        setSentEmail(String(new FormData(e.currentTarget).get("email") ?? "").trim());
+      }}
       className="card space-y-5"
     >
       <input type="hidden" name="serviceArea" value={area} />

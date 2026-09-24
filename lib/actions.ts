@@ -1761,6 +1761,8 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
   const preferredDatetime = str(formData, "preferredDatetime");
   const email = str(formData, "email");
   const landmark = str(formData, "landmark");
+  const lat = str(formData, "lat") ? Number(str(formData, "lat")) : null;
+  const lng = str(formData, "lng") ? Number(str(formData, "lng")) : null;
   const vlogConsent = formData.has("vlogConsent");
   const vlogBlurPreference = vlogConsent ? str(formData, "vlogBlurPreference") : "";
   if (vlogConsent && vlogBlurPreference !== "blurred" && vlogBlurPreference !== "not_blurred") {
@@ -1793,6 +1795,12 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
     if (!otpRow?.verified) return { ok: false, error: "Please verify your phone number before submitting." };
   }
   if (isRequired("street") && !street) return { ok: false, error: `${label("street")} is required.` };
+  // Same admin toggle (Admin > Request Form Content > Street) governs
+  // whether the map pin is required — it's rendered directly under Street
+  // on the form as an alternative/companion way to give an exact location.
+  if (isRequired("street") && (lat === null || lng === null)) {
+    return { ok: false, error: "Please pin your exact location on the map." };
+  }
   if (isRequired("city") && !city) return { ok: false, error: `${label("city")} is required.` };
   if (isRequired("province") && !province) return { ok: false, error: `${label("province")} is required.` };
   // Barangay isn't an admin-configurable field like the others — it only
@@ -1979,8 +1987,6 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
   }
 
   const now = new Date().toISOString();
-  const lat = str(formData, "lat") ? Number(str(formData, "lat")) : null;
-  const lng = str(formData, "lng") ? Number(str(formData, "lng")) : null;
   const year = new Date().getFullYear();
 
   // The reference number is the highest already-used number for this year,
