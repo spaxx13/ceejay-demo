@@ -27,3 +27,12 @@ export const ICLOUD_CHECK_PRICE_PESOS = 10;
 // public entry point — Admin > Riders, Admin > Pickup & Delivery, and the
 // Rider app all work regardless, for any request already in that mode.
 export const PICKUP_DELIVERY_PUBLIC_ENABLED = process.env.NEXT_PUBLIC_PICKUP_DELIVERY_ENABLED === "true";
+
+// TEMPORARY testing toggle — set PICKUP_DELIVERY_SKIP_PAYMENT=true (Preview
+// only) to skip the PayMongo Booking & Diagnostic Fee gate for Pickup &
+// Delivery bookings entirely, so a test booking goes straight to "Pending"
+// (ready for admin to assign a rider) without a real PayMongo transaction.
+// Turn back off (or unset) once done testing the rest of the flow — the
+// live keys are shared with the rest of the app, so this is the only way
+// to test repeatedly without moving real money each time.
+export const PICKUP_DELIVERY_SKIP_PAYMENT = process.env.PICKUP_DELIVERY_SKIP_PAYMENT === "true";

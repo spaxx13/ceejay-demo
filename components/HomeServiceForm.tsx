@@ -530,6 +530,12 @@ export default function HomeServiceForm({
               {field.label} {asterisk}
             </label>
             <input type="date" name="preferredDatetime" required={req} min={minPreferredDateStr()} className="input" />
+            {mode === "pickup_delivery" && (
+              <p className="text-xs text-slate-400">
+                Pickup happens sometime within the day you choose — we don&apos;t give a specific time estimate. Our rider will message
+                you once they&apos;re on the way.
+              </p>
+            )}
           </div>
         );
       // device_brand, device_model, service_type, issue, and photo are

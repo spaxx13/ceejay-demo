@@ -4,7 +4,15 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import bcrypt from "bcryptjs";
-import { OTP_GATE_ENABLED, MAX_PRICE_EDITS, SITE_URL, BOOKING_CONFIRMATION_WINDOW_HOURS, ICLOUD_CHECK_PRICE_PESOS, PICKUP_DELIVERY_PUBLIC_ENABLED } from "@/lib/config";
+import {
+  OTP_GATE_ENABLED,
+  MAX_PRICE_EDITS,
+  SITE_URL,
+  BOOKING_CONFIRMATION_WINDOW_HOURS,
+  ICLOUD_CHECK_PRICE_PESOS,
+  PICKUP_DELIVERY_PUBLIC_ENABLED,
+  PICKUP_DELIVERY_SKIP_PAYMENT,
+} from "@/lib/config";
 import { CHECKLIST_TEMPLATE } from "./checklist";
 import {
   query,
@@ -1766,8 +1774,13 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
   // Pickup & Delivery always requires its flat Booking + Diagnostic Fee
   // (PICKUP_DELIVERY_FEE_PESOS) — same QR Ph down-payment gate as
   // DOWNPAYMENT_PROVINCES, just always on instead of province-gated.
-  const requiresDownpayment = DOWNPAYMENT_PROVINCES.has(province) || fulfillmentMode === "pickup_delivery";
-  const initialStatus = (email || requiresDownpayment) && pendingConfirmationStatus ? pendingConfirmationStatus : pendingStatus;
+  // TEMPORARY: PICKUP_DELIVERY_SKIP_PAYMENT bypasses this (and the email-
+  // confirmation gate below) entirely, straight to "Pending" — see
+  // lib/config.ts for why.
+  const pickupDeliverySkipPayment = fulfillmentMode === "pickup_delivery" && PICKUP_DELIVERY_SKIP_PAYMENT;
+  const requiresDownpayment = !pickupDeliverySkipPayment && (DOWNPAYMENT_PROVINCES.has(province) || fulfillmentMode === "pickup_delivery");
+  const initialStatus =
+    !pickupDeliverySkipPayment && (email || requiresDownpayment) && pendingConfirmationStatus ? pendingConfirmationStatus : pendingStatus;
   const needsConfirmation = initialStatus.id === pendingConfirmationStatus?.id;
   // Only actually enforceable when needsConfirmation held true above (i.e.
   // a "Pending Confirmation" status exists) — otherwise there's no gate to
