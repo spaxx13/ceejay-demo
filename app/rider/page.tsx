@@ -1,5 +1,5 @@
 import { getCurrentUser } from "@/lib/auth";
-import { getRequests, getBranches } from "@/lib/db";
+import { getRequests, getBranches, getRiderById } from "@/lib/db";
 import {
   riderUpdatePickupStatus,
   riderUpdateDeliveryStatus,
@@ -14,6 +14,7 @@ import RiderStatusUpdateForm from "@/components/RiderStatusUpdateForm";
 import RiderLocationReporter from "@/components/RiderLocationReporter";
 import RiderBranchRedirectForm from "@/components/RiderBranchRedirectForm";
 import RiderAcceptDeclineForm from "@/components/RiderAcceptDeclineForm";
+import RiderOnDutyToggle from "@/components/RiderOnDutyToggle";
 import JobQrCode from "@/components/JobQrCode";
 import ReportExceptionForm from "@/components/ReportExceptionForm";
 
@@ -33,7 +34,11 @@ export default async function RiderPage() {
   const user = await getCurrentUser();
   const riderId = user?.riderId ?? null;
 
-  const [allRequests, allBranches] = await Promise.all([riderId ? getRequests() : Promise.resolve([]), getBranches()]);
+  const [allRequests, allBranches, rider] = await Promise.all([
+    riderId ? getRequests() : Promise.resolve([]),
+    getBranches(),
+    riderId ? getRiderById(riderId) : Promise.resolve(null),
+  ]);
   const branches = allBranches.filter((b) => b.active).map((b) => ({ id: b.id, name: b.name }));
   // The pickup leg isn't done until the device is actually at the shop, not
   // just once it leaves the customer's hands.
@@ -52,6 +57,8 @@ export default async function RiderPage() {
           {myPickups.length} pickup{myPickups.length === 1 ? "" : "s"}, {myDeliveries.length} deliver{myDeliveries.length === 1 ? "y" : "ies"} waiting on you.
         </p>
       </div>
+
+      {rider && <RiderOnDutyToggle initialOnDuty={rider.onDuty} />}
 
       <section className="space-y-3">
         <h2 className="text-sm font-semibold text-slate-700">Pickups ({myPickups.length})</h2>

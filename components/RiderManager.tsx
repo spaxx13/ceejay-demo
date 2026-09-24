@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { createRider, updateRider, toggleRiderActive, deleteRider } from "@/lib/actions";
+import { createRider, updateRider, toggleRiderActive, adminSetRiderOnDuty, deleteRider } from "@/lib/actions";
 
 type Opt = { id: string; name: string };
 type RiderRow = {
@@ -12,6 +12,7 @@ type RiderRow = {
   branchId: string | null;
   vehicle: string;
   active: boolean;
+  onDuty: boolean;
 };
 
 const VEHICLES = [
@@ -19,6 +20,22 @@ const VEHICLES = [
   { value: "car", label: "Car" },
   { value: "bicycle", label: "Bicycle" },
 ];
+
+
+function OnDutyBadge({ riderId, onDuty }: { riderId: string; onDuty: boolean }) {
+  return (
+    <form action={adminSetRiderOnDuty}>
+      <input type="hidden" name="id" value={riderId} />
+      <button
+        type="submit"
+        className={`badge border ${onDuty ? "border-green-200 bg-green-50 text-green-700" : "border-slate-300 bg-slate-100 text-slate-500"}`}
+        title="Admin override — the rider normally toggles this themselves from My Jobs."
+      >
+        {onDuty ? "🟢 On Duty" : "⚪ Off Duty"}
+      </button>
+    </form>
+  );
+}
 
 export default function RiderManager({ riders, branches }: { riders: RiderRow[]; branches: Opt[] }) {
   const formRef = useRef<HTMLFormElement>(null);
@@ -108,15 +125,18 @@ export default function RiderManager({ riders, branches }: { riders: RiderRow[];
           <div key={r.id} className="card space-y-2">
             <div className="flex items-start justify-between gap-2">
               <p className="text-sm font-medium text-slate-800">{r.name}</p>
-              <form action={toggleRiderActive}>
-                <input type="hidden" name="id" value={r.id} />
-                <button
-                  type="submit"
-                  className={`badge border ${r.active ? "border-green-200 bg-green-50 text-green-700" : "border-slate-300 bg-slate-100 text-slate-500"}`}
-                >
-                  {r.active ? "Active" : "Inactive"}
-                </button>
-              </form>
+              <div className="flex flex-wrap justify-end gap-1.5">
+                <OnDutyBadge riderId={r.id} onDuty={r.onDuty} />
+                <form action={toggleRiderActive}>
+                  <input type="hidden" name="id" value={r.id} />
+                  <button
+                    type="submit"
+                    className={`badge border ${r.active ? "border-green-200 bg-green-50 text-green-700" : "border-slate-300 bg-slate-100 text-slate-500"}`}
+                  >
+                    {r.active ? "Active" : "Inactive"}
+                  </button>
+                </form>
+              </div>
             </div>
             <div className="grid grid-cols-2 gap-y-1 text-xs">
               <span className="text-slate-400">Contact</span>
@@ -155,6 +175,7 @@ export default function RiderManager({ riders, branches }: { riders: RiderRow[];
               <th className="pb-2 pr-3">Contact</th>
               <th className="pb-2 pr-3">Home Branch</th>
               <th className="pb-2 pr-3">Vehicle</th>
+              <th className="pb-2 pr-3">On Duty</th>
               <th className="pb-2 pr-3">Status</th>
               <th className="pb-2">Actions</th>
             </tr>
@@ -166,6 +187,9 @@ export default function RiderManager({ riders, branches }: { riders: RiderRow[];
                 <td className="py-3 pr-3 text-slate-500">{r.contactNumber}</td>
                 <td className="py-3 pr-3 text-slate-500">{branchName(r.branchId)}</td>
                 <td className="py-3 pr-3 text-slate-500">{vehicleLabel(r.vehicle)}</td>
+                <td className="py-3 pr-3">
+                  <OnDutyBadge riderId={r.id} onDuty={r.onDuty} />
+                </td>
                 <td className="py-3 pr-3">
                   <form action={toggleRiderActive}>
                     <input type="hidden" name="id" value={r.id} />
@@ -198,7 +222,7 @@ export default function RiderManager({ riders, branches }: { riders: RiderRow[];
             ))}
             {riders.length === 0 && (
               <tr>
-                <td colSpan={6} className="py-6 text-center text-sm text-slate-400">
+                <td colSpan={7} className="py-6 text-center text-sm text-slate-400">
                   No riders yet — add one above.
                 </td>
               </tr>

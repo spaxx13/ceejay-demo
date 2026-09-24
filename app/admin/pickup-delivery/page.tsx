@@ -77,7 +77,7 @@ export default async function PickupDeliveryPage() {
     })
     .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
 
-  const activeRiders = riders.filter((r) => r.active).map((r) => ({ id: r.id, name: r.name }));
+  const activeRiders = riders.filter((r) => r.active).map((r) => ({ id: r.id, name: r.name, onDuty: r.onDuty }));
 
   // Every open (unresolved) exception across every Pickup & Delivery
   // request this admin can see — including a request that's since been

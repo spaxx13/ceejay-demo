@@ -186,7 +186,8 @@ export type Rider = {
   email: string;
   branchId: string | null;
   vehicle: VehicleType;
-  active: boolean;
+  active: boolean; // account enabled/disabled, admin-controlled
+  onDuty: boolean; // "available for a job right now" — rider self-toggles this from /rider
 };
 
 export type CustomerSource = string; // admin-addable lookup value ("Walk-in", "Home Service", "Referral", ...)
