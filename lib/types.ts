@@ -425,6 +425,48 @@ export type DeviceConditionItem = (typeof DEVICE_CONDITION_ITEMS)[number];
 export type DeviceConditionChecklist = Partial<Record<DeviceConditionItem, "ok" | "damaged">> & { existingDamageNotes?: string };
 export type PickupPhoto = { label: string; dataUrl: string };
 
+// Pickup & Delivery "Phase 5" — Exception Handling (FINAL FLOW spec item
+// 31). One generic kind of record covers every exception the spec lists —
+// see REQUEST_EXCEPTION_LABELS for what each means and who can report it
+// (components/ReportExceptionForm.tsx).
+export const REQUEST_EXCEPTION_KINDS = [
+  "reschedule",
+  "contact_attempted",
+  "cancel",
+  "flag_damage",
+  "return_device",
+  "payment_hold",
+  "stop_review",
+  "incident",
+  "stop_delivery",
+] as const;
+export type RequestExceptionKind = (typeof REQUEST_EXCEPTION_KINDS)[number];
+
+export const REQUEST_EXCEPTION_LABELS: Record<RequestExceptionKind, string> = {
+  reschedule: "Customer Unavailable — Rescheduled",
+  contact_attempted: "Rider Couldn't Find Customer",
+  cancel: "Booking Cancelled",
+  flag_damage: "Additional Damage Found",
+  return_device: "Customer Declined Quotation — Return Device",
+  payment_hold: "Payment Issue — On Hold",
+  stop_review: "Wrong Customer/Device — Needs Review",
+  incident: "Rider Incident Report",
+  stop_delivery: "Wrong Unit Completed — Delivery Stopped",
+};
+
+export type RequestException = {
+  id: string;
+  requestId: string;
+  kind: RequestExceptionKind;
+  reason: string;
+  evidencePhotoDataUrl: string | null;
+  reportedBy: string;
+  reportedByRole: string;
+  resolvedAt: string | null;
+  resolvedBy: string | null;
+  createdAt: string;
+};
+
 export type SaleLineItem = {
   id: string;
   kind: "inventory" | "service";

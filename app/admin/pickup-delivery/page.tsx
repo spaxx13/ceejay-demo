@@ -1,18 +1,30 @@
 import { redirect } from "next/navigation";
-import { getRequests, getRiders, getTechnicians, getBranches, getLookups, canManageHomeServiceRequests, isBranchHidden, pickupDeliveryStage } from "@/lib/db";
+import {
+  getRequests,
+  getRiders,
+  getTechnicians,
+  getBranches,
+  getLookups,
+  getRequestExceptions,
+  canManageHomeServiceRequests,
+  isBranchHidden,
+  pickupDeliveryStage,
+} from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import PickupDeliveryBoard from "@/components/PickupDeliveryBoard";
+import OpenIssuesList from "@/components/OpenIssuesList";
 
 export default async function PickupDeliveryPage() {
   const user = await getCurrentUser();
   if (!canManageHomeServiceRequests(user)) redirect("/admin");
 
-  const [allRequests, riders, technicians, branches, lookups] = await Promise.all([
+  const [allRequests, riders, technicians, branches, lookups, exceptions] = await Promise.all([
     getRequests(),
     getRiders(),
     getTechnicians(),
     getBranches(),
     getLookups(),
+    getRequestExceptions(),
   ]);
   const statuses = lookups.filter((l) => l.kind === "request_status");
 
@@ -67,6 +79,18 @@ export default async function PickupDeliveryPage() {
 
   const activeRiders = riders.filter((r) => r.active).map((r) => ({ id: r.id, name: r.name }));
 
+  // Every open (unresolved) exception across every Pickup & Delivery
+  // request this admin can see — including a request that's since been
+  // cancelled or is still awaiting payment, unlike `jobs` above which only
+  // lists paid, dispatchable ones.
+  const pickupDeliveryRequests = allRequests.filter((r) => r.fulfillmentMode === "pickup_delivery" && !isBranchHidden(user, r.queueBranchId));
+  const openIssues = exceptions
+    .filter((e) => !e.resolvedAt)
+    .flatMap((e) => {
+      const req = pickupDeliveryRequests.find((r) => r.id === e.requestId);
+      return req ? [{ ...e, reference: req.reference, customerName: req.customerName }] : [];
+    });
+
   return (
     <div className="space-y-6">
       <div>
@@ -76,6 +100,7 @@ export default async function PickupDeliveryPage() {
           itself still shows up on Home Service Requests and the technician&apos;s own board, same as any other job.
         </p>
       </div>
+      <OpenIssuesList issues={openIssues} />
       <PickupDeliveryBoard jobs={jobs} riders={activeRiders} />
     </div>
   );

@@ -73,6 +73,8 @@ import { createCheckoutSession as createPaymongoCheckoutSession, paymongoConfigu
 import { checkIcloudStatus } from "./sickw";
 import {
   DEVICE_CONDITION_ITEMS,
+  REQUEST_EXCEPTION_KINDS,
+  REQUEST_EXCEPTION_LABELS,
   type Role,
   type LookupKind,
   type CustomFieldType,
@@ -83,6 +85,7 @@ import {
   type HomeServiceRequest,
   type DeviceConditionChecklist,
   type PickupPhoto,
+  type RequestExceptionKind,
 } from "./types";
 
 function str(fd: FormData, key: string) {
@@ -837,6 +840,94 @@ export async function riderUpdateDeliveryStatus(_prev: RiderStatusResult | undef
   revalidatePath("/admin/pickup-delivery");
   revalidatePath(`/admin/requests/${requestId}`);
   return { ok: true };
+}
+
+export type ReportExceptionResult = { ok: true } | { ok: false; error: string };
+
+// Pickup & Delivery "Phase 5" — Exception Handling (FINAL FLOW spec item
+// 31). One shared action for every exception kind, usable by the rider
+// (for a job assigned to them) or admin/branch staff (for any pickup_delivery
+// request) — see components/ReportExceptionForm.tsx. Every kind gets a
+// request_exceptions row recording who/when/why/evidence; "cancel" and
+// "reschedule" additionally apply their real-world effect the same way the
+// rest of the app already does for a status change / schedule edit.
+export async function reportRequestException(_prev: ReportExceptionResult | undefined, formData: FormData): Promise<ReportExceptionResult> {
+  const user = await getCurrentUser();
+  if (!user) return { ok: false, error: "Not signed in." };
+
+  const requestId = str(formData, "requestId");
+  const kind = str(formData, "kind") as RequestExceptionKind;
+  const reason = str(formData, "reason");
+  const evidencePhotoDataUrl = str(formData, "evidencePhotoDataUrl") || null;
+  if (!(REQUEST_EXCEPTION_KINDS as readonly string[]).includes(kind)) return { ok: false, error: "Please choose a reason." };
+  if (!reason) return { ok: false, error: "Please describe what happened." };
+
+  const req = await getRequestById(requestId);
+  if (!req || req.fulfillmentMode !== "pickup_delivery") return { ok: false, error: "Request not found." };
+
+  const isAssignedRider = user.role === "rider" && !!user.riderId && (req.pickupRiderId === user.riderId || req.deliveryRiderId === user.riderId);
+  const isStaff = canManageHomeServiceRequests(user);
+  if (!isAssignedRider && !isStaff) return { ok: false, error: "You don't have access to report an issue on this job." };
+
+  await query(
+    "insert into request_exceptions (request_id, kind, reason, evidence_photo_data_url, reported_by, reported_by_role) values ($1,$2,$3,$4,$5,$6)",
+    [requestId, kind, reason, evidencePhotoDataUrl, user.name, user.role]
+  );
+  await logActivity("home_service_request", requestId, `${REQUEST_EXCEPTION_LABELS[kind]} — reported by ${user.name}: ${reason}`, user.name);
+
+  if (kind === "reschedule") {
+    const newPreferredDatetime = str(formData, "newPreferredDatetime");
+    if (newPreferredDatetime) {
+      await query("update home_service_requests set preferred_datetime=$1 where id=$2", [newPreferredDatetime, requestId]);
+    }
+  }
+
+  if (kind === "cancel") {
+    const lookups = await getLookups();
+    const cancelledStatus = lookups.find((l) => l.kind === "request_status" && l.label === "Cancelled");
+    if (cancelledStatus) {
+      const statusHistory = [...req.statusHistory, { statusId: cancelledStatus.id, at: new Date().toISOString() }];
+      // Cancelling auto-trashes the request, same convention as
+      // changeRequestStatus/technicianUpdateStatus.
+      await query("update home_service_requests set status_id=$1, status_history=$2, deleted_at=now() where id=$3", [
+        cancelledStatus.id,
+        JSON.stringify(statusHistory),
+        requestId,
+      ]);
+    }
+    if (req.email && emailConfigured()) {
+      try {
+        await sendCancellationEmail(req.email, { customerName: req.customerName, reference: req.reference, reason });
+      } catch {
+        // Best-effort — never blocks the cancellation itself.
+      }
+    }
+  }
+
+  await notifyAdmins(
+    "request_in_progress",
+    requestId,
+    `${REQUEST_EXCEPTION_LABELS[kind]} on ${req.reference} (${req.customerName}) — reported by ${user.name}.`
+  );
+
+  revalidatePath("/rider");
+  revalidatePath("/admin/pickup-delivery");
+  revalidatePath(`/admin/requests/${requestId}`);
+  return { ok: true };
+}
+
+// Admin clears an exception off the open-issues list once it's been dealt
+// with — the underlying request itself is untouched (an exception is a
+// record of what happened, not a status the request is "in").
+export async function resolveRequestException(formData: FormData) {
+  const user = await getCurrentUser();
+  if (!canManageHomeServiceRequests(user)) return;
+  const exceptionId = str(formData, "exceptionId");
+  await query("update request_exceptions set resolved_at=now(), resolved_by=$1 where id=$2 and resolved_at is null", [
+    user?.name ?? "Admin",
+    exceptionId,
+  ]);
+  revalidatePath("/admin/pickup-delivery");
 }
 
 // ---------- Device Brands / Models ----------

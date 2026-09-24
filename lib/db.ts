@@ -32,6 +32,8 @@ import type {
   CrmBroadcastStatus,
   IcloudCheck,
   IcloudCheckStatus,
+  RequestException,
+  RequestExceptionKind,
 } from "./types";
 import { sendPushToUsers } from "./push";
 import { sendSms, smsConfigured } from "./sms";
@@ -703,6 +705,39 @@ export async function claimHomeServiceDownpaymentAsPaid(token: string, paymongoP
 // other requests belong to the same booking.
 export async function getRequestsByBookingGroup(groupId: string) {
   return (await query<RequestRow>("select * from home_service_requests where booking_group_id = $1", [groupId])).map(mapRequest);
+}
+
+type RequestExceptionRow = {
+  id: string;
+  request_id: string;
+  kind: string;
+  reason: string;
+  evidence_photo_data_url: string | null;
+  reported_by: string;
+  reported_by_role: string;
+  resolved_at: Date | null;
+  resolved_by: string | null;
+  created_at: Date;
+};
+function mapRequestException(r: RequestExceptionRow): RequestException {
+  return {
+    id: r.id,
+    requestId: r.request_id,
+    kind: r.kind as RequestExceptionKind,
+    reason: r.reason,
+    evidencePhotoDataUrl: r.evidence_photo_data_url,
+    reportedBy: r.reported_by,
+    reportedByRole: r.reported_by_role,
+    resolvedAt: toIsoOrNull(r.resolved_at),
+    resolvedBy: r.resolved_by,
+    createdAt: toIso(r.created_at),
+  };
+}
+// Every exception across every request (FINAL FLOW spec item 31) — the
+// caller filters/groups by requestId or open/resolved as needed (see
+// Admin > Pickup & Delivery's "Open Issues" section).
+export async function getRequestExceptions(): Promise<RequestException[]> {
+  return (await query<RequestExceptionRow>("select * from request_exceptions order by created_at desc")).map(mapRequestException);
 }
 export async function getActivity() {
   return (await query<ActivityRow>("select * from activity_log order by at desc")).map(mapActivity);

@@ -1,7 +1,8 @@
-import { assignPickupRider, assignDeliveryRider } from "@/lib/actions";
+import { assignPickupRider, assignDeliveryRider, reportRequestException } from "@/lib/actions";
 import { formatDateTime } from "@/lib/format";
 import type { PickupDeliveryStage } from "@/lib/db";
 import JobQrCode from "./JobQrCode";
+import ReportExceptionForm from "./ReportExceptionForm";
 
 type Job = {
   id: string;
@@ -213,6 +214,8 @@ export default function PickupDeliveryBoard({ jobs, riders }: { jobs: Job[]; rid
                       {job.deliveredAt && <p className="font-medium text-green-700">Delivered {formatDateTime(job.deliveredAt)}</p>}
                     </div>
                   )}
+
+                  {job.stage !== "delivered" && <ReportExceptionForm action={reportRequestException} requestId={job.id} role="admin" />}
                 </div>
               ))}
               {colJobs.length === 0 && <p className="text-center text-xs text-slate-300">—</p>}

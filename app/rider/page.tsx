@@ -8,12 +8,14 @@ import {
   riderDeclinePickup,
   riderAcceptDelivery,
   riderDeclineDelivery,
+  reportRequestException,
 } from "@/lib/actions";
 import RiderStatusUpdateForm from "@/components/RiderStatusUpdateForm";
 import RiderLocationReporter from "@/components/RiderLocationReporter";
 import RiderBranchRedirectForm from "@/components/RiderBranchRedirectForm";
 import RiderAcceptDeclineForm from "@/components/RiderAcceptDeclineForm";
 import JobQrCode from "@/components/JobQrCode";
+import ReportExceptionForm from "@/components/ReportExceptionForm";
 
 const PICKUP_STATUS_OPTIONS = [
   { value: "on_the_way", label: "On The Way" },
@@ -123,6 +125,7 @@ export default async function RiderPage() {
                     branches={branches}
                     defaultBranchId={r.deliveredBranchId ?? undefined}
                   />
+                  <ReportExceptionForm action={reportRequestException} requestId={r.id} role="rider" />
                 </>
               )}
             </div>
@@ -159,7 +162,10 @@ export default async function RiderPage() {
               {!r.deliveryRiderAcceptedAt ? (
                 <RiderAcceptDeclineForm requestId={r.id} onAccept={riderAcceptDelivery} onDecline={riderDeclineDelivery} />
               ) : (
-                <RiderStatusUpdateForm action={riderUpdateDeliveryStatus} requestId={r.id} options={DELIVERY_STATUS_OPTIONS} defaultValue={defaultStatus} />
+                <>
+                  <RiderStatusUpdateForm action={riderUpdateDeliveryStatus} requestId={r.id} options={DELIVERY_STATUS_OPTIONS} defaultValue={defaultStatus} />
+                  <ReportExceptionForm action={reportRequestException} requestId={r.id} role="rider" />
+                </>
               )}
             </div>
           );
