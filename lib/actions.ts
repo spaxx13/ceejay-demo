@@ -58,6 +58,8 @@ import {
   markHomeServiceDownpaymentPending,
   markRepairRecordQrPaymentPending,
   getTodayCheckIn,
+  pickupDeliveryStage,
+  type PickupDeliveryStage,
 } from "./db";
 import { getCurrentUser, setSession, clearSession, requireRole } from "./auth";
 import {
@@ -611,9 +613,19 @@ export async function assignPickupRider(formData: FormData) {
 }
 
 // Same as assignPickupRider, but only meaningful once the repair itself is
-// done (pickupDeliveryStage === "ready_for_delivery") — enforced in the UI,
-// not re-checked here, since an admin correcting an early assignment isn't
-// harmful.
+// done (pickupDeliveryStage === "ready_for_delivery" or later, e.g. an admin
+// correcting an already-assigned rider) — re-checked here as a server-side
+// backstop, since a delivery rider dispatched before the repair is actually
+// done would hand back a device that was never fixed.
+const DELIVERY_NOT_READY_STAGES = new Set<PickupDeliveryStage>([
+  "requested",
+  "pickup_assigned",
+  "pickup_started",
+  "picked_up",
+  "heading_to_shop",
+  "at_shop",
+]);
+
 export async function assignDeliveryRider(formData: FormData) {
   const user = await getCurrentUser();
   if (!canManageHomeServiceRequests(user)) return;
@@ -622,6 +634,9 @@ export async function assignDeliveryRider(formData: FormData) {
   const riderId = str(formData, "riderId");
   const req = await getRequestById(requestId);
   if (!req || req.fulfillmentMode !== "pickup_delivery" || !riderId) return;
+  const statusLbl = (await getLookups()).find((l) => l.id === req.statusId)?.label;
+  const stage = pickupDeliveryStage(req, statusLbl);
+  if (!stage || DELIVERY_NOT_READY_STAGES.has(stage)) return;
 
   await query("update home_service_requests set delivery_rider_id=$1, delivery_rider_accepted_at=null where id=$2", [riderId, requestId]);
   const riderRow = await queryOne<{ name: string }>("select name from riders where id=$1", [riderId]);
@@ -869,12 +884,18 @@ export async function riderUpdateDeliveryStatus(_prev: RiderStatusResult | undef
   if (!req || req.deliveryRiderId !== user.riderId) return { ok: false, error: "This job isn't assigned to you." };
 
   switch (status) {
-    case "on_the_way":
+    case "on_the_way": {
       if (req.outForDeliveryAt) break;
       if (!req.deliveryRiderAcceptedAt) return { ok: false, error: "Please accept this job before starting the trip." };
+      const statusLbl = (await getLookups()).find((l) => l.id === req.statusId)?.label;
+      const stage = pickupDeliveryStage(req, statusLbl);
+      if (!stage || DELIVERY_NOT_READY_STAGES.has(stage)) {
+        return { ok: false, error: "This device isn't marked repaired yet — please check with the shop before starting the delivery trip." };
+      }
       await query("update home_service_requests set out_for_delivery_at=now() where id=$1", [requestId]);
       await logActivity("home_service_request", requestId, `Rider ${user.name} is on the way to deliver the device`, user.name);
       break;
+    }
     case "delivered":
       if (req.deliveredAt) break;
       await query("update home_service_requests set delivered_at=now(), delivery_signature_data_url=$1 where id=$2", [
@@ -2782,10 +2803,15 @@ export async function reassignRequest(formData: FormData) {
   }
 
   // A technician does the whole visit to one address, so (re)assigning one
-  // device in a multi-device booking cascades the same technician to every
-  // other device in that booking still open enough to move (see
-  // CASCADE_EXCLUDED_STATUSES) — same for clearing an assignment.
-  if (req.bookingGroupId) {
+  // device in a multi-device Home Service booking cascades the same
+  // technician to every other device in that booking still open enough to
+  // move (see CASCADE_EXCLUDED_STATUSES) — same for clearing an assignment.
+  // Doesn't apply to Pickup & Delivery: each device in a multi-device P&D
+  // booking is picked up, repaired, and delivered independently (different
+  // riders, different timing), so one device reaching the shop and getting
+  // a technician assigned says nothing about whether a sibling device has
+  // even been picked up yet.
+  if (req.bookingGroupId && req.fulfillmentMode !== "pickup_delivery") {
     const siblings = (await getRequestsByBookingGroup(req.bookingGroupId)).filter(
       (s) => s.id !== req.id && !CASCADE_EXCLUDED_STATUSES.has(statusLabel(s.statusId))
     );
@@ -3287,6 +3313,12 @@ export async function addConversationMessage(formData: FormData) {
 // mints its tracking token and emails the customer the live map link
 // (/track-technician/<token>). Returns a note for the activity log.
 async function startTechnicianTrackingIfOnTheWay(req: HomeServiceRequest, newStatusLabel: string): Promise<string> {
+  // Pickup & Delivery devices are repaired in-shop, not visited at the
+  // customer's address — a technician going "En Route" there just means
+  // walking to their bench, not heading to the customer, so this (Home
+  // Service-only) "technician is on the way to you" tracking/email must
+  // never fire for it. The delivery leg has its own rider tracking instead.
+  if (req.fulfillmentMode === "pickup_delivery") return "";
   if (!isOnTheWayStatus(newStatusLabel) || req.trackingToken) return "";
   const token = crypto.randomUUID().replace(/-/g, "");
   await query("update home_service_requests set tracking_token=$1 where id=$2", [token, req.id]);
