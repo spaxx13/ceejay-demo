@@ -50,8 +50,8 @@ export async function sendRepairReceiptEmail(
       <p style="font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8;">Ceejay Cellphone Repair Shop</p>
       <h2 style="margin: 4px 0 16px;">Your repair receipt is ready</h2>
       <p style="font-size: 14px; line-height: 1.5;">
-        Hi ${opts.customerName}, thanks for choosing Ceejay Cellphone Repair Shop. Your receipt for
-        <strong>${opts.reference}</strong> (${opts.deviceLabel || "your device"}, ${peso(total)}) is attached as a PDF —
+        Hi ${escapeHtml(opts.customerName)}, thanks for choosing Ceejay Cellphone Repair Shop. Your receipt for
+        <strong>${escapeHtml(opts.reference)}</strong> (${escapeHtml(opts.deviceLabel || "your device")}, ${peso(total)}) is attached as a PDF —
         it includes the full pre- and post-repair checklist results and both signed copies.
       </p>
       <p style="font-size: 13px; color: #64748b;">If anything looks off, just reply to this email or contact the branch you visited.</p>
@@ -158,8 +158,8 @@ export async function sendQuotationEmail(
       <p style="font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8;">Ceejay Cellphone Repair Shop</p>
       <h2 style="margin: 4px 0 16px;">Your repair quotation is ready</h2>
       <p style="font-size: 14px; line-height: 1.5;">
-        Hi ${opts.customerName}, thanks for booking a home service repair with us. Your quotation for
-        <strong>${opts.referenceList}</strong> is attached as a PDF — ${totalLine}.
+        Hi ${escapeHtml(opts.customerName)}, thanks for booking a home service repair with us. Your quotation for
+        <strong>${escapeHtml(opts.referenceList)}</strong> is attached as a PDF — ${totalLine}.
       </p>
       <ul style="font-size: 13px; padding-left: 18px; margin: 12px 0;">${deviceLines}</ul>
       ${downpaymentBlock}
@@ -315,7 +315,7 @@ export async function sendAppointmentReminderEmail(to: string, opts: { customerN
         <h2 style="margin: 4px 0 16px;">See you tomorrow!</h2>
         <p style="font-size: 14px; line-height: 1.5;">
           Hi ${escapeHtml(opts.customerName)}, this is a reminder that your home service appointment
-          <strong>${opts.reference}</strong> is scheduled for <strong>${escapeHtml(opts.preferredDatetime)}</strong>.
+          <strong>${escapeHtml(opts.reference)}</strong> is scheduled for <strong>${escapeHtml(opts.preferredDatetime)}</strong>.
         </p>
         <p style="font-size: 13px; color: #64748b;">If you need to reschedule or have any questions, just reply to this email or contact the branch you visited.</p>
       </div>
@@ -359,8 +359,8 @@ export async function sendCancellationEmail(to: string, opts: { customerName: st
         <p style="font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8;">Ceejay Cellphone Repair Shop</p>
         <h2 style="margin: 4px 0 16px;">Your repair has been cancelled</h2>
         <p style="font-size: 14px; line-height: 1.5;">
-          Hi ${opts.customerName}, your repair <strong>${opts.reference}</strong> has been cancelled.
-          ${opts.reason ? `<br/><br/><strong>Reason:</strong> ${opts.reason}` : ""}
+          Hi ${escapeHtml(opts.customerName)}, your repair <strong>${escapeHtml(opts.reference)}</strong> has been cancelled.
+          ${opts.reason ? `<br/><br/><strong>Reason:</strong> ${escapeHtml(opts.reason)}` : ""}
         </p>
         <p style="font-size: 13px; color: #64748b;">If you have any questions, just reply to this email or contact the branch you visited.</p>
       </div>
@@ -386,7 +386,7 @@ export async function sendTechnicianOnTheWayEmail(
         <h2 style="margin: 4px 0 16px;">Your technician is on the way 🛵</h2>
         <p style="font-size: 14px; line-height: 1.5;">
           Hi ${escapeHtml(opts.customerName)}, ${escapeHtml(opts.technicianName)} is now heading to your pinned location
-          for your home service <strong>${opts.reference}</strong>.
+          for your home service <strong>${escapeHtml(opts.reference)}</strong>.
         </p>
         <p style="margin: 24px 0;">
           <a href="${opts.trackingUrl}" style="display: inline-block; background: #0071e3; color: #fff; text-decoration: none; padding: 12px 20px; border-radius: 9999px; font-weight: 600;">
