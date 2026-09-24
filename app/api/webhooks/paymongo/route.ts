@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyWebhookSignature } from "@/lib/paymongo";
-import { processIcloudCheckPayment, processHomeServiceDownpayment, processRepairRecordQrPayment } from "@/lib/actions";
+import { processIcloudCheckPayment, processHomeServiceDownpayment, processRepairRecordQrPayment } from "@/lib/paymentProcessing";
 
 // PayMongo's server-to-server callback once a Checkout Session is paid —
 // the ONLY source of truth for "this customer actually paid" (alongside

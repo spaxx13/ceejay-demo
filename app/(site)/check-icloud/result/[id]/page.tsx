@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { getIcloudCheckById } from "@/lib/db";
-import { processIcloudCheckPayment } from "@/lib/actions";
+import { processIcloudCheckPayment } from "@/lib/paymentProcessing";
 import { retrieveCheckoutSession } from "@/lib/paymongo";
 
 // Never trusts anything from the URL/query string beyond the opaque check
