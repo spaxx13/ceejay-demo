@@ -22,16 +22,22 @@ function messaging() {
 export async function sendPushToTokens(tokens: string[], title: string, body: string): Promise<{ expiredTokens: string[] }> {
   if (tokens.length === 0) return { expiredTokens: [] };
 
-  const results = await messaging().sendEach(
-    tokens.map((token) => ({
-      token,
-      notification: { title, body },
-      apns: { payload: { aps: { sound: "default" } } },
-    })),
+  const m = messaging();
+  const expiredTokens: string[] = [];
+  await Promise.all(
+    tokens.map(async (token) => {
+      try {
+        await m.send({
+          token,
+          notification: { title, body },
+          apns: { payload: { aps: { sound: "default" } } },
+        });
+      } catch (err) {
+        const code = err && typeof err === "object" && "code" in err ? (err as { code: string }).code : "";
+        if (code === "messaging/registration-token-not-registered") expiredTokens.push(token);
+        else console.error("[sendPushToTokens]", token.slice(0, 12), code || err);
+      }
+    }),
   );
-
-  const expiredTokens = results.responses
-    .map((r, i) => (!r.success && r.error?.code === "messaging/registration-token-not-registered" ? tokens[i] : null))
-    .filter((t): t is string => t !== null);
   return { expiredTokens };
 }
