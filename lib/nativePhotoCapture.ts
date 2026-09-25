@@ -19,15 +19,23 @@ import { Camera, CameraResultType, CameraSource } from "@capacitor/camera";
 // null if the user cancelled.
 export async function captureNativePhoto(): Promise<File | null> {
   const photo = await Camera.getPhoto({
-    resultType: CameraResultType.Uri,
+    // Uri mode hands back a capacitor://localhost/_capacitor_file_... path
+    // — but this app's server.url points at the live HTTPS site, so that
+    // path is cross-origin from WKWebView's point of view and fetch()-ing
+    // it gets blocked as mixed content ("insecure content", "access
+    // control checks"). Base64 mode returns the image data directly in
+    // the plugin result instead, no follow-up fetch needed.
+    resultType: CameraResultType.Base64,
     source: CameraSource.Prompt,
     promptLabelHeader: "Photo of the Issue",
     promptLabelPhoto: "Choose from Library",
     promptLabelPicture: "Take Photo",
     quality: 80,
   });
-  if (!photo.webPath) return null;
-  const res = await fetch(photo.webPath);
-  const blob = await res.blob();
-  return new File([blob], `photo.${photo.format || "jpg"}`, { type: blob.type || `image/${photo.format || "jpeg"}` });
+  if (!photo.base64String) return null;
+  const format = photo.format || "jpeg";
+  const binary = atob(photo.base64String);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return new File([bytes], `photo.${format}`, { type: `image/${format}` });
 }
