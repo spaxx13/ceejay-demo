@@ -362,7 +362,7 @@ export type HomeServiceRequest = {
   backHousingColor: string; // only meaningful/required when the chosen service type is "Back Housing (whole shell)"
   reminderSentAt: string | null; // set once the daily appointment-reminder cron has texted this customer
   confirmationToken: string | null; // null when no email was captured to send the confirm link to
-  confirmationExpiresAt: string | null; // 2 hours after submission — the void-unconfirmed-requests cron cancels the request once this passes with confirmedAt still null
+  confirmationExpiresAt: string | null; // BOOKING_CONFIRMATION_WINDOW_MINUTES after submission — the void-unconfirmed-requests cron cancels the request once this passes with confirmedAt still null
   confirmedAt: string | null; // set when the customer clicks the confirm link in their quotation email
   bookingGroupId: string | null; // shared by every device from the same "+ Add Another Device" submission — one technician assignment cascades to the whole group, since it's one visit to one address
   downpaymentRequired: boolean; // true for DOWNPAYMENT_PROVINCES (lib/homeServiceFees.ts) — the booking can't be confirmed until downpaymentStatus is "paid"

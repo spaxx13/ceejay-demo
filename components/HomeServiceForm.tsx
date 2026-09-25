@@ -2,7 +2,7 @@
 
 import { Fragment, useActionState, useEffect, useRef, useState } from "react";
 import { submitHomeServiceRequest, sendHomeServiceOtp, verifyHomeServiceOtp, confirmBookingFromForm } from "@/lib/actions";
-import { OTP_GATE_ENABLED, BOOKING_CONFIRMATION_WINDOW_HOURS } from "@/lib/config";
+import { OTP_GATE_ENABLED, BOOKING_CONFIRMATION_WINDOW_MINUTES } from "@/lib/config";
 import {
   PROVINCE_FEES,
   SUNDAY_ONLY_PROVINCES,
@@ -312,7 +312,7 @@ export default function HomeServiceForm({
               {mode === "pickup_delivery"
                 ? `Pickup & Delivery bookings require a ₱${(state.downpaymentAmount ?? 0).toLocaleString()}.00 Booking, Diagnostic & Delivery Fee via QR Ph before we can confirm your booking and assign a rider — this covers pickup, diagnosis, and delivery back to you, so there's nothing more to pay when your device comes back.`
                 : `Home Service bookings in your area require a ₱${(state.downpaymentAmount ?? 0).toLocaleString()}.00 down payment via QR Ph before we can confirm your booking.`}{" "}
-              Please pay within {BOOKING_CONFIRMATION_WINDOW_HOURS} hours, or your request will be automatically cancelled.
+              Please pay within {BOOKING_CONFIRMATION_WINDOW_MINUTES} minutes, or your request will be automatically cancelled.
             </p>
             <a href={state.confirmationUrl} className="btn-primary mt-3 inline-block">
               {mode === "pickup_delivery" ? "Pay Booking, Diagnostic & Delivery Fee Now" : "Pay Down Payment Now"}
@@ -372,7 +372,7 @@ export default function HomeServiceForm({
                   </button>
                 </form>
                 <p className="text-center text-[11px] text-slate-400">
-                  Please confirm within {BOOKING_CONFIRMATION_WINDOW_HOURS} hours, or your request will be automatically cancelled.
+                  Please confirm within {BOOKING_CONFIRMATION_WINDOW_MINUTES} minutes, or your request will be automatically cancelled.
                   {sentEmail && <> We also emailed a copy of this quotation to {sentEmail} for your records.</>}
                 </p>
               </div>
