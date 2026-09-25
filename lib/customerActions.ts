@@ -1,7 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { query, queryOne, getCustomerByPhone } from "./db";
+import { query, queryOne, getCustomerByPhone, saveCustomerPushToken } from "./db";
 import { setCustomerSession, clearCustomerSession, getCurrentCustomer } from "./customerAuth";
 import { normalizePhone, isValidPhone } from "./sms";
 import { verifyHomeServiceOtp } from "./actions";
@@ -62,4 +62,14 @@ export async function requireCustomer() {
   const customer = await getCurrentCustomer();
   if (!customer) redirect("/my/login");
   return customer;
+}
+
+// Called from the native app once it has an FCM token, so "on the way"
+// pushes have somewhere to go. Silently no-ops if the customer signed out
+// between requesting permission and this call — nothing to attach the
+// token to yet.
+export async function registerPushToken(token: string) {
+  const customer = await getCurrentCustomer();
+  if (!customer) return;
+  await saveCustomerPushToken(customer.id, token);
 }

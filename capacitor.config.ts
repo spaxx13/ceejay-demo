@@ -21,6 +21,35 @@ const config: CapacitorConfig = {
     // webview. Every page the app links to lives on this same host.
     allowNavigation: ["ceejayrepair.vercel.app"],
   },
+  // Tags every request this app makes so the site (app/(site)/layout.tsx)
+  // can tell it apart from a regular browser and skip the marketing
+  // header/footer/nav — without this, tapping into a shared page like
+  // /request or /track shows the full public site around the booking
+  // form, breaking the "this is a dedicated app" feel. Only this app is
+  // tagged; Ceejay Admin deliberately wants the full site chrome.
+  appendUserAgent: "CeejayCustomerApp",
+  plugins: {
+    // "On the way" push notifications (@capacitor-firebase/messaging) —
+    // shows a native alert/sound/badge even while the app is in the
+    // foreground, not just when it's closed/backgrounded.
+    FirebaseMessaging: {
+      presentationOptions: ["alert", "badge", "sound"],
+    },
+  },
+  // Works around a SwiftPM package-identity collision between this
+  // plugin's own Firebase dependency and one already vendored by
+  // Capacitor's iOS runtime — see the plugin's README.
+  experimental: {
+    ios: {
+      spm: {
+        packageOptions: {
+          "@capacitor-firebase/messaging": {
+            symlink: true,
+          },
+        },
+      },
+    },
+  },
 };
 
 export default config;

@@ -183,6 +183,11 @@ export default function HomeServiceForm({
   // Captured on submit purely to display "we sent your quotation to X" on
   // the success screen — independent of the phone-based OTP gate above.
   const [sentEmail, setSentEmail] = useState("");
+  // Same idea, for the "Save your account to track this?" prompt on the
+  // success screen — captured generically here (not from sentPhone above)
+  // since that one is only ever set when the OTP gate actually ran, and a
+  // guest can submit successfully with the gate off.
+  const [bookedPhone, setBookedPhone] = useState("");
 
   // Same admin toggle as the Street field's own "required" setting (they're
   // rendered together, the pin being the more exact of the two) — checked
@@ -383,6 +388,18 @@ export default function HomeServiceForm({
           <a href={`/track?reference=${encodeURIComponent(state.references[0])}`} className="btn-secondary inline-block">
             Track this request
           </a>
+        )}
+        {bookedPhone && (
+          <FormNotice tone="blue" icon="👤">
+            <p className="font-semibold">Want to track this without digging up a link later?</p>
+            <p className="mt-1">
+              Save an account with the number you just gave us — no password, just your phone. Your bookings (this one and any future
+              ones) show up automatically, with a live map whenever someone&apos;s on the way.
+            </p>
+            <a href={`/my/login?phone=${encodeURIComponent(bookedPhone)}`} className="btn-primary mt-3 inline-block">
+              Save My Account
+            </a>
+          </FormNotice>
         )}
         <a href={`/${mode === "pickup_delivery" ? "pickup-delivery" : "request"}?area=${area}`} className="btn-secondary inline-block">
           Submit another request
@@ -849,7 +866,9 @@ export default function HomeServiceForm({
           e.preventDefault();
           return;
         }
-        setSentEmail(String(new FormData(e.currentTarget).get("email") ?? "").trim());
+        const fd = new FormData(e.currentTarget);
+        setSentEmail(String(fd.get("email") ?? "").trim());
+        setBookedPhone(String(fd.get("phone") ?? "").trim());
       }}
       className="card space-y-5"
     >

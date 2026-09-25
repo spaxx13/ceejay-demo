@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireCustomer, logoutCustomer } from "@/lib/customerActions";
 import { getRequestsByCustomerId, getLookups, getDeviceModels, pickupDeliveryStage, PICKUP_DELIVERY_STAGE_LABELS } from "@/lib/db";
 import { formatDate } from "@/lib/format";
+import PushNotificationRegistrar from "@/components/PushNotificationRegistrar";
 
 // Stages worth showing a "Track" button for — before pickup_started
 // there's no rider position yet to watch, and once delivered there's
@@ -13,7 +14,8 @@ export default async function MyBookingsPage() {
   const [requests, lookups, deviceModels] = await Promise.all([getRequestsByCustomerId(customer.id), getLookups(), getDeviceModels()]);
 
   return (
-    <main className="grid-bg min-h-screen px-4 py-10 sm:px-6">
+    <main className="grid-bg min-h-screen px-4 pb-10 sm:px-6" style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 2.5rem)" }}>
+      <PushNotificationRegistrar />
       <div className="mx-auto max-w-lg space-y-6">
         <Link href="/app-home" className="inline-block text-sm text-slate-400 hover:underline">
           ← Back

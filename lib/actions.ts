@@ -15,6 +15,7 @@ import {
   PICKUP_DELIVERY_SKIP_OTP,
 } from "@/lib/config";
 import { CHECKLIST_TEMPLATE } from "./checklist";
+import { sendCustomerPush } from "./pushNotifications";
 import {
   query,
   queryOne,
@@ -733,6 +734,11 @@ export async function riderUpdatePickupStatus(_prev: RiderStatusResult | undefin
       if (!req.pickupRiderAcceptedAt) return { ok: false, error: "Please accept this job before starting the trip." };
       await query("update home_service_requests set pickup_started_at=now() where id=$1", [requestId]);
       await logActivity("home_service_request", requestId, `Rider ${user.name} is on the way to pick up the device`, user.name);
+      if (req.customerId) {
+        sendCustomerPush(req.customerId, "Your rider is on the way", `The rider is on the way to pick up your device for repair ${req.reference}.`).catch(
+          () => {},
+        );
+      }
       if (req.email && emailConfigured()) {
         try {
           await sendTrackingLinkEmail(req.email, { customerName: req.customerName, reference: req.reference, phone: req.phone, stage: "heading_to_pickup" });
@@ -890,6 +896,11 @@ export async function riderUpdateDeliveryStatus(_prev: RiderStatusResult | undef
       }
       await query("update home_service_requests set out_for_delivery_at=now() where id=$1", [requestId]);
       await logActivity("home_service_request", requestId, `Rider ${user.name} is on the way to deliver the device`, user.name);
+      if (req.customerId) {
+        sendCustomerPush(req.customerId, "Your device is on its way", `The rider is on the way to deliver your device for repair ${req.reference}.`).catch(
+          () => {},
+        );
+      }
       break;
     }
     case "delivered":
@@ -3324,6 +3335,13 @@ async function startTechnicianTrackingIfOnTheWay(req: HomeServiceRequest, newSta
   if (!isOnTheWayStatus(newStatusLabel) || req.trackingToken) return "";
   const token = crypto.randomUUID().replace(/-/g, "");
   await query("update home_service_requests set tracking_token=$1 where id=$2", [token, req.id]);
+  if (req.customerId) {
+    // Best-effort — a customer who never registered the app (or hasn't
+    // granted notification permission) simply has no tokens to send to.
+    sendCustomerPush(req.customerId, "Your technician is on the way", `Track your technician's live location for repair ${req.reference}.`).catch(
+      () => {},
+    );
+  }
   if (!req.email) return " — no customer email on file, tracking link not sent";
   if (!emailConfigured()) return " — email not configured, tracking link not sent";
 

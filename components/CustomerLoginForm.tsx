@@ -10,10 +10,13 @@ type Stage = "phone" | "otp";
 // Phone-OTP login/registration for the customer app — no password. A
 // returning customer just verifies their phone; a first-time one also
 // gives their name so completeCustomerLogin can create their account.
-export default function CustomerLoginForm() {
+// initialPhone pre-fills the number from the "Save My Account" prompt on a
+// booking's success screen, so the customer doesn't retype what they just
+// gave a moment ago.
+export default function CustomerLoginForm({ initialPhone }: { initialPhone?: string }) {
   const router = useRouter();
   const [stage, setStage] = useState<Stage>("phone");
-  const [phone, setPhone] = useState("");
+  const [phone, setPhone] = useState(initialPhone ?? "");
   const [code, setCode] = useState("");
   const [name, setName] = useState("");
   const [isNewCustomer, setIsNewCustomer] = useState(false);

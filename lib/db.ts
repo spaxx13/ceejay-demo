@@ -753,6 +753,24 @@ export async function getRequestsByCustomerId(customerId: string) {
   ).map(mapRequest);
 }
 
+// A customer's registered push-notification device(s) — a phone can be
+// re-registered (token rotates on reinstall) so this upserts on the token
+// itself, keyed to whichever customer is currently signed in.
+export async function saveCustomerPushToken(customerId: string, token: string) {
+  await query(
+    "insert into customer_push_tokens (customer_id, token) values ($1, $2) on conflict (token) do update set customer_id = excluded.customer_id",
+    [customerId, token],
+  );
+}
+
+export async function getCustomerPushTokens(customerId: string) {
+  return (await query<{ token: string }>("select token from customer_push_tokens where customer_id = $1", [customerId])).map((r) => r.token);
+}
+
+export async function deleteCustomerPushToken(token: string) {
+  await query("delete from customer_push_tokens where token = $1", [token]);
+}
+
 type RequestExceptionRow = {
   id: string;
   request_id: string;
