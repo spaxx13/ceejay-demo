@@ -14,7 +14,7 @@ export default async function AppHomePage() {
     <main className="grid-bg flex min-h-screen flex-col items-center justify-center px-4 py-10 pb-20 sm:px-6">
       <div className="mx-auto w-full max-w-sm space-y-8 text-center">
         <div className="space-y-3">
-          <Image src="/contact-widget-icon.png" alt="Ceejay" width={88} height={88} className="mx-auto rounded-2xl" priority />
+          <Image src="/app-logo.png" alt="Ceejay" width={88} height={88} className="mx-auto rounded-2xl" priority />
           <h1 className="text-2xl font-bold text-slate-900">Ceejay Cellphone Repair Shop</h1>
           <p className="text-sm text-slate-400">How would you like your repair handled?</p>
         </div>
