@@ -29,7 +29,17 @@ done from this sandbox.
    <array>
      <string>location</string>
    </array>
+   <key>NSCameraUsageDescription</key>
+   <string>Ceejay uses your camera to attach a photo of the device or issue to a job.</string>
+   <key>NSPhotoLibraryUsageDescription</key>
+   <string>Ceejay uses your photo library so you can attach an existing photo to a job.</string>
+   <key>NSPhotoLibraryAddUsageDescription</key>
+   <string>Ceejay saves photos you take to your photo library.</string>
    ```
+   The camera/photo-library keys are required by `@capacitor/camera` (see
+   `lib/nativePhotoCapture.ts`) — without them, iOS kills the app the
+   instant it tries to open the camera or photo picker, instead of showing
+   a permission prompt.
 5. `npx cap sync ios` (re-run this after any `npm install` that touches
    Capacitor packages, or after editing `capacitor.config.ts`).
 6. Build to your own device (not the Simulator — location sharing needs a
