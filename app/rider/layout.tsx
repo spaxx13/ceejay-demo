@@ -13,7 +13,7 @@ export default async function RiderLayout({ children }: { children: React.ReactN
 
   return (
     <div className="min-h-screen">
-      <div className="glass sticky top-0 z-10 print:hidden">
+      <div className="glass sticky top-0 z-10 print:hidden" style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}>
         <div className="mx-auto flex max-w-2xl items-center justify-between px-4 py-3">
           <span className="flex items-center gap-2">
             <Logo className="h-7 w-7 shrink-0" />
