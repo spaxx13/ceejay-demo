@@ -7,6 +7,7 @@ import Logo from "@/components/Logo";
 import PushSubscribe from "@/components/PushSubscribe";
 import AppBadgeSync from "@/components/AppBadgeSync";
 import RefreshButton from "@/components/RefreshButton";
+import StaffPushNotificationRegistrar from "@/components/StaffPushNotificationRegistrar";
 
 export default async function TechnicianLayout({ children }: { children: React.ReactNode }) {
   const user = await getCurrentUser();
@@ -18,6 +19,7 @@ export default async function TechnicianLayout({ children }: { children: React.R
   return (
     <div className="min-h-screen">
       <AppBadgeSync count={unstartedCount} />
+      <StaffPushNotificationRegistrar />
       <div className="glass sticky top-0 z-10 print:hidden" style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}>
         <div className="mx-auto flex max-w-2xl items-center justify-between px-4 py-3">
           <span className="flex items-center gap-2">

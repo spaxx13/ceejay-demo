@@ -1395,6 +1395,15 @@ export async function notifyTechnician(technicianId: string, message: string, ur
     if (expiredEndpoints.length > 0) {
       await query("delete from push_subscriptions where endpoint = any($1)", [expiredEndpoints]);
     }
+
+    // FCM, for the native Technician app — Web Push above doesn't reach it.
+    const staffTokens = await getStaffPushTokens([techUser.id]);
+    if (staffTokens.length > 0) {
+      const { expiredTokens } = await sendPushToTokens(staffTokens, "Ceejay", message);
+      if (expiredTokens.length > 0) {
+        await Promise.all(expiredTokens.map((token) => deleteStaffPushToken(token)));
+      }
+    }
   } catch {
     // Best-effort — see notifyAdmins above.
   }
@@ -1416,6 +1425,15 @@ export async function notifyRider(riderId: string, message: string, url: string)
     const { expiredEndpoints } = await sendPushToUsers(subs, { title: "Ceejay", body: message, url });
     if (expiredEndpoints.length > 0) {
       await query("delete from push_subscriptions where endpoint = any($1)", [expiredEndpoints]);
+    }
+
+    // FCM, for the native Rider app — Web Push above doesn't reach it.
+    const staffTokens = await getStaffPushTokens([riderUser.id]);
+    if (staffTokens.length > 0) {
+      const { expiredTokens } = await sendPushToTokens(staffTokens, "Ceejay", message);
+      if (expiredTokens.length > 0) {
+        await Promise.all(expiredTokens.map((token) => deleteStaffPushToken(token)));
+      }
     }
   } catch {
     // Best-effort — see notifyAdmins above.

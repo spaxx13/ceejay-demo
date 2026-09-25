@@ -5,6 +5,7 @@ import { logoutAction } from "@/lib/actions";
 import Logo from "@/components/Logo";
 import PushSubscribe from "@/components/PushSubscribe";
 import RefreshButton from "@/components/RefreshButton";
+import StaffPushNotificationRegistrar from "@/components/StaffPushNotificationRegistrar";
 
 export default async function RiderLayout({ children }: { children: React.ReactNode }) {
   const user = await getCurrentUser();
@@ -13,6 +14,7 @@ export default async function RiderLayout({ children }: { children: React.ReactN
 
   return (
     <div className="min-h-screen">
+      <StaffPushNotificationRegistrar />
       <div className="glass sticky top-0 z-10 print:hidden" style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}>
         <div className="mx-auto flex max-w-2xl items-center justify-between px-4 py-3">
           <span className="flex items-center gap-2">
