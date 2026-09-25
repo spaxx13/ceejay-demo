@@ -117,7 +117,7 @@ export async function processHomeServiceDownpayment(token: string, paymongoPayme
     return getRequestsByConfirmationToken(token);
   }
 
-  // Edge case: the 2-hour confirmation window lapsed and the
+  // Edge case: the confirmation window lapsed and the
   // void-unconfirmed-requests cron already auto-cancelled this booking
   // between the customer starting checkout and PayMongo confirming
   // payment. Record the payment (already done above) but don't revive a

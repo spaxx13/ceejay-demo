@@ -48,6 +48,7 @@
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>remote-notification</string>
+		<string>location</string>
 	</array>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
@@ -72,6 +73,10 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Ceejay uses your location so customers can see their technician/rider on the map while a job is on the way.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Ceejay uses your location so customers can see their technician/rider on the map, including while your phone is locked, while a job is on the way.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Ceejay uses your camera to attach a photo of the device or issue to a job.</string>
 	<key>NSPhotoLibraryUsageDescription</key>

@@ -1297,14 +1297,15 @@ async function notifyAdminsCore(insertSql: string, insertParams: unknown[], url:
   try {
     const admins = (await getUsers()).filter((u) => u.active && (u.role === "owner_admin" || u.role === "branch_admin"));
 
-    const subs = await getPushSubscriptions();
     const adminIds = new Set(admins.map((a) => a.id));
+    // Included on every push so the home-screen icon badge updates from the
+    // service worker/native app even while it's closed — same unread count
+    // getNotifications()'s caller already shows in the sidebar.
+    const unread = await queryOne<{ n: number }>("select count(*)::int as n from notifications where read_at is null");
+
+    const subs = await getPushSubscriptions();
     const recipientSubs = subs.filter((s) => adminIds.has(s.userId));
     if (recipientSubs.length > 0) {
-      // Included on every push so the home-screen icon badge updates from
-      // the service worker even while the app is closed — same unread
-      // count getNotifications()'s caller already shows in the sidebar.
-      const unread = await queryOne<{ n: number }>("select count(*)::int as n from notifications where read_at is null");
       const { expiredEndpoints } = await sendPushToUsers(recipientSubs, { title: "Ceejay Admin", body: message, url, badgeCount: unread?.n ?? undefined });
       if (expiredEndpoints.length > 0) {
         await query("delete from push_subscriptions where endpoint = any($1)", [expiredEndpoints]);
@@ -1382,18 +1383,19 @@ export async function notifyTechnician(technicianId: string, message: string, ur
     const techUser = await queryOne<{ id: string }>("select id from users where technician_id = $1 and active", [technicianId]);
     if (!techUser) return;
 
-    const subs = (await getPushSubscriptions()).filter((s) => s.userId === techUser.id);
-    if (subs.length === 0) return;
-
     // Badge count = jobs assigned to this technician that they haven't
     // started yet ("Assigned" status, not yet moved to En Route/In
     // Progress) — the same "new job" count the technician layout badges
     // with on open, kept in sync here so it also updates while the app is
     // closed. See getUnstartedJobCount below.
     const badgeCount = await getUnstartedJobCount(technicianId);
-    const { expiredEndpoints } = await sendPushToUsers(subs, { title: "Ceejay", body: message, url, badgeCount });
-    if (expiredEndpoints.length > 0) {
-      await query("delete from push_subscriptions where endpoint = any($1)", [expiredEndpoints]);
+
+    const subs = (await getPushSubscriptions()).filter((s) => s.userId === techUser.id);
+    if (subs.length > 0) {
+      const { expiredEndpoints } = await sendPushToUsers(subs, { title: "Ceejay", body: message, url, badgeCount });
+      if (expiredEndpoints.length > 0) {
+        await query("delete from push_subscriptions where endpoint = any($1)", [expiredEndpoints]);
+      }
     }
 
     // FCM, for the native Technician app — Web Push above doesn't reach it.
@@ -1420,11 +1422,11 @@ export async function notifyRider(riderId: string, message: string, url: string)
     if (!riderUser) return;
 
     const subs = (await getPushSubscriptions()).filter((s) => s.userId === riderUser.id);
-    if (subs.length === 0) return;
-
-    const { expiredEndpoints } = await sendPushToUsers(subs, { title: "Ceejay", body: message, url });
-    if (expiredEndpoints.length > 0) {
-      await query("delete from push_subscriptions where endpoint = any($1)", [expiredEndpoints]);
+    if (subs.length > 0) {
+      const { expiredEndpoints } = await sendPushToUsers(subs, { title: "Ceejay", body: message, url });
+      if (expiredEndpoints.length > 0) {
+        await query("delete from push_subscriptions where endpoint = any($1)", [expiredEndpoints]);
+      }
     }
 
     // FCM, for the native Rider app — Web Push above doesn't reach it.

@@ -8,7 +8,7 @@ import {
   OTP_GATE_ENABLED,
   MAX_PRICE_EDITS,
   SITE_URL,
-  BOOKING_CONFIRMATION_WINDOW_HOURS,
+  BOOKING_CONFIRMATION_WINDOW_MINUTES,
   ICLOUD_CHECK_PRICE_PESOS,
   PICKUP_DELIVERY_PUBLIC_ENABLED,
   PICKUP_DELIVERY_SKIP_PAYMENT,
@@ -1858,7 +1858,7 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
   // submission — every new request lands in the Unassigned queue for an
   // admin to triage and assign manually. Whenever an email was captured, it
   // first has to sit in "Pending Confirmation" until the customer clicks
-  // the link in their quotation email (or the 2-hour window lapses and
+  // the link in their quotation email (or the confirmation window lapses and
   // the void-unconfirmed-requests cron cancels it) — only then is it truly
   // "Pending" and ready to assign. No email means no way to send that link,
   // so it skips straight to Pending as before. Laguna/Batangas/Pampanga
@@ -2022,7 +2022,7 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
   // My Booking" link confirms all of them together (see confirmBooking()).
   const confirmationToken = needsConfirmation ? crypto.randomUUID() : null;
   const confirmationExpiresAt = needsConfirmation
-    ? new Date(Date.now() + BOOKING_CONFIRMATION_WINDOW_HOURS * 60 * 60 * 1000).toISOString()
+    ? new Date(Date.now() + BOOKING_CONFIRMATION_WINDOW_MINUTES * 60 * 1000).toISOString()
     : null;
   // Every device's row shares this too, always (not just multi-device
   // bookings) — it's how reassignRequest() knows which other rows to
@@ -2152,8 +2152,8 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
   if (phone && smsConfigured()) {
     const confirmMessage =
       createdRequests.length > 1
-        ? `Hi ${name || "there"}, your Ceejay repair requests ${referenceList} have been received! Please confirm your booking within ${BOOKING_CONFIRMATION_WINDOW_HOURS} hours on the confirmation page shown after you submitted, or it will be automatically cancelled.`
-        : `Hi ${name || "there"}, your Ceejay repair request ${referenceList} has been received! Please confirm your booking within ${BOOKING_CONFIRMATION_WINDOW_HOURS} hours on the confirmation page shown after you submitted, or it will be automatically cancelled.`;
+        ? `Hi ${name || "there"}, your Ceejay repair requests ${referenceList} have been received! Please confirm your booking within ${BOOKING_CONFIRMATION_WINDOW_MINUTES} minutes on the confirmation page shown after you submitted, or it will be automatically cancelled.`
+        : `Hi ${name || "there"}, your Ceejay repair request ${referenceList} has been received! Please confirm your booking within ${BOOKING_CONFIRMATION_WINDOW_MINUTES} minutes on the confirmation page shown after you submitted, or it will be automatically cancelled.`;
     try {
       await sendSms(phone, confirmMessage);
       smsNote = ` — confirmation SMS sent to ${phone}`;
@@ -2182,7 +2182,7 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
         address,
         serviceFee,
         confirmationUrl: downpaymentActive && confirmationToken ? `${SITE_URL}/confirm-booking/${confirmationToken}` : null,
-        confirmationWindowHours: BOOKING_CONFIRMATION_WINDOW_HOURS,
+        confirmationWindowMinutes: BOOKING_CONFIRMATION_WINDOW_MINUTES,
         downpaymentRequired: downpaymentActive,
         downpaymentAmount,
         fulfillmentMode,
@@ -3371,20 +3371,6 @@ async function startTechnicianTrackingIfOnTheWay(req: HomeServiceRequest, newSta
   }
 }
 
-// GPS fix pushed from the assigned technician's phone while their job is
-// En Route (components/TechnicianLocationSharer.tsx). `stop` tells the
-// phone to stop sharing once the job is no longer En Route.
-export async function updateTechnicianLocation(requestId: string, lat: number, lng: number): Promise<{ ok: boolean; stop?: boolean }> {
-  const user = await getCurrentUser();
-  if (!user || user.role !== "technician") return { ok: false, stop: true };
-  if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) return { ok: false };
-  const req = await getRequestById(requestId);
-  if (!req || req.assignedTechnicianId !== user.technicianId) return { ok: false, stop: true };
-  const status = (await getLookups()).find((l) => l.id === req.statusId);
-  if (!isOnTheWayStatus(status?.label)) return { ok: false, stop: true };
-  await query("update home_service_requests set tech_lat=$1, tech_lng=$2, tech_location_at=now() where id=$3", [lat, lng, requestId]);
-  return { ok: true };
-}
 
 export async function technicianUpdateStatus(formData: FormData) {
   const user = await getCurrentUser();

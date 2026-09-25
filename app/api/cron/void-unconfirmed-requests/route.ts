@@ -3,9 +3,10 @@ import { getRequests, getLookups, query, logActivity, notifyAdmins } from "@/lib
 import { sendCancellationEmail } from "@/lib/email";
 import { sendSms, normalizePhone } from "@/lib/sms";
 
-// Runs every 15 minutes (see vercel.json) and cancels any Home Service
-// Request still sitting in "Pending Confirmation" past its 2-hour window —
-// the customer never clicked the confirm link in their quotation email.
+// Runs every 5 minutes (see vercel.json) and cancels any Home Service
+// Request still sitting in "Pending Confirmation" past its confirmation
+// window (BOOKING_CONFIRMATION_WINDOW_MINUTES) — the customer never
+// clicked the confirm link in their quotation email.
 // Protected by CRON_SECRET, same as the appointment-reminders cron.
 export async function GET(req: NextRequest) {
   const secret = process.env.CRON_SECRET;
@@ -32,7 +33,7 @@ export async function GET(req: NextRequest) {
     // record lives in a separate table and is untouched.
     await query(
       "update home_service_requests set status_id=$1, status_history=$2, admin_notes = admin_notes || $3, deleted_at=now() where id=$4",
-      [cancelledStatus.id, JSON.stringify(statusHistory), (r.adminNotes ? "\n" : "") + "Auto-cancelled: customer did not confirm within the 2-hour window.", r.id]
+      [cancelledStatus.id, JSON.stringify(statusHistory), (r.adminNotes ? "\n" : "") + "Auto-cancelled: customer did not confirm within the confirmation window.", r.id]
     );
 
     let emailNote = "";
@@ -41,7 +42,7 @@ export async function GET(req: NextRequest) {
         await sendCancellationEmail(r.email, {
           customerName: r.customerName,
           reference: r.reference,
-          reason: "The booking wasn't confirmed within the 2-hour window.",
+          reason: "The booking wasn't confirmed within the confirmation window.",
         });
         emailNote = ` — cancellation email sent to ${r.email}`;
       } catch (err) {
@@ -54,7 +55,7 @@ export async function GET(req: NextRequest) {
       try {
         await sendSms(
           normalizePhone(r.phone),
-          `Hi ${r.customerName || "there"}, your Ceejay repair request ${r.reference} has been cancelled — it wasn't confirmed within the 2-hour window. You're welcome to book again anytime.`
+          `Hi ${r.customerName || "there"}, your Ceejay repair request ${r.reference} has been cancelled — it wasn't confirmed within the confirmation window. You're welcome to book again anytime.`
         );
         smsNote = ` — cancellation SMS sent to ${r.phone}`;
       } catch (err) {

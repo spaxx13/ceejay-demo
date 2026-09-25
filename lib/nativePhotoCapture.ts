@@ -1,0 +1,26 @@
+// Plain <input type="file" capture> triggers iOS's system camera sheet by
+// backgrounding the WebView, and on a Capacitor app that handoff can tear
+// down the page's JS state hard enough that the app appears to close and
+// reopen at its start screen (worse the heavier the page's memory use —
+// e.g. a long multi-device home-service form). The fix is to not put the
+// WebView through that handoff at all: @capacitor/camera drives the native
+// camera/photo-library UI as a proper OS-level modal above the running app,
+// so the WebView never backgrounds and never gets torn down.
+//
+// Returns a File so callers can still pipe it through compressImage(), or
+// null if the user cancelled.
+export async function captureNativePhoto(): Promise<File | null> {
+  const { Camera, CameraResultType, CameraSource } = await import("@capacitor/camera");
+  const photo = await Camera.getPhoto({
+    resultType: CameraResultType.Uri,
+    source: CameraSource.Prompt,
+    promptLabelHeader: "Photo of the Issue",
+    promptLabelPhoto: "Choose from Library",
+    promptLabelPicture: "Take Photo",
+    quality: 80,
+  });
+  if (!photo.webPath) return null;
+  const res = await fetch(photo.webPath);
+  const blob = await res.blob();
+  return new File([blob], `photo.${photo.format || "jpg"}`, { type: blob.type || `image/${photo.format || "jpeg"}` });
+}
