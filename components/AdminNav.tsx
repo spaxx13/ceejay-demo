@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { logoutAction } from "@/lib/actions";
 import Logo from "@/components/Logo";
 import PushSubscribe from "@/components/PushSubscribe";
+import FcmRegister from "@/components/FcmRegister";
 
 const NAV_GROUPS: {
   label: string | null;
@@ -136,6 +137,7 @@ export default function AdminNav({
           {userName} · <span className="uppercase">{role.replace("_", " ")}</span>
         </p>
         <PushSubscribe vapidPublicKey={vapidPublicKey} />
+        <FcmRegister />
         <form action={logoutAction}>
           <button className="btn-secondary w-full !py-1.5 text-xs" type="submit">
             Log out

@@ -4,6 +4,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { logoutAction } from "@/lib/actions";
 import Logo from "@/components/Logo";
 import PushSubscribe from "@/components/PushSubscribe";
+import FcmRegister from "@/components/FcmRegister";
 import RefreshButton from "@/components/RefreshButton";
 
 export default async function RiderLayout({ children }: { children: React.ReactNode }) {
@@ -33,6 +34,7 @@ export default async function RiderLayout({ children }: { children: React.ReactN
         </div>
         <div className="mx-auto max-w-2xl px-4 pb-3">
           <PushSubscribe vapidPublicKey={process.env.VAPID_PUBLIC_KEY ?? null} />
+          <FcmRegister />
         </div>
       </div>
       <main className="mx-auto max-w-2xl px-4 py-6 print:p-0">{children}</main>

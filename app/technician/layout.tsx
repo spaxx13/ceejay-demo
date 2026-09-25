@@ -5,6 +5,7 @@ import { logoutAction } from "@/lib/actions";
 import { getUnstartedJobCount } from "@/lib/db";
 import Logo from "@/components/Logo";
 import PushSubscribe from "@/components/PushSubscribe";
+import FcmRegister from "@/components/FcmRegister";
 import AppBadgeSync from "@/components/AppBadgeSync";
 import RefreshButton from "@/components/RefreshButton";
 
@@ -44,6 +45,7 @@ export default async function TechnicianLayout({ children }: { children: React.R
         </div>
         <div className="mx-auto max-w-2xl px-4 pb-3">
           <PushSubscribe vapidPublicKey={process.env.VAPID_PUBLIC_KEY ?? null} />
+          <FcmRegister />
         </div>
       </div>
       <main className="mx-auto max-w-2xl px-4 py-6 print:p-0">{children}</main>

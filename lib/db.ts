@@ -27,6 +27,7 @@ import type {
   LoginLog,
   CheckIn,
   PushSubscription,
+  FcmToken,
   ConversationMessage,
   CrmBroadcast,
   CrmBroadcastStatus,
@@ -36,6 +37,7 @@ import type {
   RequestExceptionKind,
 } from "./types";
 import { sendPushToUsers } from "./push";
+import { sendFcmToUsers } from "./fcm";
 import { sendSms, smsConfigured } from "./sms";
 import { serviceFeeAmount } from "./homeServiceFees";
 
@@ -1227,6 +1229,15 @@ export async function getPushSubscriptions() {
   return (await query<PushSubscriptionRow>("select * from push_subscriptions")).map(mapPushSubscription);
 }
 
+type FcmTokenRow = { id: string; user_id: string; token: string; created_at: Date };
+function mapFcmToken(r: FcmTokenRow): FcmToken {
+  return { id: r.id, userId: r.user_id, token: r.token, createdAt: toIso(r.created_at) };
+}
+
+export async function getFcmTokens() {
+  return (await query<FcmTokenRow>("select * from fcm_tokens")).map(mapFcmToken);
+}
+
 // Shared by notifyAdmins/notifyAdminsAboutWalkIn — writes the in-app
 // notification row (the caller already built the right INSERT for whichever
 // target column it points at) and best-effort fans it out to web push + SMS.
@@ -1239,17 +1250,29 @@ async function notifyAdminsCore(insertSql: string, insertParams: unknown[], url:
   try {
     const admins = (await getUsers()).filter((u) => u.active && (u.role === "owner_admin" || u.role === "branch_admin"));
 
-    const subs = await getPushSubscriptions();
     const adminIds = new Set(admins.map((a) => a.id));
+    // Included on every push so the home-screen icon badge updates from the
+    // service worker/native app even while it's closed — same unread count
+    // getNotifications()'s caller already shows in the sidebar.
+    const unread = await queryOne<{ n: number }>("select count(*)::int as n from notifications where read_at is null");
+
+    const subs = await getPushSubscriptions();
     const recipientSubs = subs.filter((s) => adminIds.has(s.userId));
     if (recipientSubs.length > 0) {
-      // Included on every push so the home-screen icon badge updates from
-      // the service worker even while the app is closed — same unread
-      // count getNotifications()'s caller already shows in the sidebar.
-      const unread = await queryOne<{ n: number }>("select count(*)::int as n from notifications where read_at is null");
       const { expiredEndpoints } = await sendPushToUsers(recipientSubs, { title: "Ceejay Admin", body: message, url, badgeCount: unread?.n ?? undefined });
       if (expiredEndpoints.length > 0) {
         await query("delete from push_subscriptions where endpoint = any($1)", [expiredEndpoints]);
+      }
+    }
+
+    // Native admin app (Firebase Messaging) — separate channel from web
+    // push above, see lib/fcm.ts for why.
+    const tokens = await getFcmTokens();
+    const recipientTokens = tokens.filter((t) => adminIds.has(t.userId)).map((t) => t.token);
+    if (recipientTokens.length > 0) {
+      const { expiredTokens } = await sendFcmToUsers(recipientTokens, { title: "Ceejay Admin", body: message, url, badgeCount: unread?.n ?? undefined });
+      if (expiredTokens.length > 0) {
+        await query("delete from fcm_tokens where token = any($1)", [expiredTokens]);
       }
     }
 
@@ -1314,18 +1337,27 @@ export async function notifyTechnician(technicianId: string, message: string, ur
     const techUser = await queryOne<{ id: string }>("select id from users where technician_id = $1 and active", [technicianId]);
     if (!techUser) return;
 
-    const subs = (await getPushSubscriptions()).filter((s) => s.userId === techUser.id);
-    if (subs.length === 0) return;
-
     // Badge count = jobs assigned to this technician that they haven't
     // started yet ("Assigned" status, not yet moved to En Route/In
     // Progress) — the same "new job" count the technician layout badges
     // with on open, kept in sync here so it also updates while the app is
     // closed. See getUnstartedJobCount below.
     const badgeCount = await getUnstartedJobCount(technicianId);
-    const { expiredEndpoints } = await sendPushToUsers(subs, { title: "Ceejay", body: message, url, badgeCount });
-    if (expiredEndpoints.length > 0) {
-      await query("delete from push_subscriptions where endpoint = any($1)", [expiredEndpoints]);
+
+    const subs = (await getPushSubscriptions()).filter((s) => s.userId === techUser.id);
+    if (subs.length > 0) {
+      const { expiredEndpoints } = await sendPushToUsers(subs, { title: "Ceejay", body: message, url, badgeCount });
+      if (expiredEndpoints.length > 0) {
+        await query("delete from push_subscriptions where endpoint = any($1)", [expiredEndpoints]);
+      }
+    }
+
+    const tokens = (await getFcmTokens()).filter((t) => t.userId === techUser.id).map((t) => t.token);
+    if (tokens.length > 0) {
+      const { expiredTokens } = await sendFcmToUsers(tokens, { title: "Ceejay", body: message, url, badgeCount });
+      if (expiredTokens.length > 0) {
+        await query("delete from fcm_tokens where token = any($1)", [expiredTokens]);
+      }
     }
   } catch {
     // Best-effort — see notifyAdmins above.
@@ -1343,11 +1375,19 @@ export async function notifyRider(riderId: string, message: string, url: string)
     if (!riderUser) return;
 
     const subs = (await getPushSubscriptions()).filter((s) => s.userId === riderUser.id);
-    if (subs.length === 0) return;
+    if (subs.length > 0) {
+      const { expiredEndpoints } = await sendPushToUsers(subs, { title: "Ceejay", body: message, url });
+      if (expiredEndpoints.length > 0) {
+        await query("delete from push_subscriptions where endpoint = any($1)", [expiredEndpoints]);
+      }
+    }
 
-    const { expiredEndpoints } = await sendPushToUsers(subs, { title: "Ceejay", body: message, url });
-    if (expiredEndpoints.length > 0) {
-      await query("delete from push_subscriptions where endpoint = any($1)", [expiredEndpoints]);
+    const tokens = (await getFcmTokens()).filter((t) => t.userId === riderUser.id).map((t) => t.token);
+    if (tokens.length > 0) {
+      const { expiredTokens } = await sendFcmToUsers(tokens, { title: "Ceejay", body: message, url });
+      if (expiredTokens.length > 0) {
+        await query("delete from fcm_tokens where token = any($1)", [expiredTokens]);
+      }
     }
   } catch {
     // Best-effort — see notifyAdmins above.

@@ -80,6 +80,44 @@ in automatically.
    technician/rider's live position to the customer they're currently
    serving, only while a job is active).
 
+## Push notifications (Firebase Cloud Messaging)
+
+The native admin/technician/rider apps can't receive standard Web Push the
+way a browser tab can (a Capacitor app's WKWebView doesn't support the
+Push API) — notifying them goes through **Firebase Cloud Messaging**
+instead, relayed to APNs on iOS. This is wired up server-side already
+(`lib/fcm.ts`, `components/FcmRegister.tsx`) using the official
+`@capacitor-firebase/messaging` plugin — no custom native code needed,
+`npx cap sync ios`/`android` installs it automatically.
+
+1. In the [Firebase console](https://console.firebase.google.com), open
+   your project → **Project Settings** (gear icon) → **Service Accounts**
+   tab → **Generate New Private Key**. This downloads a JSON file — don't
+   commit it to the repo.
+2. From that JSON file, set these on Vercel (**Settings → Environment
+   Variables**) and in your local `.env` for testing:
+   - `FIREBASE_PROJECT_ID` — the `project_id` field
+   - `FIREBASE_CLIENT_EMAIL` — the `client_email` field
+   - `FIREBASE_PRIVATE_KEY` — the `private_key` field, pasted as-is
+     (`lib/fcm.ts` un-escapes the `\n` line breaks for you)
+3. Make sure `ios/App/App/GoogleService-Info.plist` is present (from the
+   Firebase console → your iOS app → download this file) — same file your
+   existing admin-app project already had.
+4. `npx cap sync ios` (and `android`) after `npm install` picks up
+   `@capacitor-firebase/messaging`'s native dependencies automatically.
+5. Rebuild and run on a real device — `FcmRegister.tsx` registers this
+   device's token with the server automatically on login, no button to
+   tap. Push notifications (new job assigned, new request, etc.) should
+   then reach the native app the same way they already reach the
+   browser/PWA build.
+
+If your `ceejay-admin-app`/`ceejay-technician-app`/`ceejay-rider-app`
+Xcode projects were built separately from this repo (with their own
+hand-written `FirebaseMessaging.swift`), they won't pick this up — the
+straightforward path is to regenerate their `ios/` folder from *this*
+repo (`npx cap add ios` here, then open that project in Xcode) so it uses
+the plugin instead of custom native code.
+
 ## Compatibility note
 
 `@capacitor-community/background-geolocation`'s README only lists

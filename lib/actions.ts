@@ -3926,3 +3926,24 @@ export async function removePushSubscription(endpoint: string) {
   if (!user) return;
   await query("delete from push_subscriptions where endpoint=$1 and user_id=$2", [endpoint, user.id]);
 }
+
+// ---------- Native app push (Firebase Cloud Messaging) ----------
+// Same shape as the Web Push pair above, called from FcmRegister.tsx — the
+// native admin/technician/rider apps' equivalent of PushSubscribe.tsx.
+// See lib/fcm.ts for why this is a separate channel from web push.
+
+export async function saveFcmToken(token: string) {
+  const user = await getCurrentUser();
+  if (!user) return;
+  await query(
+    `insert into fcm_tokens (user_id, token) values ($1,$2)
+     on conflict (token) do update set user_id = excluded.user_id`,
+    [user.id, token]
+  );
+}
+
+export async function removeFcmToken(token: string) {
+  const user = await getCurrentUser();
+  if (!user) return;
+  await query("delete from fcm_tokens where token=$1 and user_id=$2", [token, user.id]);
+}
