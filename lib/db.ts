@@ -36,6 +36,7 @@ import type {
   RequestExceptionKind,
 } from "./types";
 import { sendPushToUsers } from "./push";
+import { sendPushToTokens } from "./pushNotifications";
 import { sendSms, smsConfigured } from "./sms";
 import { serviceFeeAmount } from "./homeServiceFees";
 
@@ -1265,6 +1266,25 @@ export async function getPushSubscriptions() {
   return (await query<PushSubscriptionRow>("select * from push_subscriptions")).map(mapPushSubscription);
 }
 
+// FCM device tokens for the staff apps (Admin, and later
+// Technician/Rider) — Web Push doesn't work inside the Capacitor WKWebView
+// shell, so staff notifications also fan out here alongside push_subscriptions.
+export async function saveStaffPushToken(userId: string, token: string) {
+  await query(
+    "insert into staff_push_tokens (user_id, token) values ($1, $2) on conflict (token) do update set user_id = excluded.user_id",
+    [userId, token],
+  );
+}
+
+export async function getStaffPushTokens(userIds: string[]) {
+  if (userIds.length === 0) return [];
+  return (await query<{ token: string }>("select token from staff_push_tokens where user_id = any($1)", [userIds])).map((r) => r.token);
+}
+
+export async function deleteStaffPushToken(token: string) {
+  await query("delete from staff_push_tokens where token = $1", [token]);
+}
+
 // Shared by notifyAdmins/notifyAdminsAboutWalkIn — writes the in-app
 // notification row (the caller already built the right INSERT for whichever
 // target column it points at) and best-effort fans it out to web push + SMS.
@@ -1288,6 +1308,16 @@ async function notifyAdminsCore(insertSql: string, insertParams: unknown[], url:
       const { expiredEndpoints } = await sendPushToUsers(recipientSubs, { title: "Ceejay Admin", body: message, url, badgeCount: unread?.n ?? undefined });
       if (expiredEndpoints.length > 0) {
         await query("delete from push_subscriptions where endpoint = any($1)", [expiredEndpoints]);
+      }
+    }
+
+    // FCM, for the native Ceejay Admin app — Web Push above doesn't reach
+    // it, since Capacitor's WKWebView shell has no Service Worker/Push API.
+    const staffTokens = await getStaffPushTokens([...adminIds]);
+    if (staffTokens.length > 0) {
+      const { expiredTokens } = await sendPushToTokens(staffTokens, "Ceejay Admin", message);
+      if (expiredTokens.length > 0) {
+        await Promise.all(expiredTokens.map((token) => deleteStaffPushToken(token)));
       }
     }
 

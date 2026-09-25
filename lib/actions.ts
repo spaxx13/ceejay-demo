@@ -15,10 +15,13 @@ import {
   PICKUP_DELIVERY_SKIP_OTP,
 } from "@/lib/config";
 import { CHECKLIST_TEMPLATE } from "./checklist";
-import { sendCustomerPush } from "./pushNotifications";
+import { sendPushToTokens } from "./pushNotifications";
 import {
   query,
   queryOne,
+  getCustomerPushTokens,
+  deleteCustomerPushToken,
+  saveStaffPushToken,
   getUserAuthByEmail,
   getUsers,
   getTechnicians,
@@ -99,6 +102,14 @@ import {
   type PickupPhoto,
   type RequestExceptionKind,
 } from "./types";
+
+// Sends an FCM push to every device the customer has registered, pruning
+// whatever comes back as no-longer-registered (app uninstalled, etc.).
+async function sendCustomerPush(customerId: string, title: string, body: string) {
+  const tokens = await getCustomerPushTokens(customerId);
+  const { expiredTokens } = await sendPushToTokens(tokens, title, body);
+  await Promise.all(expiredTokens.map((token) => deleteCustomerPushToken(token)));
+}
 
 function str(fd: FormData, key: string) {
   return String(fd.get(key) ?? "").trim();
@@ -3953,4 +3964,14 @@ export async function removePushSubscription(endpoint: string) {
   const user = await getCurrentUser();
   if (!user) return;
   await query("delete from push_subscriptions where endpoint=$1 and user_id=$2", [endpoint, user.id]);
+}
+
+// ---------- FCM device tokens (native staff apps) ----------
+// Web Push above doesn't reach the Capacitor-wrapped Admin app (and later
+// Technician/Rider), so those register an FCM token here instead — see
+// components/StaffPushNotificationRegistrar.tsx.
+export async function registerStaffPushToken(token: string) {
+  const user = await getCurrentUser();
+  if (!user) return;
+  await saveStaffPushToken(user.id, token);
 }
