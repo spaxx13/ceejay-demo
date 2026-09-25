@@ -4,8 +4,8 @@ import { getCurrentUser } from "@/lib/auth";
 import { logoutAction } from "@/lib/actions";
 import Logo from "@/components/Logo";
 import PushSubscribe from "@/components/PushSubscribe";
-import FcmRegister from "@/components/FcmRegister";
 import RefreshButton from "@/components/RefreshButton";
+import StaffPushNotificationRegistrar from "@/components/StaffPushNotificationRegistrar";
 
 export default async function RiderLayout({ children }: { children: React.ReactNode }) {
   const user = await getCurrentUser();
@@ -14,7 +14,8 @@ export default async function RiderLayout({ children }: { children: React.ReactN
 
   return (
     <div className="min-h-screen">
-      <div className="glass sticky top-0 z-10 print:hidden">
+      <StaffPushNotificationRegistrar />
+      <div className="glass sticky top-0 z-10 print:hidden" style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}>
         <div className="mx-auto flex max-w-2xl items-center justify-between px-4 py-3">
           <span className="flex items-center gap-2">
             <Logo className="h-7 w-7 shrink-0" />
@@ -34,7 +35,6 @@ export default async function RiderLayout({ children }: { children: React.ReactN
         </div>
         <div className="mx-auto max-w-2xl px-4 pb-3">
           <PushSubscribe vapidPublicKey={process.env.VAPID_PUBLIC_KEY ?? null} />
-          <FcmRegister />
         </div>
       </div>
       <main className="mx-auto max-w-2xl px-4 py-6 print:p-0">{children}</main>

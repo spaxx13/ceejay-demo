@@ -27,7 +27,6 @@ import type {
   LoginLog,
   CheckIn,
   PushSubscription,
-  FcmToken,
   ConversationMessage,
   CrmBroadcast,
   CrmBroadcastStatus,
@@ -37,7 +36,7 @@ import type {
   RequestExceptionKind,
 } from "./types";
 import { sendPushToUsers } from "./push";
-import { sendFcmToUsers } from "./fcm";
+import { sendPushToTokens } from "./pushNotifications";
 import { sendSms, smsConfigured } from "./sms";
 import { serviceFeeAmount } from "./homeServiceFees";
 
@@ -613,6 +612,15 @@ export async function getCustomerById(id: string) {
   const row = await queryOne<CustomerRow>("select * from customers where id = $1", [id]);
   return row ? mapCustomer(row) : null;
 }
+// Customer app login — phone is the only identifier a customer logs in
+// with (no password), same normalized-digits comparison the booking forms
+// already use to dedupe customers by phone.
+export async function getCustomerByPhone(phone: string) {
+  const rows = await query<CustomerRow>("select * from customers where replace(replace(phone, ' ', ''), '-', '') = $1", [
+    phone.replace(/[\s-]/g, ""),
+  ]);
+  return rows[0] ? mapCustomer(rows[0]) : null;
+}
 export async function getLookups() {
   return (await query<LookupRow>("select * from lookups order by kind, order_num")).map(mapLookup);
 }
@@ -733,6 +741,35 @@ export async function claimHomeServiceDownpaymentAsPaid(token: string, paymongoP
 // other requests belong to the same booking.
 export async function getRequestsByBookingGroup(groupId: string) {
   return (await query<RequestRow>("select * from home_service_requests where booking_group_id = $1", [groupId])).map(mapRequest);
+}
+// The customer app's "My Bookings" dashboard — every request (any
+// fulfillment mode, any status) linked to this customer, newest first.
+// Excludes trashed rows the same way getRequests() does; a deleted
+// booking isn't something the customer should keep seeing.
+export async function getRequestsByCustomerId(customerId: string) {
+  return (
+    await query<RequestRow>("select * from home_service_requests where customer_id = $1 and deleted_at is null order by created_at desc", [
+      customerId,
+    ])
+  ).map(mapRequest);
+}
+
+// A customer's registered push-notification device(s) — a phone can be
+// re-registered (token rotates on reinstall) so this upserts on the token
+// itself, keyed to whichever customer is currently signed in.
+export async function saveCustomerPushToken(customerId: string, token: string) {
+  await query(
+    "insert into customer_push_tokens (customer_id, token) values ($1, $2) on conflict (token) do update set customer_id = excluded.customer_id",
+    [customerId, token],
+  );
+}
+
+export async function getCustomerPushTokens(customerId: string) {
+  return (await query<{ token: string }>("select token from customer_push_tokens where customer_id = $1", [customerId])).map((r) => r.token);
+}
+
+export async function deleteCustomerPushToken(token: string) {
+  await query("delete from customer_push_tokens where token = $1", [token]);
 }
 
 type RequestExceptionRow = {
@@ -1229,13 +1266,23 @@ export async function getPushSubscriptions() {
   return (await query<PushSubscriptionRow>("select * from push_subscriptions")).map(mapPushSubscription);
 }
 
-type FcmTokenRow = { id: string; user_id: string; token: string; created_at: Date };
-function mapFcmToken(r: FcmTokenRow): FcmToken {
-  return { id: r.id, userId: r.user_id, token: r.token, createdAt: toIso(r.created_at) };
+// FCM device tokens for the staff apps (Admin, and later
+// Technician/Rider) — Web Push doesn't work inside the Capacitor WKWebView
+// shell, so staff notifications also fan out here alongside push_subscriptions.
+export async function saveStaffPushToken(userId: string, token: string) {
+  await query(
+    "insert into staff_push_tokens (user_id, token) values ($1, $2) on conflict (token) do update set user_id = excluded.user_id",
+    [userId, token],
+  );
 }
 
-export async function getFcmTokens() {
-  return (await query<FcmTokenRow>("select * from fcm_tokens")).map(mapFcmToken);
+export async function getStaffPushTokens(userIds: string[]) {
+  if (userIds.length === 0) return [];
+  return (await query<{ token: string }>("select token from staff_push_tokens where user_id = any($1)", [userIds])).map((r) => r.token);
+}
+
+export async function deleteStaffPushToken(token: string) {
+  await query("delete from staff_push_tokens where token = $1", [token]);
 }
 
 // Shared by notifyAdmins/notifyAdminsAboutWalkIn — writes the in-app
@@ -1265,14 +1312,13 @@ async function notifyAdminsCore(insertSql: string, insertParams: unknown[], url:
       }
     }
 
-    // Native admin app (Firebase Messaging) — separate channel from web
-    // push above, see lib/fcm.ts for why.
-    const tokens = await getFcmTokens();
-    const recipientTokens = tokens.filter((t) => adminIds.has(t.userId)).map((t) => t.token);
-    if (recipientTokens.length > 0) {
-      const { expiredTokens } = await sendFcmToUsers(recipientTokens, { title: "Ceejay Admin", body: message, url, badgeCount: unread?.n ?? undefined });
+    // FCM, for the native Ceejay Admin app — Web Push above doesn't reach
+    // it, since Capacitor's WKWebView shell has no Service Worker/Push API.
+    const staffTokens = await getStaffPushTokens([...adminIds]);
+    if (staffTokens.length > 0) {
+      const { expiredTokens } = await sendPushToTokens(staffTokens, "Ceejay Admin", message);
       if (expiredTokens.length > 0) {
-        await query("delete from fcm_tokens where token = any($1)", [expiredTokens]);
+        await Promise.all(expiredTokens.map((token) => deleteStaffPushToken(token)));
       }
     }
 
@@ -1352,11 +1398,12 @@ export async function notifyTechnician(technicianId: string, message: string, ur
       }
     }
 
-    const tokens = (await getFcmTokens()).filter((t) => t.userId === techUser.id).map((t) => t.token);
-    if (tokens.length > 0) {
-      const { expiredTokens } = await sendFcmToUsers(tokens, { title: "Ceejay", body: message, url, badgeCount });
+    // FCM, for the native Technician app — Web Push above doesn't reach it.
+    const staffTokens = await getStaffPushTokens([techUser.id]);
+    if (staffTokens.length > 0) {
+      const { expiredTokens } = await sendPushToTokens(staffTokens, "Ceejay", message);
       if (expiredTokens.length > 0) {
-        await query("delete from fcm_tokens where token = any($1)", [expiredTokens]);
+        await Promise.all(expiredTokens.map((token) => deleteStaffPushToken(token)));
       }
     }
   } catch {
@@ -1382,11 +1429,12 @@ export async function notifyRider(riderId: string, message: string, url: string)
       }
     }
 
-    const tokens = (await getFcmTokens()).filter((t) => t.userId === riderUser.id).map((t) => t.token);
-    if (tokens.length > 0) {
-      const { expiredTokens } = await sendFcmToUsers(tokens, { title: "Ceejay", body: message, url });
+    // FCM, for the native Rider app — Web Push above doesn't reach it.
+    const staffTokens = await getStaffPushTokens([riderUser.id]);
+    if (staffTokens.length > 0) {
+      const { expiredTokens } = await sendPushToTokens(staffTokens, "Ceejay", message);
       if (expiredTokens.length > 0) {
-        await query("delete from fcm_tokens where token = any($1)", [expiredTokens]);
+        await Promise.all(expiredTokens.map((token) => deleteStaffPushToken(token)));
       }
     }
   } catch {
