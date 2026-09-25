@@ -15,9 +15,13 @@ import {
   PICKUP_DELIVERY_SKIP_OTP,
 } from "@/lib/config";
 import { CHECKLIST_TEMPLATE } from "./checklist";
+import { sendPushToTokens } from "./pushNotifications";
 import {
   query,
   queryOne,
+  getCustomerPushTokens,
+  deleteCustomerPushToken,
+  saveStaffPushToken,
   getUserAuthByEmail,
   getUsers,
   getTechnicians,
@@ -75,7 +79,7 @@ import {
   emailConfigured,
 } from "./email";
 import { isOnTheWayStatus } from "./technicianTracking";
-import { sendSms, sendOtpSms, smsConfigured, normalizePhone, getAccountStatus, type SmsAccountStatus } from "./sms";
+import { sendSms, sendOtpSms, smsConfigured, normalizePhone, isValidPhone, getAccountStatus, type SmsAccountStatus } from "./sms";
 import { SUNDAY_ONLY_PROVINCES, DOWNPAYMENT_PROVINCES, serviceFeeAmount, PICKUP_DELIVERY_FEE_PESOS } from "./homeServiceFees";
 import { getRepairQuote } from "./servicePricing";
 import { formatDate, isCheckInOpen } from "./format";
@@ -99,15 +103,19 @@ import {
   type RequestExceptionKind,
 } from "./types";
 
+// Sends an FCM push to every device the customer has registered, pruning
+// whatever comes back as no-longer-registered (app uninstalled, etc.).
+async function sendCustomerPush(customerId: string, title: string, body: string) {
+  const tokens = await getCustomerPushTokens(customerId);
+  const { expiredTokens } = await sendPushToTokens(tokens, title, body);
+  await Promise.all(expiredTokens.map((token) => deleteCustomerPushToken(token)));
+}
+
 function str(fd: FormData, key: string) {
   return String(fd.get(key) ?? "").trim();
 }
 function listStr(fd: FormData, key: string) {
   return fd.getAll(key).map(String).filter(Boolean);
-}
-function isValidPhone(phone: string) {
-  const cleaned = phone.replace(/[\s-]/g, "");
-  return /^(\+63|0)9\d{9}$/.test(cleaned);
 }
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -737,6 +745,11 @@ export async function riderUpdatePickupStatus(_prev: RiderStatusResult | undefin
       if (!req.pickupRiderAcceptedAt) return { ok: false, error: "Please accept this job before starting the trip." };
       await query("update home_service_requests set pickup_started_at=now() where id=$1", [requestId]);
       await logActivity("home_service_request", requestId, `Rider ${user.name} is on the way to pick up the device`, user.name);
+      if (req.customerId) {
+        sendCustomerPush(req.customerId, "Your rider is on the way", `The rider is on the way to pick up your device for repair ${req.reference}.`).catch(
+          () => {},
+        );
+      }
       if (req.email && emailConfigured()) {
         try {
           await sendTrackingLinkEmail(req.email, { customerName: req.customerName, reference: req.reference, phone: req.phone, stage: "heading_to_pickup" });
@@ -894,6 +907,11 @@ export async function riderUpdateDeliveryStatus(_prev: RiderStatusResult | undef
       }
       await query("update home_service_requests set out_for_delivery_at=now() where id=$1", [requestId]);
       await logActivity("home_service_request", requestId, `Rider ${user.name} is on the way to deliver the device`, user.name);
+      if (req.customerId) {
+        sendCustomerPush(req.customerId, "Your device is on its way", `The rider is on the way to deliver your device for repair ${req.reference}.`).catch(
+          () => {},
+        );
+      }
       break;
     }
     case "delivered":
@@ -3328,6 +3346,13 @@ async function startTechnicianTrackingIfOnTheWay(req: HomeServiceRequest, newSta
   if (!isOnTheWayStatus(newStatusLabel) || req.trackingToken) return "";
   const token = crypto.randomUUID().replace(/-/g, "");
   await query("update home_service_requests set tracking_token=$1 where id=$2", [token, req.id]);
+  if (req.customerId) {
+    // Best-effort — a customer who never registered the app (or hasn't
+    // granted notification permission) simply has no tokens to send to.
+    sendCustomerPush(req.customerId, "Your technician is on the way", `Track your technician's live location for repair ${req.reference}.`).catch(
+      () => {},
+    );
+  }
   if (!req.email) return " — no customer email on file, tracking link not sent";
   if (!emailConfigured()) return " — email not configured, tracking link not sent";
 
@@ -3927,23 +3952,12 @@ export async function removePushSubscription(endpoint: string) {
   await query("delete from push_subscriptions where endpoint=$1 and user_id=$2", [endpoint, user.id]);
 }
 
-// ---------- Native app push (Firebase Cloud Messaging) ----------
-// Same shape as the Web Push pair above, called from FcmRegister.tsx — the
-// native admin/technician/rider apps' equivalent of PushSubscribe.tsx.
-// See lib/fcm.ts for why this is a separate channel from web push.
-
-export async function saveFcmToken(token: string) {
+// ---------- FCM device tokens (native staff apps) ----------
+// Web Push above doesn't reach the Capacitor-wrapped Admin app (and later
+// Technician/Rider), so those register an FCM token here instead — see
+// components/StaffPushNotificationRegistrar.tsx.
+export async function registerStaffPushToken(token: string) {
   const user = await getCurrentUser();
   if (!user) return;
-  await query(
-    `insert into fcm_tokens (user_id, token) values ($1,$2)
-     on conflict (token) do update set user_id = excluded.user_id`,
-    [user.id, token]
-  );
-}
-
-export async function removeFcmToken(token: string) {
-  const user = await getCurrentUser();
-  if (!user) return;
-  await query("delete from fcm_tokens where token=$1 and user_id=$2", [token, user.id]);
+  await saveStaffPushToken(user.id, token);
 }

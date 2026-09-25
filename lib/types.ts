@@ -31,15 +31,6 @@ export type PushSubscription = {
   createdAt: string;
 };
 
-// One native-app install (admin/technician/rider, via Firebase Messaging) a
-// staff account has enabled notifications on — see lib/fcm.ts.
-export type FcmToken = {
-  id: string;
-  userId: string;
-  token: string;
-  createdAt: string;
-};
-
 // Owner-managed business expenses (rent, utilities, tools, etc.) — separate
 // from the per-ticket parts/labor/other cost fields on repair records and
 // service agreements. Each expense is deducted from exactly one Sales total.

@@ -29,6 +29,13 @@ export function normalizePhone(phone: string) {
   return digits;
 }
 
+// "0" or "+63" + 9 + 9 digits — the two forms the app accepts anywhere a
+// customer types a PH mobile number.
+export function isValidPhone(phone: string) {
+  const cleaned = phone.replace(/[\s-]/g, "");
+  return /^(\+63|0)9\d{9}$/.test(cleaned);
+}
+
 type SemaphoreMessage = { message_id: number; status: string; code?: string };
 
 function buildBody(phone: string, message: string) {
