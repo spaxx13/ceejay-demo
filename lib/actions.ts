@@ -53,6 +53,9 @@ import {
   canManageWalkIns,
   canWaiveServiceFee,
   canManageRepairPricing,
+  canManageManualChecklists,
+  getManualChecklistById,
+  isBranchHidden,
   getIcloudCheckById,
   createIcloudCheck,
   markIcloudCheckPaymentPending,
@@ -195,6 +198,7 @@ export async function createUser(formData: FormData) {
   const canManageWalkInsFlag = role === "branch_admin" ? formData.get("canManageWalkIns") === "on" : true;
   const canWaiveServiceFeeFlag = role === "branch_admin" ? formData.get("canWaiveServiceFee") === "on" : true;
   const canManageRepairPricingFlag = role === "branch_admin" ? formData.get("canManageRepairPricing") === "on" : true;
+  const canManageManualChecklistsFlag = role === "technician" ? formData.get("canManageManualChecklists") === "on" : true;
   const phone = str(formData, "phone");
   if (!name || !email || !password || !role) return;
   if (role === "rider" && !riderId) return; // must link to an existing Rider record (Settings > Riders)
@@ -218,7 +222,7 @@ export async function createUser(formData: FormData) {
 
   const passwordHash = await bcrypt.hash(password, 10);
   await query(
-    "insert into users (name, email, password_hash, role, technician_id, rider_id, assigned_branch_ids, can_manage_requests, can_delete_requests, can_view_all_branches, can_access_crm, can_manage_walkins, can_waive_service_fee, can_manage_repair_pricing, phone) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)",
+    "insert into users (name, email, password_hash, role, technician_id, rider_id, assigned_branch_ids, can_manage_requests, can_delete_requests, can_view_all_branches, can_access_crm, can_manage_walkins, can_waive_service_fee, can_manage_repair_pricing, can_manage_manual_checklists, phone) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)",
     [
       name,
       email,
@@ -234,6 +238,7 @@ export async function createUser(formData: FormData) {
       canManageWalkInsFlag,
       canWaiveServiceFeeFlag,
       canManageRepairPricingFlag,
+      canManageManualChecklistsFlag,
       phone,
     ]
   );
@@ -270,6 +275,7 @@ export async function updateUser(formData: FormData) {
   const canManageWalkInsFlag = role === "branch_admin" ? formData.get("canManageWalkIns") === "on" : true;
   const canWaiveServiceFeeFlag = role === "branch_admin" ? formData.get("canWaiveServiceFee") === "on" : true;
   const canManageRepairPricingFlag = role === "branch_admin" ? formData.get("canManageRepairPricing") === "on" : true;
+  const canManageManualChecklistsFlag = role === "technician" ? formData.get("canManageManualChecklists") === "on" : true;
   const phone = formData.has("phone") ? str(formData, "phone") : user.phone;
 
   if (role === "technician") {
@@ -298,7 +304,7 @@ export async function updateUser(formData: FormData) {
   if (password) {
     const passwordHash = await bcrypt.hash(password, 10);
     await query(
-      "update users set name=$1, email=$2, password_hash=$3, role=$4, technician_id=$5, rider_id=$6, assigned_branch_ids=$7, can_manage_requests=$8, can_delete_requests=$9, can_view_all_branches=$10, can_access_crm=$11, can_manage_walkins=$12, can_waive_service_fee=$13, can_manage_repair_pricing=$14, phone=$15 where id=$16",
+      "update users set name=$1, email=$2, password_hash=$3, role=$4, technician_id=$5, rider_id=$6, assigned_branch_ids=$7, can_manage_requests=$8, can_delete_requests=$9, can_view_all_branches=$10, can_access_crm=$11, can_manage_walkins=$12, can_waive_service_fee=$13, can_manage_repair_pricing=$14, can_manage_manual_checklists=$15, phone=$16 where id=$17",
       [
         name,
         email || user.email,
@@ -314,13 +320,14 @@ export async function updateUser(formData: FormData) {
         canManageWalkInsFlag,
         canWaiveServiceFeeFlag,
         canManageRepairPricingFlag,
+        canManageManualChecklistsFlag,
         phone,
         userId,
       ]
     );
   } else {
     await query(
-      "update users set name=$1, email=$2, role=$3, technician_id=$4, rider_id=$5, assigned_branch_ids=$6, can_manage_requests=$7, can_delete_requests=$8, can_view_all_branches=$9, can_access_crm=$10, can_manage_walkins=$11, can_waive_service_fee=$12, can_manage_repair_pricing=$13, phone=$14 where id=$15",
+      "update users set name=$1, email=$2, role=$3, technician_id=$4, rider_id=$5, assigned_branch_ids=$6, can_manage_requests=$7, can_delete_requests=$8, can_view_all_branches=$9, can_access_crm=$10, can_manage_walkins=$11, can_waive_service_fee=$12, can_manage_repair_pricing=$13, can_manage_manual_checklists=$14, phone=$15 where id=$16",
       [
         name,
         email || user.email,
@@ -335,6 +342,7 @@ export async function updateUser(formData: FormData) {
         canManageWalkInsFlag,
         canWaiveServiceFeeFlag,
         canManageRepairPricingFlag,
+        canManageManualChecklistsFlag,
         phone,
         userId,
       ]
@@ -3941,6 +3949,89 @@ export async function markAllNotificationsRead() {
   await query("update notifications set read_at = now() where read_at is null");
   revalidatePath("/admin/notifications");
   revalidatePath("/admin");
+}
+
+// ---------- Manual Checklist & Receipt ----------
+// Standalone device-condition checklist for a customer with no online
+// booking or POS sale yet — see ManualChecklist's own comment in types.ts.
+// Available to owner_admin/branch_admin always, and to a technician only
+// when canManageManualChecklists(user) is true (Settings > Staff Accounts).
+
+export type CreateManualChecklistResult = { ok: true; id: string; reference: string } | { ok: false; error: string };
+
+export async function createManualChecklist(
+  _prev: CreateManualChecklistResult | undefined,
+  formData: FormData
+): Promise<CreateManualChecklistResult> {
+  const user = await getCurrentUser();
+  if (!canManageManualChecklists(user)) return { ok: false, error: "You don't have access to Manual Checklist & Receipt." };
+
+  const customerName = str(formData, "customerName");
+  const customerPhone = str(formData, "customerPhone");
+  const deviceLabel = str(formData, "deviceLabel");
+  const branchId = str(formData, "branchId") || null;
+  const summaryNotes = str(formData, "summaryNotes");
+  if (!customerName || !deviceLabel) return { ok: false, error: "Customer name and device are required." };
+
+  const items: ChecklistItem[] = CHECKLIST_TEMPLATE.map((t) => {
+    const result = str(formData, `result_${t.key}`) as ChecklistResult;
+    return {
+      ...t,
+      result: result === "pass" || result === "fail" || result === "na" ? result : null,
+      notes: str(formData, `notes_${t.key}`),
+    };
+  });
+  if (items.some((i) => !i.result)) {
+    return { ok: false, error: "Please mark every checklist item as Pass, Fail, or N/A." };
+  }
+
+  const customerSignatureDataUrl = str(formData, "customerSignature");
+  if (!customerSignatureDataUrl.startsWith("data:image/")) return { ok: false, error: "Customer signature is required." };
+  const staffSignatureDataUrl = str(formData, "staffSignature");
+  if (!staffSignatureDataUrl.startsWith("data:image/")) return { ok: false, error: "Staff signature is required." };
+
+  // Same max-based + retry-on-collision reference pattern used for
+  // walkin_requests/repair_records — a plain count(*) undercounts once any
+  // row has ever been deleted, causing later inserts to collide.
+  const year = new Date().getFullYear();
+  let reference = "";
+  let created: { id: string } | null = null;
+  for (let attempt = 1; attempt <= 5; attempt++) {
+    const max = await queryOne<{ n: number }>(
+      "select coalesce(max(split_part(reference, '-', 3)::int), 0)::int as n from manual_checklists where reference like $1",
+      [`MC-${year}-%`]
+    );
+    reference = `MC-${year}-${String((max?.n ?? 0) + 1).padStart(4, "0")}`;
+    try {
+      created = await queryOne<{ id: string }>(
+        `insert into manual_checklists
+           (reference, branch_id, created_by_user_id, created_by_name, customer_name, customer_phone, device_label, items, summary_notes, customer_signature_data_url, staff_signature_data_url)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) returning id`,
+        [reference, branchId, user!.id, user!.name, customerName, customerPhone, deviceLabel, JSON.stringify(items), summaryNotes, customerSignatureDataUrl, staffSignatureDataUrl]
+      );
+      break;
+    } catch (err) {
+      const code = (err as { code?: string }).code;
+      if (code === "23505" && attempt < 5) continue;
+      throw err;
+    }
+  }
+
+  await logActivity("manual_checklist", created!.id, `Manual checklist ${reference} created by ${user!.name}`, user!.name);
+  revalidatePath("/admin/manual-checklists");
+  revalidatePath("/technician/manual-checklists");
+  return { ok: true, id: created!.id, reference };
+}
+
+export async function deleteManualChecklist(formData: FormData) {
+  const user = await getCurrentUser();
+  if (!user || (user.role !== "owner_admin" && user.role !== "branch_admin")) return;
+  const id = str(formData, "id");
+  const record = await getManualChecklistById(id);
+  if (!record || isBranchHidden(user, record.branchId)) return;
+  await query("update manual_checklists set deleted_at=now() where id=$1", [id]);
+  await logActivity("manual_checklist", id, `Manual checklist ${record.reference} deleted by ${user.name}`, user.name);
+  revalidatePath("/admin/manual-checklists");
 }
 
 // ---------- Web Push subscriptions ----------

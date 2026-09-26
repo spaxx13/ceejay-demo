@@ -27,6 +27,7 @@ const NAV_GROUPS: {
       { href: "/admin/pickup-delivery", label: "Pickup & Delivery", requestsGated: true },
       { href: "/admin/walk-ins", label: "Walk-In Registrations", walkinsGated: true },
       { href: "/admin/pos", label: "POS" },
+      { href: "/admin/manual-checklists", label: "Manual Checklist & Receipt" },
       { href: "/admin/sales", label: "Branch Sales" },
       { href: "/admin/check-ins", label: "Check-Ins" },
       { href: "/admin/service-prices", label: "Repair Pricing", repairPricingGated: true },

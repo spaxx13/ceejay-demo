@@ -21,6 +21,7 @@ import type {
   RequestFormContent,
   CustomFormField,
   ServiceAgreement,
+  ManualChecklist,
   RepairProgress,
   Notification,
   Expense,
@@ -96,6 +97,7 @@ type UserRow = {
   can_manage_walkins: boolean;
   can_waive_service_fee: boolean;
   can_manage_repair_pricing: boolean;
+  can_manage_manual_checklists: boolean;
   phone: string;
   active: boolean;
 };
@@ -115,6 +117,7 @@ function mapUser(r: UserRow): User {
     canManageWalkIns: r.can_manage_walkins,
     canWaiveServiceFee: r.can_waive_service_fee,
     canManageRepairPricing: r.can_manage_repair_pricing,
+    canManageManualChecklists: r.can_manage_manual_checklists,
     phone: r.phone,
     active: r.active,
   };
@@ -237,6 +240,27 @@ export function canWaiveServiceFee(user: Pick<User, "role" | "canWaiveServiceFee
 export function canManageRepairPricing(user: Pick<User, "role" | "canManageRepairPricing"> | null) {
   if (!user) return false;
   return user.role === "owner_admin" || (user.role === "branch_admin" && user.canManageRepairPricing);
+}
+
+// True when this account is allowed to use Manual Checklist & Receipt.
+// Unlike the flags above, this one gates *technicians* (owner_admin and
+// branch_admin always have it, same as they always have POS) — the owner
+// picks which specific technician accounts get it.
+export function canManageManualChecklists(user: Pick<User, "role" | "canManageManualChecklists"> | null) {
+  if (!user) return false;
+  if (user.role === "owner_admin" || user.role === "branch_admin") return true;
+  return user.role === "technician" && user.canManageManualChecklists;
+}
+
+// A technician can only open their own manual checklists (not every
+// technician's); an admin is scoped by branch like every other list here.
+export function canViewManualChecklist(
+  user: (Pick<User, "role" | "canManageManualChecklists" | "assignedBranchIds"> & { id: string }) | null,
+  record: Pick<ManualChecklist, "branchId" | "createdByUserId">
+) {
+  if (!canManageManualChecklists(user)) return false;
+  if (user!.role === "technician") return record.createdByUserId === user!.id;
+  return !isBranchHidden(user, record.branchId);
 }
 
 type BranchRow = {
@@ -890,6 +914,29 @@ export async function getCustomFormFields() {
 }
 export async function getServiceAgreements() {
   return (await query<ServiceAgreementRow>("select * from service_agreements order by created_at desc")).map(mapServiceAgreement);
+}
+
+type ManualChecklistRow = {
+  id: string; reference: string; branch_id: string | null; created_by_user_id: string | null; created_by_name: string;
+  customer_name: string; customer_phone: string; device_label: string; items: ManualChecklist["items"]; summary_notes: string;
+  customer_signature_data_url: string | null; staff_signature_data_url: string | null; created_at: Date; deleted_at: Date | null;
+};
+function mapManualChecklist(r: ManualChecklistRow): ManualChecklist {
+  return {
+    id: r.id, reference: r.reference, branchId: r.branch_id, createdByUserId: r.created_by_user_id, createdByName: r.created_by_name,
+    customerName: r.customer_name, customerPhone: r.customer_phone, deviceLabel: r.device_label, items: r.items ?? [], summaryNotes: r.summary_notes,
+    customerSignatureDataUrl: r.customer_signature_data_url, staffSignatureDataUrl: r.staff_signature_data_url,
+    createdAt: toIso(r.created_at), deletedAt: toIsoOrNull(r.deleted_at),
+  };
+}
+export async function getManualChecklists() {
+  return (await query<ManualChecklistRow>("select * from manual_checklists where deleted_at is null order by created_at desc")).map(
+    mapManualChecklist
+  );
+}
+export async function getManualChecklistById(id: string) {
+  const row = await queryOne<ManualChecklistRow>("select * from manual_checklists where id=$1", [id]);
+  return row ? mapManualChecklist(row) : null;
 }
 
 export const HOME_SERVICE_COMPANY_SHARE = 0.3;
