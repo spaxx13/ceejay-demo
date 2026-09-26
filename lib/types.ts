@@ -659,8 +659,7 @@ export type ManualRepairRecord = {
 };
 
 // One phase (pre or post-repair) of a ManualRepairRecord — same shape and
-// purpose as ServiceAgreement, just without the pricing fields that only
-// make sense for a priced POS/home-service job.
+// purpose as ServiceAgreement.
 export type ManualChecklist = {
   id: string;
   manualRecordId: string;
@@ -669,6 +668,10 @@ export type ManualChecklist = {
   summaryNotes: string;
   agreedToTerms: boolean; // only collected/required for phase === "post_repair"
   warrantyCoverage: string; // only collected/required for phase === "post_repair"
+  cost: number; // repair price — only collected for phase === "post_repair"; 0/unused for pre-repair
+  partsCost: number; // internal-only, deducted on Sales for net profit — never shown to the customer or on the receipt
+  laborCost: number; // service fee — added to cost for the customer-facing Total Amount
+  otherExpenses: number; // internal-only, same scope as partsCost
   receiptPhotoDataUrl: string | null; // optional, phase === "post_repair" only
   customerSignatureDataUrl: string | null;
   staffSignatureDataUrl: string | null;
