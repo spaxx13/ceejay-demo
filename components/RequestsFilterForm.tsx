@@ -2,11 +2,11 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 
 type StatusOption = { id: string; label: string };
 type TechnicianOption = { id: string; name: string };
-type Filters = { status?: string; technician?: string; date?: string; unassigned?: string; province?: string; downpayment?: string };
+type Filters = { status?: string; technician?: string; date?: string; unassigned?: string; province?: string; downpayment?: string; reference?: string };
 
 const DOWNPAYMENT_OPTIONS: { value: string; label: string }[] = [
   { value: "paid", label: "Paid" },
@@ -33,6 +33,7 @@ export default function RequestsFilterForm({
   const router = useRouter();
   const pathname = usePathname();
   const [isPending, startTransition] = useTransition();
+  const [referenceInput, setReferenceInput] = useState(current.reference ?? "");
 
   function apply(next: Partial<Filters>) {
     const merged: Filters = { ...current, ...next };
@@ -47,7 +48,25 @@ export default function RequestsFilterForm({
   }
 
   return (
-    <form className={`card flex flex-wrap gap-3 transition-opacity ${isPending ? "opacity-60" : ""}`}>
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        apply({ reference: referenceInput.trim() || undefined });
+      }}
+      className={`card flex flex-wrap gap-3 transition-opacity ${isPending ? "opacity-60" : ""}`}
+    >
+      <div className="flex w-full gap-2 sm:w-64">
+        <input
+          type="search"
+          value={referenceInput}
+          onChange={(e) => setReferenceInput(e.target.value)}
+          placeholder="Search reference number…"
+          className="input flex-1"
+        />
+        <button type="submit" className="btn-secondary shrink-0">
+          🔍 Search
+        </button>
+      </div>
       <select
         name="status"
         defaultValue={current.status ?? ""}
