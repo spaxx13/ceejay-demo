@@ -99,7 +99,14 @@ export function useLiveLocationSharing({
         });
         if (cancelled) return;
         const data = res.data as { stop?: boolean } | null;
-        if (res.status === 401 || res.status === 403 || data?.stop) {
+        // Only an explicit `stop: true` in the response body ends sharing
+        // permanently — NOT a raw 401/403 status code. A session cookie can
+        // fail to reach one ping transiently (e.g. CapacitorHttp not yet
+        // synced with the WebView's cookie jar right after a cold app
+        // start) and recover on the next GPS fix; treating every 401 as
+        // terminal silently and permanently killed location sharing for
+        // the rest of the trip on exactly that kind of hiccup.
+        if (data?.stop) {
           setState("stopped");
           await stopWatching();
           return;

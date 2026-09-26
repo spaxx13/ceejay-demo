@@ -10,12 +10,18 @@ import { isOnTheWayStatus } from "@/lib/technicianTracking";
 // server action, so a dropped/slow ping never triggers a page navigation.
 //
 // `stop: true` in the response tells the caller to stop watching/reporting
-// — either because the job left On The Way (normal end of a trip) or
-// because it isn't this technician's job to report on in the first place.
+// permanently — either because the job left On The Way (normal end of a
+// trip) or because it isn't this technician's job to report on in the
+// first place. A 401 here does NOT set `stop: true`, even though it looks
+// similarly terminal: an expired/missing session cookie on one ping is
+// often transient (e.g. CapacitorHttp momentarily not having synced the
+// WebView's cookie jar yet on a cold app start) and can recover on the
+// next GPS fix — treating it as a hard stop would silently and
+// permanently end location sharing for the rest of the trip.
 export async function POST(req: NextRequest) {
   const user = await getCurrentUser();
   if (!user || user.role !== "technician" || !user.technicianId) {
-    return NextResponse.json({ ok: false, stop: true, error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
 
   const body = await req.json().catch(() => null);
