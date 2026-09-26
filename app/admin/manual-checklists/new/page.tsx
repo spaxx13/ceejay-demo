@@ -16,7 +16,7 @@ export default async function NewManualChecklistPage() {
         <h1 className="mt-1 text-xl font-bold text-slate-900">New Manual Checklist</h1>
         <p className="mt-1 text-sm text-slate-400">Fill in the customer/device details and checklist, then save to generate a receipt.</p>
       </div>
-      <ManualChecklistForm branches={branches} receiptHrefBase="/api/manual-checklist-receipt" backHref="/admin/manual-checklists" />
+      <ManualChecklistForm branches={branches} detailHrefBase="/admin/manual-checklists" backHref="/admin/manual-checklists" />
     </div>
   );
 }

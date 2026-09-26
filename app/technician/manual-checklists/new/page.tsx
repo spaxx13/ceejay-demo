@@ -20,7 +20,7 @@ export default async function NewTechnicianManualChecklistPage() {
         </Link>
         <h1 className="mt-1 text-lg font-bold text-slate-900">New Manual Checklist</h1>
       </div>
-      <ManualChecklistForm branches={branches} receiptHrefBase="/api/manual-checklist-receipt" backHref="/technician/manual-checklists" />
+      <ManualChecklistForm branches={branches} detailHrefBase="/technician/manual-checklists" backHref="/technician/manual-checklists" />
     </div>
   );
 }

@@ -638,13 +638,13 @@ export type ServiceAgreement = {
   createdAt: string;
 };
 
-// A standalone device-condition checklist + receipt, filled out directly by
-// an admin or technician for a customer who isn't otherwise in the system
-// (no online booking, no POS sale) — e.g. a quick record and printable/
-// emailable proof of drop-off. Deliberately lighter than ServiceAgreement:
-// one single checklist (not pre/post phases) and no pricing fields — see
-// RepairRecord + ServiceAgreement for the full priced POS flow instead.
-export type ManualChecklist = {
+// A standalone repair ticket for a customer who isn't otherwise in the
+// system (no online booking, no POS sale) — e.g. a walk-in drop-off. Mirrors
+// RepairRecord: the parent "ticket" (this type) plus one or two
+// ManualChecklist phases (pre/post-repair) below. Deliberately lighter than
+// RepairRecord — no pricing/parts-cost fields, no CRM customer linking —
+// see RepairRecord + ServiceAgreement for the full priced POS flow instead.
+export type ManualRepairRecord = {
   id: string;
   reference: string; // e.g. MC-2026-0001
   branchId: string | null;
@@ -652,13 +652,29 @@ export type ManualChecklist = {
   createdByName: string;
   customerName: string;
   customerPhone: string;
+  customerEmail: string;
   deviceLabel: string;
-  items: ChecklistItem[];
-  summaryNotes: string;
-  customerSignatureDataUrl: string | null;
-  staffSignatureDataUrl: string | null;
   createdAt: string;
   deletedAt: string | null;
+};
+
+// One phase (pre or post-repair) of a ManualRepairRecord — same shape and
+// purpose as ServiceAgreement, just without the pricing fields that only
+// make sense for a priced POS/home-service job.
+export type ManualChecklist = {
+  id: string;
+  manualRecordId: string;
+  phase: ChecklistPhase;
+  items: ChecklistItem[];
+  summaryNotes: string;
+  agreedToTerms: boolean; // only collected/required for phase === "post_repair"
+  warrantyCoverage: string; // only collected/required for phase === "post_repair"
+  receiptPhotoDataUrl: string | null; // optional, phase === "post_repair" only
+  customerSignatureDataUrl: string | null;
+  staffSignatureDataUrl: string | null;
+  completedAt: string | null;
+  sentToCustomerAt: string | null; // set once the receipt email actually sends successfully (phase === "post_repair" only)
+  createdAt: string;
 };
 
 // Free-form work-in-progress notes a technician can update repeatedly while

@@ -21,6 +21,7 @@ import type {
   RequestFormContent,
   CustomFormField,
   ServiceAgreement,
+  ManualRepairRecord,
   ManualChecklist,
   RepairProgress,
   Notification,
@@ -252,11 +253,11 @@ export function canManageManualChecklists(user: Pick<User, "role" | "canManageMa
   return user.role === "technician" && user.canManageManualChecklists;
 }
 
-// A technician can only open their own manual checklists (not every
+// A technician can only open their own manual repair tickets (not every
 // technician's); an admin is scoped by branch like every other list here.
-export function canViewManualChecklist(
+export function canViewManualRecord(
   user: (Pick<User, "role" | "canManageManualChecklists" | "assignedBranchIds"> & { id: string }) | null,
-  record: Pick<ManualChecklist, "branchId" | "createdByUserId">
+  record: Pick<ManualRepairRecord, "branchId" | "createdByUserId">
 ) {
   if (!canManageManualChecklists(user)) return false;
   if (user!.role === "technician") return record.createdByUserId === user!.id;
@@ -916,27 +917,51 @@ export async function getServiceAgreements() {
   return (await query<ServiceAgreementRow>("select * from service_agreements order by created_at desc")).map(mapServiceAgreement);
 }
 
-type ManualChecklistRow = {
+type ManualRepairRecordRow = {
   id: string; reference: string; branch_id: string | null; created_by_user_id: string | null; created_by_name: string;
-  customer_name: string; customer_phone: string; device_label: string; items: ManualChecklist["items"]; summary_notes: string;
-  customer_signature_data_url: string | null; staff_signature_data_url: string | null; created_at: Date; deleted_at: Date | null;
+  customer_name: string; customer_phone: string; customer_email: string; device_label: string; created_at: Date; deleted_at: Date | null;
 };
-function mapManualChecklist(r: ManualChecklistRow): ManualChecklist {
+function mapManualRepairRecord(r: ManualRepairRecordRow): ManualRepairRecord {
   return {
     id: r.id, reference: r.reference, branchId: r.branch_id, createdByUserId: r.created_by_user_id, createdByName: r.created_by_name,
-    customerName: r.customer_name, customerPhone: r.customer_phone, deviceLabel: r.device_label, items: r.items ?? [], summaryNotes: r.summary_notes,
-    customerSignatureDataUrl: r.customer_signature_data_url, staffSignatureDataUrl: r.staff_signature_data_url,
+    customerName: r.customer_name, customerPhone: r.customer_phone, customerEmail: r.customer_email, deviceLabel: r.device_label,
     createdAt: toIso(r.created_at), deletedAt: toIsoOrNull(r.deleted_at),
   };
 }
-export async function getManualChecklists() {
-  return (await query<ManualChecklistRow>("select * from manual_checklists where deleted_at is null order by created_at desc")).map(
-    mapManualChecklist
+export async function getManualRepairRecords() {
+  return (await query<ManualRepairRecordRow>("select * from manual_repair_records where deleted_at is null order by created_at desc")).map(
+    mapManualRepairRecord
   );
 }
-export async function getManualChecklistById(id: string) {
-  const row = await queryOne<ManualChecklistRow>("select * from manual_checklists where id=$1", [id]);
-  return row ? mapManualChecklist(row) : null;
+export async function getManualRepairRecordById(id: string) {
+  const row = await queryOne<ManualRepairRecordRow>("select * from manual_repair_records where id=$1", [id]);
+  return row ? mapManualRepairRecord(row) : null;
+}
+
+type ManualChecklistRow = {
+  id: string; manual_record_id: string; phase: ManualChecklist["phase"]; items: ManualChecklist["items"]; summary_notes: string;
+  agreed_to_terms: boolean; warranty_coverage: string; receipt_photo_data_url: string | null;
+  customer_signature_data_url: string | null; staff_signature_data_url: string | null;
+  completed_at: Date | null; sent_to_customer_at: Date | null; created_at: Date;
+};
+function mapManualChecklist(r: ManualChecklistRow): ManualChecklist {
+  return {
+    id: r.id, manualRecordId: r.manual_record_id, phase: r.phase, items: r.items ?? [], summaryNotes: r.summary_notes,
+    agreedToTerms: r.agreed_to_terms, warrantyCoverage: r.warranty_coverage ?? "", receiptPhotoDataUrl: r.receipt_photo_data_url,
+    customerSignatureDataUrl: r.customer_signature_data_url, staffSignatureDataUrl: r.staff_signature_data_url,
+    completedAt: toIsoOrNull(r.completed_at), sentToCustomerAt: toIsoOrNull(r.sent_to_customer_at), createdAt: toIso(r.created_at),
+  };
+}
+export async function getManualChecklists() {
+  return (await query<ManualChecklistRow>("select * from manual_checklists order by created_at desc")).map(mapManualChecklist);
+}
+
+// Derives a manual repair ticket's workflow status the same way
+// getRepairRecordStatus does for RepairRecord — no separate status column,
+// just whether a post-repair phase exists yet for this ticket.
+export type ManualRecordStatus = "pending" | "completed";
+export function getManualRecordStatus(record: ManualRepairRecord, checklists: ManualChecklist[]): ManualRecordStatus {
+  return checklists.some((c) => c.manualRecordId === record.id && c.phase === "post_repair") ? "completed" : "pending";
 }
 
 export const HOME_SERVICE_COMPANY_SHARE = 0.3;
