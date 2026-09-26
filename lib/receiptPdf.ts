@@ -437,10 +437,12 @@ export async function generateRepairReceiptPdf(opts: {
   return w.save();
 }
 
-// A standalone, un-priced Pre/Post-Repair checklist + receipt
-// (ManualRepairRecord + its ManualChecklist phases) — same two-phase
-// structure as generateRepairReceiptPdf above, just without the cost
-// breakdown, since this isn't tied to a priced repair job.
+// Pre/Post-Repair checklist + receipt (ManualRepairRecord + its
+// ManualChecklist phases) — same two-phase structure and cost breakdown as
+// generateRepairReceiptPdf above. repairCost + serviceFee are the only
+// figures ever shown here — parts/other cost is internal-only and never
+// reaches this PDF, so the same document is safe to both view internally
+// and email to the customer.
 export async function generateManualChecklistReceiptPdf(opts: {
   reference: string;
   serviceDate: string;
@@ -449,6 +451,8 @@ export async function generateManualChecklistReceiptPdf(opts: {
   deviceLabel: string;
   createdByName: string;
   warrantyCoverage: string;
+  repairCost: number;
+  serviceFee: number;
   postNotes: string;
   preItems: ChecklistItem[];
   postItems: ChecklistItem[];
@@ -469,6 +473,9 @@ export async function generateManualChecklistReceiptPdf(opts: {
   w.row("Device", opts.deviceLabel);
   w.row("Attended By", opts.createdByName || "—");
   w.row("Warranty Coverage", opts.warrantyCoverage);
+
+  w.heading("Cost Breakdown");
+  w.costBreakdown(opts.repairCost, opts.serviceFee, opts.repairCost + opts.serviceFee);
 
   w.heading("Pre-Repair Checklist");
   w.checklistTable(opts.preItems);
