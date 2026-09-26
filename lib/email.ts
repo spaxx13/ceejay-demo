@@ -1,7 +1,7 @@
 import "server-only";
 import { Resend } from "resend";
 import type { ChecklistItem } from "./types";
-import { generateRepairReceiptPdf, generateQuotationPdf } from "./receiptPdf";
+import { generateRepairReceiptPdf, generateQuotationPdf, generateManualChecklistReceiptPdf } from "./receiptPdf";
 import { SITE_URL } from "./config";
 
 const FROM = "Ceejay Cellphone Repair Shop <noreply@ceejayrepair.com>";
@@ -62,6 +62,55 @@ export async function sendRepairReceiptEmail(
     from: FROM,
     to,
     subject: `Your repair receipt — ${opts.reference}`,
+    html,
+    attachments: [{ filename: `receipt-${opts.reference}.pdf`, content: Buffer.from(pdfBytes) }],
+  });
+  if (error) throw new Error(error.message);
+}
+
+// Same "attach a rebuilt-fresh PDF" approach as sendRepairReceiptEmail, for
+// a Manual Repair Record — no cost/warranty total to mention in the body
+// since this isn't a priced job.
+export async function sendManualChecklistReceiptEmail(
+  to: string,
+  opts: {
+    customerName: string;
+    customerPhone: string;
+    reference: string;
+    serviceDate: string;
+    deviceLabel: string;
+    createdByName: string;
+    warrantyCoverage: string;
+    postNotes: string;
+    preItems: ChecklistItem[];
+    postItems: ChecklistItem[];
+    preCustomerSignature: string | null;
+    preStaffSignature: string | null;
+    postCustomerSignature: string | null;
+    postStaffSignature: string | null;
+    receiptPhoto: string | null;
+  }
+) {
+  const client = getClient();
+  const pdfBytes = await generateManualChecklistReceiptPdf(opts);
+
+  const html = `
+    <div style="font-family: -apple-system, sans-serif; max-width: 480px; margin: 0 auto; color: #1e293b;">
+      <p style="font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8;">Ceejay Cellphone Repair Shop</p>
+      <h2 style="margin: 4px 0 16px;">Your device checklist &amp; receipt is ready</h2>
+      <p style="font-size: 14px; line-height: 1.5;">
+        Hi ${escapeHtml(opts.customerName)}, thanks for choosing Ceejay Cellphone Repair Shop. Your receipt for
+        <strong>${escapeHtml(opts.reference)}</strong> (${escapeHtml(opts.deviceLabel || "your device")}) is attached as a PDF — it includes the
+        full pre- and post-repair checklist results and both signed copies.
+      </p>
+      <p style="font-size: 13px; color: #64748b;">If anything looks off, just reply to this email or contact the branch you visited.</p>
+    </div>
+  `;
+
+  const { error } = await client.emails.send({
+    from: FROM,
+    to,
+    subject: `Your device checklist & receipt — ${opts.reference}`,
     html,
     attachments: [{ filename: `receipt-${opts.reference}.pdf`, content: Buffer.from(pdfBytes) }],
   });

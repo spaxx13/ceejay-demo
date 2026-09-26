@@ -437,10 +437,10 @@ export async function generateRepairReceiptPdf(opts: {
   return w.save();
 }
 
-// A standalone, un-priced checklist + receipt (ManualChecklist) — much
-// leaner than generateRepairReceiptPdf above: one checklist (not pre/post),
-// no cost breakdown, no warranty/terms section, since this isn't tied to a
-// priced repair job.
+// A standalone, un-priced Pre/Post-Repair checklist + receipt
+// (ManualRepairRecord + its ManualChecklist phases) — same two-phase
+// structure as generateRepairReceiptPdf above, just without the cost
+// breakdown, since this isn't tied to a priced repair job.
 export async function generateManualChecklistReceiptPdf(opts: {
   reference: string;
   serviceDate: string;
@@ -448,10 +448,15 @@ export async function generateManualChecklistReceiptPdf(opts: {
   customerPhone: string;
   deviceLabel: string;
   createdByName: string;
-  items: ChecklistItem[];
-  summaryNotes: string;
-  customerSignature: string | null;
-  staffSignature: string | null;
+  warrantyCoverage: string;
+  postNotes: string;
+  preItems: ChecklistItem[];
+  postItems: ChecklistItem[];
+  preCustomerSignature: string | null;
+  preStaffSignature: string | null;
+  postCustomerSignature: string | null;
+  postStaffSignature: string | null;
+  receiptPhoto: string | null;
 }): Promise<Uint8Array> {
   const w = await Writer.create();
 
@@ -463,14 +468,37 @@ export async function generateManualChecklistReceiptPdf(opts: {
   w.row("Date", opts.serviceDate);
   w.row("Device", opts.deviceLabel);
   w.row("Attended By", opts.createdByName || "—");
+  w.row("Warranty Coverage", opts.warrantyCoverage);
 
-  w.heading("Device Condition Checklist");
-  w.checklistTable(opts.items);
-  await w.signatureRow(opts.customerSignature, opts.staffSignature, "Staff Signature");
+  w.heading("Pre-Repair Checklist");
+  w.checklistTable(opts.preItems);
+  await w.signatureRow(opts.preCustomerSignature, opts.preStaffSignature, "Staff Signature");
 
-  if (opts.summaryNotes) {
-    w.heading("Notes");
-    w.paragraph(opts.summaryNotes);
+  w.newPage();
+  w.heading("Post-Repair Checklist");
+  w.checklistTable(opts.postItems);
+  await w.signatureRow(opts.postCustomerSignature, opts.postStaffSignature, "Staff Signature");
+
+  if (opts.postNotes) {
+    w.heading("Notes (Post-Repair)");
+    w.paragraph(opts.postNotes);
+  }
+
+  if (opts.receiptPhoto) {
+    const decoded = dataUrlBytes(opts.receiptPhoto);
+    if (decoded) {
+      w.newPage();
+      w.heading("Receipt Photo");
+      const embedded = decoded.isPng ? await w.doc.embedPng(decoded.bytes) : await w.doc.embedJpg(decoded.bytes);
+      const maxW = CONTENT_W;
+      const maxH = 320;
+      const scale = Math.min(maxW / embedded.width, maxH / embedded.height, 1) || 1;
+      const width = embedded.width * scale;
+      const height = embedded.height * scale;
+      w.ensureSpace(height + 10);
+      w.page.drawImage(embedded, { x: MARGIN, y: w.y - height, width, height });
+      w.y -= height + 10;
+    }
   }
 
   w.stampAllPages(opts.reference);

@@ -1,8 +1,8 @@
 "use client";
 
 import { useActionState, useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
-import { createManualChecklist } from "@/lib/actions";
+import Link from "next/link";
+import { createManualRepairRecord } from "@/lib/actions";
 import { CHECKLIST_TEMPLATE } from "@/lib/checklist";
 import SignaturePad from "./SignaturePad";
 import type { ChecklistResult } from "@/lib/types";
@@ -13,22 +13,22 @@ const RESULT_OPTIONS: { value: ChecklistResult; label: string; activeClass: stri
   { value: "na", label: "N/A", activeClass: "border-blue-300 bg-blue-50 text-blue-700" },
 ];
 
-// A standalone device checklist + receipt for a customer with no online
-// booking or POS sale yet — deliberately simpler than ChecklistForm.tsx:
-// one checklist (not pre/post phases), no pricing, no terms/warranty.
+// A standalone repair ticket for a customer with no online booking or POS
+// sale yet — creates the ticket and its Pre-Repair checklist together, same
+// split as NewRepairRecordForm.tsx (Post-Repair is finished separately, on
+// its own page, once the repair is done).
 export default function ManualChecklistForm({
   branches,
-  receiptHrefBase,
+  detailHrefBase,
   backHref,
 }: {
   branches: { id: string; name: string }[];
-  receiptHrefBase: string;
+  detailHrefBase: string;
   backHref: string;
 }) {
-  const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
   const wasPending = useRef(false);
-  const [state, formAction, pending] = useActionState(createManualChecklist, undefined);
+  const [state, formAction, pending] = useActionState(createManualRepairRecord, undefined);
   const [results, setResults] = useState<Record<string, ChecklistResult>>(() =>
     Object.fromEntries(CHECKLIST_TEMPLATE.map((i) => [i.key, null]))
   );
@@ -55,15 +55,18 @@ export default function ManualChecklistForm({
     return (
       <div className="card mx-auto max-w-md space-y-3 text-center">
         <p className="text-3xl">✅</p>
-        <h2 className="text-lg font-semibold text-slate-800">Checklist saved — {state.reference}</h2>
-        <p className="text-sm text-slate-400">The receipt is ready to view, print, or save.</p>
+        <h2 className="text-lg font-semibold text-slate-800">Ticket saved — {state.reference}</h2>
+        <p className="text-sm text-slate-400">
+          The Pre-Repair checklist was saved. It&apos;s now pending — come back any time to finish the Post-Repair checklist and send the
+          customer&apos;s receipt.
+        </p>
         <div className="flex flex-wrap justify-center gap-2">
-          <a href={`${receiptHrefBase}/${state.id}`} target="_blank" rel="noopener noreferrer" className="btn-primary">
-            View Receipt (PDF)
-          </a>
-          <button onClick={() => router.push(backHref)} className="btn-secondary">
-            Back
-          </button>
+          <Link href={`${detailHrefBase}/${state.recordId}/post-checklist`} className="btn-primary">
+            Continue to Post-Repair →
+          </Link>
+          <Link href={`${detailHrefBase}/${state.recordId}`} className="btn-secondary">
+            View Ticket
+          </Link>
         </div>
       </div>
     );
@@ -85,29 +88,34 @@ export default function ManualChecklistForm({
         </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div className="space-y-1.5">
+            <label className="text-xs font-medium text-slate-500">Email</label>
+            <input name="customerEmail" type="email" className="input" placeholder="juan@email.com" />
+            <p className="text-[11px] text-slate-400">Set this to email the receipt once the Post-Repair checklist is completed.</p>
+          </div>
+          <div className="space-y-1.5">
             <label className="text-xs font-medium text-slate-500">Device *</label>
             <input name="deviceLabel" required className="input" placeholder="iPhone 13 Pro" />
           </div>
-          {branches.length > 0 && (
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-slate-500">Branch</label>
-              <select name="branchId" className="input">
-                <option value="">—</option>
-                {branches.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
         </div>
+        {branches.length > 0 && (
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-slate-500">Branch</label>
+            <select name="branchId" className="input max-w-xs">
+              <option value="">—</option>
+              {branches.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
 
       <div className="card space-y-4">
         <div>
-          <h3 className="text-sm font-semibold text-slate-800">Device Condition Checklist</h3>
-          <p className="text-xs text-slate-400">Check each item and mark the appropriate result.</p>
+          <h3 className="text-sm font-semibold text-slate-800">I. Pre-Repair Checklist</h3>
+          <p className="text-xs text-slate-400">Document the device&apos;s condition before any repair work begins.</p>
         </div>
         <div className="space-y-3">
           {CHECKLIST_TEMPLATE.map((item) => (
@@ -149,13 +157,13 @@ export default function ManualChecklistForm({
       </div>
 
       <div className="card space-y-2">
-        <h3 className="text-sm font-semibold text-slate-800">Notes/Summary</h3>
-        <textarea name="summaryNotes" rows={3} className="input" placeholder="Overall summary of the device's condition..." />
+        <h3 className="text-sm font-semibold text-slate-800">Pre-Repair Notes/Summary</h3>
+        <textarea name="summaryNotes" rows={3} className="input" placeholder="Overall summary of the device's condition on intake..." />
       </div>
 
       <div className="card space-y-3">
-        <h3 className="text-sm font-semibold text-slate-800">Customer &amp; Staff Sign-Off</h3>
-        <p className="text-xs text-slate-500">Both sign to confirm this is an accurate record of the device&apos;s condition.</p>
+        <h3 className="text-sm font-semibold text-slate-800">Pre-Repair Customer &amp; Staff Sign-Off</h3>
+        <p className="text-xs text-slate-500">Both sign to confirm this is an accurate record of the device&apos;s condition before repair.</p>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <SignaturePad name="customerSignature" label="Customer Signature" />
           <SignaturePad name="staffSignature" label="Staff Signature" />
@@ -165,9 +173,15 @@ export default function ManualChecklistForm({
       {state && !state.ok && <p className="text-sm text-red-600">{state.error}</p>}
 
       <button type="submit" disabled={pending || !allAnswered} className="btn-primary w-full">
-        {pending ? "Saving..." : "Save & Generate Receipt"}
+        {pending ? "Saving..." : "Save Ticket (Pending Post-Repair)"}
       </button>
       {!allAnswered && <p className="text-center text-xs text-slate-400">Mark every checklist item to continue.</p>}
+      <p className="text-center text-xs text-slate-400">
+        The Post-Repair checklist and customer receipt email are completed separately once the repair is finished.
+      </p>
+      <Link href={backHref} className="block text-center text-xs text-slate-400 hover:text-slate-600">
+        ← Cancel
+      </Link>
     </form>
   );
 }

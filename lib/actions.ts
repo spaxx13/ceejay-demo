@@ -54,7 +54,8 @@ import {
   canWaiveServiceFee,
   canManageRepairPricing,
   canManageManualChecklists,
-  getManualChecklistById,
+  getManualRepairRecordById,
+  getManualChecklists,
   isBranchHidden,
   getIcloudCheckById,
   createIcloudCheck,
@@ -71,6 +72,7 @@ import {
 import { getCurrentUser, setSession, clearSession, requireRole } from "./auth";
 import {
   sendRepairReceiptEmail,
+  sendManualChecklistReceiptEmail,
   sendCancellationEmail,
   sendQuotationEmail,
   sendLeadReplyEmail,
@@ -104,6 +106,8 @@ import {
   type DeviceConditionChecklist,
   type PickupPhoto,
   type RequestExceptionKind,
+  type User,
+  type ManualRepairRecord,
 } from "./types";
 
 // Sends an FCM push to every device the customer has registered, pruning
@@ -3952,22 +3956,32 @@ export async function markAllNotificationsRead() {
 }
 
 // ---------- Manual Checklist & Receipt ----------
-// Standalone device-condition checklist for a customer with no online
-// booking or POS sale yet — see ManualChecklist's own comment in types.ts.
-// Available to owner_admin/branch_admin always, and to a technician only
-// when canManageManualChecklists(user) is true (Settings > Staff Accounts).
+// A standalone repair ticket (ManualRepairRecord) for a customer with no
+// online booking or POS sale yet, with its own Pre/Post-Repair checklist
+// pair (ManualChecklist) — see their own comments in types.ts. Mirrors
+// createRepairRecordDraft + submitChecklist's repairRecord branch, minus
+// pricing/CRM linking. Available to owner_admin/branch_admin always, and to
+// a technician only when canManageManualChecklists(user) is true (Settings
+// > Staff Accounts) — and then only for tickets that technician created.
 
-export type CreateManualChecklistResult = { ok: true; id: string; reference: string } | { ok: false; error: string };
+function canEditManualRecord(user: User | null, record: Pick<ManualRepairRecord, "branchId" | "createdByUserId">) {
+  if (!canManageManualChecklists(user)) return false;
+  if (user!.role === "technician") return record.createdByUserId === user!.id;
+  return !isBranchHidden(user, record.branchId);
+}
 
-export async function createManualChecklist(
-  _prev: CreateManualChecklistResult | undefined,
+export type CreateManualRepairRecordResult = { ok: true; recordId: string; reference: string } | { ok: false; error: string };
+
+export async function createManualRepairRecord(
+  _prev: CreateManualRepairRecordResult | undefined,
   formData: FormData
-): Promise<CreateManualChecklistResult> {
+): Promise<CreateManualRepairRecordResult> {
   const user = await getCurrentUser();
   if (!canManageManualChecklists(user)) return { ok: false, error: "You don't have access to Manual Checklist & Receipt." };
 
   const customerName = str(formData, "customerName");
   const customerPhone = str(formData, "customerPhone");
+  const customerEmail = str(formData, "customerEmail");
   const deviceLabel = str(formData, "deviceLabel");
   const branchId = str(formData, "branchId") || null;
   const summaryNotes = str(formData, "summaryNotes");
@@ -3995,19 +4009,19 @@ export async function createManualChecklist(
   // row has ever been deleted, causing later inserts to collide.
   const year = new Date().getFullYear();
   let reference = "";
-  let created: { id: string } | null = null;
+  let record: { id: string } | null = null;
   for (let attempt = 1; attempt <= 5; attempt++) {
     const max = await queryOne<{ n: number }>(
-      "select coalesce(max(split_part(reference, '-', 3)::int), 0)::int as n from manual_checklists where reference like $1",
+      "select coalesce(max(split_part(reference, '-', 3)::int), 0)::int as n from manual_repair_records where reference like $1",
       [`MC-${year}-%`]
     );
     reference = `MC-${year}-${String((max?.n ?? 0) + 1).padStart(4, "0")}`;
     try {
-      created = await queryOne<{ id: string }>(
-        `insert into manual_checklists
-           (reference, branch_id, created_by_user_id, created_by_name, customer_name, customer_phone, device_label, items, summary_notes, customer_signature_data_url, staff_signature_data_url)
-         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) returning id`,
-        [reference, branchId, user!.id, user!.name, customerName, customerPhone, deviceLabel, JSON.stringify(items), summaryNotes, customerSignatureDataUrl, staffSignatureDataUrl]
+      record = await queryOne<{ id: string }>(
+        `insert into manual_repair_records
+           (reference, branch_id, created_by_user_id, created_by_name, customer_name, customer_phone, customer_email, device_label)
+         values ($1,$2,$3,$4,$5,$6,$7,$8) returning id`,
+        [reference, branchId, user!.id, user!.name, customerName, customerPhone, customerEmail, deviceLabel]
       );
       break;
     } catch (err) {
@@ -4017,20 +4031,118 @@ export async function createManualChecklist(
     }
   }
 
-  await logActivity("manual_checklist", created!.id, `Manual checklist ${reference} created by ${user!.name}`, user!.name);
+  await query(
+    `insert into manual_checklists (manual_record_id, phase, items, summary_notes, customer_signature_data_url, staff_signature_data_url, completed_at)
+     values ($1,'pre_repair',$2,$3,$4,$5,now())`,
+    [record!.id, JSON.stringify(items), summaryNotes, customerSignatureDataUrl, staffSignatureDataUrl]
+  );
+
+  await logActivity("manual_checklist", record!.id, `Manual repair ticket ${reference} created by ${user!.name}`, user!.name);
   revalidatePath("/admin/manual-checklists");
   revalidatePath("/technician/manual-checklists");
-  return { ok: true, id: created!.id, reference };
+  return { ok: true, recordId: record!.id, reference };
+}
+
+export type SubmitManualChecklistResult = { ok: true; phase: ChecklistPhase } | { ok: false; error: string };
+
+export async function submitManualChecklist(
+  _prev: SubmitManualChecklistResult | undefined,
+  formData: FormData
+): Promise<SubmitManualChecklistResult> {
+  const user = await getCurrentUser();
+  if (!canManageManualChecklists(user)) return { ok: false, error: "You don't have access to Manual Checklist & Receipt." };
+
+  const manualRecordId = str(formData, "manualRecordId");
+  const phase = str(formData, "phase") as ChecklistPhase;
+  if (phase !== "pre_repair" && phase !== "post_repair") return { ok: false, error: "Invalid checklist phase." };
+
+  const record = await getManualRepairRecordById(manualRecordId);
+  if (!record || record.deletedAt) return { ok: false, error: "Ticket not found." };
+  if (!canEditManualRecord(user, record)) return { ok: false, error: "You don't have access to this ticket." };
+
+  const checklists = (await getManualChecklists()).filter((c) => c.manualRecordId === manualRecordId);
+  if (checklists.some((c) => c.phase === phase)) return { ok: false, error: "This checklist has already been completed." };
+  const preChecklist = checklists.find((c) => c.phase === "pre_repair");
+  if (phase === "post_repair" && !preChecklist) return { ok: false, error: "Complete the pre-repair checklist first." };
+
+  const items: ChecklistItem[] = CHECKLIST_TEMPLATE.map((t) => {
+    const result = str(formData, `result_${t.key}`) as ChecklistResult;
+    return { ...t, result: result === "pass" || result === "fail" || result === "na" ? result : null, notes: str(formData, `notes_${t.key}`) };
+  });
+  if (items.some((i) => !i.result)) return { ok: false, error: "Please mark every checklist item as Pass, Fail, or N/A." };
+
+  const summaryNotes = str(formData, "summaryNotes");
+  const customerSignatureDataUrl = str(formData, "customerSignature");
+  if (!customerSignatureDataUrl.startsWith("data:image/")) return { ok: false, error: "Customer signature is required." };
+  const staffSignatureDataUrl = str(formData, "staffSignature");
+  if (!staffSignatureDataUrl.startsWith("data:image/")) return { ok: false, error: "Staff signature is required." };
+
+  let agreedToTerms = false;
+  let warrantyCoverage = "";
+  let receiptPhotoDataUrl: string | null = null;
+  if (phase === "post_repair") {
+    agreedToTerms = formData.has("agreedToTerms");
+    if (!agreedToTerms) return { ok: false, error: "The customer must acknowledge the terms and conditions." };
+    warrantyCoverage = str(formData, "warrantyCoverage");
+    if (!warrantyCoverage) return { ok: false, error: "Warranty coverage is required." };
+    const photo = str(formData, "receiptPhotoDataUrl");
+    receiptPhotoDataUrl = photo.startsWith("data:image/") ? photo : null;
+  }
+
+  const created = await queryOne<{ id: string }>(
+    `insert into manual_checklists
+       (manual_record_id, phase, items, summary_notes, agreed_to_terms, warranty_coverage, receipt_photo_data_url, customer_signature_data_url, staff_signature_data_url, completed_at)
+     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,now()) returning id`,
+    [manualRecordId, phase, JSON.stringify(items), summaryNotes, agreedToTerms, warrantyCoverage, receiptPhotoDataUrl, customerSignatureDataUrl, staffSignatureDataUrl]
+  );
+
+  let emailNote = "no email on file — receipt not emailed";
+  if (phase === "post_repair") {
+    if (record.customerEmail) {
+      try {
+        await sendManualChecklistReceiptEmail(record.customerEmail, {
+          customerName: record.customerName,
+          customerPhone: record.customerPhone,
+          reference: record.reference,
+          serviceDate: new Date().toISOString().slice(0, 10),
+          deviceLabel: record.deviceLabel,
+          createdByName: user!.name,
+          warrantyCoverage,
+          postNotes: summaryNotes,
+          preItems: preChecklist?.items ?? [],
+          postItems: items,
+          preCustomerSignature: preChecklist?.customerSignatureDataUrl ?? null,
+          preStaffSignature: preChecklist?.staffSignatureDataUrl ?? null,
+          postCustomerSignature: customerSignatureDataUrl,
+          postStaffSignature: staffSignatureDataUrl,
+          receiptPhoto: receiptPhotoDataUrl,
+        });
+        await query("update manual_checklists set sent_to_customer_at=now() where id=$1", [created!.id]);
+        emailNote = `receipt emailed to ${record.customerEmail}`;
+      } catch (err) {
+        emailNote = `receipt email failed to send to ${record.customerEmail} (${err instanceof Error ? err.message : "unknown error"})`;
+      }
+    }
+    await logActivity("manual_checklist", record.id, `Manual repair ticket ${record.reference} post-repair checklist completed by ${user!.name} — ${emailNote}`, user!.name);
+  } else {
+    await logActivity("manual_checklist", record.id, `Manual repair ticket ${record.reference} pre-repair checklist completed by ${user!.name}`, user!.name);
+  }
+
+  revalidatePath("/admin/manual-checklists");
+  revalidatePath(`/admin/manual-checklists/${manualRecordId}`);
+  revalidatePath("/technician/manual-checklists");
+  revalidatePath(`/technician/manual-checklists/${manualRecordId}`);
+  return { ok: true, phase };
 }
 
 export async function deleteManualChecklist(formData: FormData) {
   const user = await getCurrentUser();
   if (!user || (user.role !== "owner_admin" && user.role !== "branch_admin")) return;
   const id = str(formData, "id");
-  const record = await getManualChecklistById(id);
+  const record = await getManualRepairRecordById(id);
   if (!record || isBranchHidden(user, record.branchId)) return;
-  await query("update manual_checklists set deleted_at=now() where id=$1", [id]);
-  await logActivity("manual_checklist", id, `Manual checklist ${record.reference} deleted by ${user.name}`, user.name);
+  await query("update manual_repair_records set deleted_at=now() where id=$1", [id]);
+  await logActivity("manual_checklist", id, `Manual repair ticket ${record.reference} deleted by ${user.name}`, user.name);
   revalidatePath("/admin/manual-checklists");
 }
 
