@@ -36,6 +36,9 @@ type Req = {
   confirmedAt: string | null;
   repairCost: number | null;
   serviceFee: number | null;
+  downpaymentRequired: boolean;
+  downpaymentAmount: number | null;
+  downpaymentStatus: "not_required" | "pending" | "paid";
   inProgress: boolean;
   onTheWay: boolean;
   hasPreAgreement: boolean;
@@ -119,6 +122,18 @@ export default function TechnicianBoard({ requests, statuses }: { requests: Req[
               <span className="font-mono text-xs text-blue-300">{r.reference}</span>
               {status && <StatusBadge label={status.label} />}
             </div>
+
+            {r.downpaymentRequired && (
+              <div
+                className={`rounded-lg border-2 p-3 text-sm font-semibold ${
+                  r.downpaymentStatus === "paid" ? "border-green-300 bg-green-50 text-green-900" : "border-amber-300 bg-amber-50 text-amber-900"
+                }`}
+              >
+                {r.downpaymentStatus === "paid"
+                  ? `✅ Down payment paid${r.downpaymentAmount !== null ? ` (${peso(r.downpaymentAmount)})` : ""}`
+                  : `⚠️ Down payment not yet paid${r.downpaymentAmount !== null ? ` (${peso(r.downpaymentAmount)})` : ""} — confirm with the customer before starting work.`}
+              </div>
+            )}
 
             <div className="space-y-4">
               <h3 className="text-xl font-bold text-slate-900">Request Details</h3>
