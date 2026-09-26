@@ -15,6 +15,7 @@ export type User = {
   canManageWalkIns: boolean; // whether this account can access/manage Walk-In Registrations (branch_admin scoping) — independent of canManageRequests, defaults to false for new/existing branch admins
   canWaiveServiceFee: boolean; // whether this account can waive a Home Service request's visit fee (branch_admin scoping) — independent of canManageRequests, defaults to false
   canManageRepairPricing: boolean; // whether this account can access Repair Pricing (branch_admin scoping) — independent of every other flag, defaults to false
+  canManageManualChecklists: boolean; // whether this account can access Manual Checklist & Receipt (technician scoping only — owner_admin/branch_admin always can), defaults to false
   phone: string; // optional — set by the account holder to opt into SMS alerts (new requests, technician status updates); blank means not opted in
   active: boolean;
 };
@@ -539,7 +540,7 @@ export type RepairRecord = {
 
 export type ActivityLog = {
   id: string;
-  entityType: "customer" | "lead" | "home_service_request" | "walkin_request";
+  entityType: "customer" | "lead" | "home_service_request" | "walkin_request" | "manual_checklist";
   entityId: string;
   message: string;
   actor: string; // user name or "System"
@@ -635,6 +636,29 @@ export type ServiceAgreement = {
   completedAt: string;
   sentToCustomerAt: string | null; // set once the receipt email actually sends successfully
   createdAt: string;
+};
+
+// A standalone device-condition checklist + receipt, filled out directly by
+// an admin or technician for a customer who isn't otherwise in the system
+// (no online booking, no POS sale) — e.g. a quick record and printable/
+// emailable proof of drop-off. Deliberately lighter than ServiceAgreement:
+// one single checklist (not pre/post phases) and no pricing fields — see
+// RepairRecord + ServiceAgreement for the full priced POS flow instead.
+export type ManualChecklist = {
+  id: string;
+  reference: string; // e.g. MC-2026-0001
+  branchId: string | null;
+  createdByUserId: string | null;
+  createdByName: string;
+  customerName: string;
+  customerPhone: string;
+  deviceLabel: string;
+  items: ChecklistItem[];
+  summaryNotes: string;
+  customerSignatureDataUrl: string | null;
+  staffSignatureDataUrl: string | null;
+  createdAt: string;
+  deletedAt: string | null;
 };
 
 // Free-form work-in-progress notes a technician can update repeatedly while

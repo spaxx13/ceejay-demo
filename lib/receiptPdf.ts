@@ -287,13 +287,13 @@ class Writer {
 
   // Customer + technician signatures, side by side, right after the
   // checklist they belong to — not collected at the bottom of the receipt.
-  async signatureRow(customerDataUrl: string | null, technicianDataUrl: string | null) {
+  async signatureRow(customerDataUrl: string | null, secondDataUrl: string | null, secondLabel = "Technician Signature") {
     const ROW_HEIGHT = SIG_H + 30; // box + label line + clearance before whatever comes next
     this.ensureSpace(ROW_HEIGHT);
     const topY = this.y;
     await this.signatureBox(MARGIN, "Customer Signature", customerDataUrl);
     this.y = topY;
-    await this.signatureBox(MARGIN + SIG_W + 24, "Technician Signature", technicianDataUrl);
+    await this.signatureBox(MARGIN + SIG_W + 24, secondLabel, secondDataUrl);
     this.y = topY - ROW_HEIGHT;
   }
 
@@ -430,6 +430,47 @@ export async function generateRepairReceiptPdf(opts: {
       w.page.drawImage(embedded, { x: MARGIN, y: w.y - height, width, height });
       w.y -= height + 10;
     }
+  }
+
+  w.stampAllPages(opts.reference);
+
+  return w.save();
+}
+
+// A standalone, un-priced checklist + receipt (ManualChecklist) — much
+// leaner than generateRepairReceiptPdf above: one checklist (not pre/post),
+// no cost breakdown, no warranty/terms section, since this isn't tied to a
+// priced repair job.
+export async function generateManualChecklistReceiptPdf(opts: {
+  reference: string;
+  serviceDate: string;
+  customerName: string;
+  customerPhone: string;
+  deviceLabel: string;
+  createdByName: string;
+  items: ChecklistItem[];
+  summaryNotes: string;
+  customerSignature: string | null;
+  staffSignature: string | null;
+}): Promise<Uint8Array> {
+  const w = await Writer.create();
+
+  w.header(opts.reference, "Device Checklist & Receipt");
+
+  w.heading("Customer & Device Details");
+  w.row("Customer Name", opts.customerName, { boldValue: true });
+  w.row("Contact Number", opts.customerPhone);
+  w.row("Date", opts.serviceDate);
+  w.row("Device", opts.deviceLabel);
+  w.row("Attended By", opts.createdByName || "—");
+
+  w.heading("Device Condition Checklist");
+  w.checklistTable(opts.items);
+  await w.signatureRow(opts.customerSignature, opts.staffSignature, "Staff Signature");
+
+  if (opts.summaryNotes) {
+    w.heading("Notes");
+    w.paragraph(opts.summaryNotes);
   }
 
   w.stampAllPages(opts.reference);
