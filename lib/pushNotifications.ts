@@ -19,7 +19,12 @@ function messaging() {
 // calls back into here from notifyAdminsCore, and a two-way import would
 // create a circular dependency). Callers fetch tokens for whichever
 // audience they're sending to and prune whatever comes back as expired.
-export async function sendPushToTokens(tokens: string[], title: string, body: string): Promise<{ expiredTokens: string[] }> {
+//
+// `url` is a path within the app (e.g. "/admin/requests/<id>") sent as a
+// data payload — StaffPushNotificationRegistrar.tsx/PushNotificationRegistrar.tsx
+// listen for the tap and navigate there. Without it, tapping a notification
+// just opens the app to wherever it happened to be, not the relevant page.
+export async function sendPushToTokens(tokens: string[], title: string, body: string, url?: string): Promise<{ expiredTokens: string[] }> {
   if (tokens.length === 0) return { expiredTokens: [] };
 
   const m = messaging();
@@ -30,6 +35,7 @@ export async function sendPushToTokens(tokens: string[], title: string, body: st
         await m.send({
           token,
           notification: { title, body },
+          data: url ? { url } : undefined,
           apns: { payload: { aps: { sound: "default" } } },
         });
       } catch (err) {

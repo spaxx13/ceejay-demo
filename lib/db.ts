@@ -1316,7 +1316,7 @@ async function notifyAdminsCore(insertSql: string, insertParams: unknown[], url:
     // it, since Capacitor's WKWebView shell has no Service Worker/Push API.
     const staffTokens = await getStaffPushTokens([...adminIds]);
     if (staffTokens.length > 0) {
-      const { expiredTokens } = await sendPushToTokens(staffTokens, "Ceejay Admin", message);
+      const { expiredTokens } = await sendPushToTokens(staffTokens, "Ceejay Admin", message, url);
       if (expiredTokens.length > 0) {
         await Promise.all(expiredTokens.map((token) => deleteStaffPushToken(token)));
       }
@@ -1401,7 +1401,7 @@ export async function notifyTechnician(technicianId: string, message: string, ur
     // FCM, for the native Technician app — Web Push above doesn't reach it.
     const staffTokens = await getStaffPushTokens([techUser.id]);
     if (staffTokens.length > 0) {
-      const { expiredTokens } = await sendPushToTokens(staffTokens, "Ceejay", message);
+      const { expiredTokens } = await sendPushToTokens(staffTokens, "Ceejay", message, url);
       if (expiredTokens.length > 0) {
         await Promise.all(expiredTokens.map((token) => deleteStaffPushToken(token)));
       }
@@ -1432,7 +1432,7 @@ export async function notifyRider(riderId: string, message: string, url: string)
     // FCM, for the native Rider app — Web Push above doesn't reach it.
     const staffTokens = await getStaffPushTokens([riderUser.id]);
     if (staffTokens.length > 0) {
-      const { expiredTokens } = await sendPushToTokens(staffTokens, "Ceejay", message);
+      const { expiredTokens } = await sendPushToTokens(staffTokens, "Ceejay", message, url);
       if (expiredTokens.length > 0) {
         await Promise.all(expiredTokens.map((token) => deleteStaffPushToken(token)));
       }
