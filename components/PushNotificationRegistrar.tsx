@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { Capacitor } from "@capacitor/core";
 import { FirebaseMessaging } from "@capacitor-firebase/messaging";
 import { registerPushToken } from "@/lib/customerActions";
@@ -10,6 +11,8 @@ import { registerPushToken } from "@/lib/customerActions";
 // (Capacitor.isNativePlatform() is false there), so this is safe to render
 // on every visit regardless of platform.
 export default function PushNotificationRegistrar() {
+  const router = useRouter();
+
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
     let cancelled = false;
@@ -32,6 +35,21 @@ export default function PushNotificationRegistrar() {
       cancelled = true;
     };
   }, []);
+
+  // Routes to the notification's target page on tap (e.g.
+  // /track-technician/<token>) instead of just opening the app to wherever
+  // it happened to be — see the `url` param on lib/pushNotifications.ts's
+  // sendPushToTokens.
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    const handle = FirebaseMessaging.addListener("notificationActionPerformed", (event) => {
+      const url = (event.notification.data as { url?: string } | undefined)?.url;
+      if (url) router.push(url);
+    });
+    return () => {
+      handle.then((h) => h.remove());
+    };
+  }, [router]);
 
   return null;
 }

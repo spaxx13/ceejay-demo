@@ -104,10 +104,12 @@ import {
 } from "./types";
 
 // Sends an FCM push to every device the customer has registered, pruning
-// whatever comes back as no-longer-registered (app uninstalled, etc.).
-async function sendCustomerPush(customerId: string, title: string, body: string) {
+// whatever comes back as no-longer-registered (app uninstalled, etc.). `url`
+// is an in-app path (e.g. "/track-technician/<token>") — PushNotificationRegistrar.tsx
+// listens for the tap and navigates there.
+async function sendCustomerPush(customerId: string, title: string, body: string, url?: string) {
   const tokens = await getCustomerPushTokens(customerId);
-  const { expiredTokens } = await sendPushToTokens(tokens, title, body);
+  const { expiredTokens } = await sendPushToTokens(tokens, title, body, url);
   await Promise.all(expiredTokens.map((token) => deleteCustomerPushToken(token)));
 }
 
@@ -746,9 +748,12 @@ export async function riderUpdatePickupStatus(_prev: RiderStatusResult | undefin
       await query("update home_service_requests set pickup_started_at=now() where id=$1", [requestId]);
       await logActivity("home_service_request", requestId, `Rider ${user.name} is on the way to pick up the device`, user.name);
       if (req.customerId) {
-        sendCustomerPush(req.customerId, "Your rider is on the way", `The rider is on the way to pick up your device for repair ${req.reference}.`).catch(
-          () => {},
-        );
+        sendCustomerPush(
+          req.customerId,
+          "Your rider is on the way",
+          `The rider is on the way to pick up your device for repair ${req.reference}.`,
+          `/track?reference=${encodeURIComponent(req.reference)}&phone=${encodeURIComponent(req.phone)}`,
+        ).catch(() => {});
       }
       if (req.email && emailConfigured()) {
         try {
@@ -908,9 +913,12 @@ export async function riderUpdateDeliveryStatus(_prev: RiderStatusResult | undef
       await query("update home_service_requests set out_for_delivery_at=now() where id=$1", [requestId]);
       await logActivity("home_service_request", requestId, `Rider ${user.name} is on the way to deliver the device`, user.name);
       if (req.customerId) {
-        sendCustomerPush(req.customerId, "Your device is on its way", `The rider is on the way to deliver your device for repair ${req.reference}.`).catch(
-          () => {},
-        );
+        sendCustomerPush(
+          req.customerId,
+          "Your device is on its way",
+          `The rider is on the way to deliver your device for repair ${req.reference}.`,
+          `/track?reference=${encodeURIComponent(req.reference)}&phone=${encodeURIComponent(req.phone)}`,
+        ).catch(() => {});
       }
       break;
     }
@@ -3349,9 +3357,12 @@ async function startTechnicianTrackingIfOnTheWay(req: HomeServiceRequest, newSta
   if (req.customerId) {
     // Best-effort — a customer who never registered the app (or hasn't
     // granted notification permission) simply has no tokens to send to.
-    sendCustomerPush(req.customerId, "Your technician is on the way", `Track your technician's live location for repair ${req.reference}.`).catch(
-      () => {},
-    );
+    sendCustomerPush(
+      req.customerId,
+      "Your technician is on the way",
+      `Track your technician's live location for repair ${req.reference}.`,
+      `/track-technician/${token}`,
+    ).catch(() => {});
   }
   if (!req.email) return " — no customer email on file, tracking link not sent";
   if (!emailConfigured()) return " — email not configured, tracking link not sent";
