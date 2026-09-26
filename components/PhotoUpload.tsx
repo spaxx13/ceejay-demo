@@ -54,9 +54,7 @@ export default function PhotoUpload({
       const file = await captureNativePhoto();
       if (file) await handleFile(file);
       else setBusy(false);
-    } catch (err) {
-      // TEMP DIAGNOSTIC — remove after debugging native photo capture.
-      console.error("[handleNativeCapture]", err);
+    } catch {
       setBusy(false);
       setError("Couldn't get that photo — please try again.");
     }
