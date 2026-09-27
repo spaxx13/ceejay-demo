@@ -1,5 +1,5 @@
 const { runPipeline } = require('../lib/pipeline');
-const { BRANCHES } = require('../lib/config');
+const { BRANCHES } = require('../lib/autoposter-config');
 
 // Triggered by the Vercel Cron job for greenhills (see vercel.json).
 module.exports = async (req, res) => {
