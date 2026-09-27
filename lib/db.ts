@@ -916,6 +916,32 @@ export async function getCustomFormFields() {
 export async function getServiceAgreements() {
   return (await query<ServiceAgreementRow>("select * from service_agreements order by created_at desc")).map(mapServiceAgreement);
 }
+// Earnings-only variant: computeTechnicianEarnings reads just names, costs,
+// phase and dates — never the signature/receipt-photo columns. `select *`
+// here pulls every agreement's base64 blobs into memory, which on a cold
+// serverless function is enough to blow the time/memory budget and 5xx the
+// mobile earnings route (the web page tolerates it under a warmer runtime).
+// Selecting only the needed columns keeps the payload tiny. Heavy fields are
+// returned as harmless defaults so the result still satisfies ServiceAgreement.
+export async function getServiceAgreementsForEarnings(): Promise<ServiceAgreement[]> {
+  type Light = Pick<ServiceAgreementRow,
+    "id" | "request_id" | "repair_record_id" | "phase" | "reference" | "customer_name" | "device_label" |
+    "technician_id" | "technician_name" | "cost" | "parts_cost" | "labor_cost" | "other_expenses" | "completed_at">;
+  const rows = await query<Light>(
+    `select id, request_id, repair_record_id, phase, reference, customer_name, device_label,
+            technician_id, technician_name, cost, parts_cost, labor_cost, other_expenses, completed_at
+     from service_agreements order by created_at desc`
+  );
+  return rows.map((r) => ({
+    id: r.id, requestId: r.request_id, repairRecordId: r.repair_record_id, phase: r.phase, reference: r.reference,
+    customerName: r.customer_name, deviceLabel: r.device_label, branchId: null, technicianId: r.technician_id,
+    technicianName: r.technician_name, items: [], summaryNotes: "", agreedToTerms: false,
+    customerSignatureDataUrl: null, technicianSignatureDataUrl: null, receiptPhotoDataUrl: null, warrantyCoverage: "",
+    cost: Number(r.cost ?? 0), partsCost: Number(r.parts_cost ?? 0), laborCost: Number(r.labor_cost ?? 0),
+    otherExpenses: Number(r.other_expenses ?? 0), priceEditCount: 0, completedAt: toIso(r.completed_at),
+    sentToCustomerAt: null, createdAt: toIso(r.completed_at),
+  }));
+}
 
 type ManualRepairRecordRow = {
   id: string; reference: string; branch_id: string | null; created_by_user_id: string | null; created_by_name: string;
