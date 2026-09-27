@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getLookups, getDeviceModels, getRequestFormContent, getCustomFormFields, getBranches } from "@/lib/db";
-import { OTP_GATE_ENABLED, PICKUP_DELIVERY_PUBLIC_ENABLED } from "@/lib/config";
+import { OTP_GATE_ENABLED, PICKUP_DELIVERY_MOBILE_ENABLED, PICKUP_DELIVERY_PUBLIC_ENABLED } from "@/lib/config";
 import {
   PROVINCE_FEES,
   SUNDAY_ONLY_PROVINCES,
@@ -37,7 +37,9 @@ export async function GET() {
         pickupDeliveryFeePesos: PICKUP_DELIVERY_FEE_PESOS,
       },
       flags: {
-        pickupDeliveryPublicEnabled: PICKUP_DELIVERY_PUBLIC_ENABLED,
+        // The app's own switch — on for the app alone via
+        // PICKUP_DELIVERY_MOBILE_ENABLED, or everywhere via the public flag.
+        pickupDeliveryPublicEnabled: PICKUP_DELIVERY_PUBLIC_ENABLED || PICKUP_DELIVERY_MOBILE_ENABLED,
         otpGateEnabled: OTP_GATE_ENABLED,
       },
     },

@@ -29,6 +29,10 @@ export async function POST(req: NextRequest) {
   }
 
   const formData = buildFormData(body as Record<string, unknown>);
+  // Marks the booking as coming from the native app, which the action's
+  // Pickup & Delivery gate honors under PICKUP_DELIVERY_MOBILE_ENABLED even
+  // while the website still shows the option as "Soon".
+  formData.set("channel", "mobile");
   const result = await submitHomeServiceRequest(undefined, formData);
   return NextResponse.json(result, { status: result.ok ? 200 : 400 });
 }
