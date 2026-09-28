@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
-import { getRequestById, getRepairRecordById, getServiceAgreements, getLookups } from "@/lib/db";
+import { getRequestById, getRepairRecordById, getServiceAgreementsForRequest, getServiceAgreementsForRepairRecord, getLookups } from "@/lib/db";
 import { generateRepairReceiptPdf } from "@/lib/receiptPdf";
 
 // Regenerates the exact same receipt PDF that resendReceiptEmail() emails
@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Technicians can only view home service receipts" }, { status: 403 });
   }
 
-  const agreements = await getServiceAgreements();
+  const agreements = requestId ? await getServiceAgreementsForRequest(requestId) : await getServiceAgreementsForRepairRecord(repairRecordId!);
   let pdfBytes: Uint8Array;
   let filename: string;
 
