@@ -27,6 +27,7 @@ export default function ChecklistForm({
   items,
   terms,
   backHref,
+  serviceFee = 0,
 }: {
   phase: ChecklistPhase;
   target: { type: "request"; id: string } | { type: "repairRecord"; id: string };
@@ -39,6 +40,10 @@ export default function ChecklistForm({
   items: Item[];
   terms: string[];
   backHref: string;
+  // Home Service flow only — the visit fee the customer was quoted when
+  // they booked (lib/homeServiceFees.ts requestServiceFee). Added to the
+  // Repair Price for the Total Amount; the technician never types it.
+  serviceFee?: number;
 }) {
   const isPost = phase === "post_repair";
   const isRequestFlow = target.type === "request";
@@ -54,8 +59,7 @@ export default function ChecklistForm({
 
   const [warrantyCoverage, setWarrantyCoverage] = useState("");
   const [cost, setCost] = useState("");
-  const [laborCost, setLaborCost] = useState("");
-  const totalAmount = (Number(cost) || 0) + (Number(laborCost) || 0);
+  const totalAmount = (Number(cost) || 0) + serviceFee;
 
   // React resets a <form action={...}> element's native DOM state (radio
   // "checked", checkbox "checked") after every action settles, success or
@@ -277,7 +281,7 @@ export default function ChecklistForm({
         <div className="card space-y-3">
           <div className="space-y-2">
             <h3 className="text-sm font-semibold text-slate-800">Repair Price</h3>
-            <p className="text-xs text-slate-500">The base repair price — combined with the Labor/Service Cost below for the total charged to the customer.</p>
+            <p className="text-xs text-slate-500">The repair price charged to the customer — the service fee below is added automatically for the Total Amount.</p>
             <input
               name="cost"
               type="number"
@@ -290,38 +294,23 @@ export default function ChecklistForm({
               placeholder="0.00"
             />
           </div>
-          <div className="space-y-2">
-            <h3 className="text-sm font-semibold text-slate-800">Expenses</h3>
-            <p className="text-xs text-slate-500">Parts/Material Cost and Other Expenses are internal-only — tracked for net profit on the Sales reports, never shown to the customer or included in the Total Amount below. Labor/Service Cost is added to the Repair Price as the technician&apos;s service fee.</p>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-slate-500">Parts/Material Cost (₱)</label>
-                <input name="partsCost" type="number" min={0} step="0.01" className="input" placeholder="0.00" />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-slate-500">Labor/Service Cost (₱)</label>
-                <input
-                  name="laborCost"
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  value={laborCost}
-                  onChange={(e) => setLaborCost(e.target.value)}
-                  className="input"
-                  placeholder="0.00"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-slate-500">Other Expenses (₱)</label>
-                <input name="otherExpenses" type="number" min={0} step="0.01" className="input" placeholder="0.00" />
-              </div>
+          <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
+            <div>
+              <p className="font-medium text-slate-700">Service Fee</p>
+              <p className="text-xs text-slate-400">{serviceFee > 0 ? "Auto-filled from the customer's booking — included in the Total Amount." : "Waived / none for this booking."}</p>
             </div>
+            <span className="font-semibold text-slate-800">+₱{serviceFee.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
           </div>
           <div className="flex items-center justify-between rounded-lg border-2 border-blue-300 bg-blue-50 px-3 py-2">
-            <span className="text-sm font-semibold text-blue-900">Total Amount (Repair Price + Labor/Service Cost)</span>
+            <span className="text-sm font-semibold text-blue-900">Total Amount (Repair Price + Service Fee)</span>
             <span className="text-lg font-bold text-blue-900">
               ₱{totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </span>
+          </div>
+          <div className="space-y-2 border-t border-slate-100 pt-3">
+            <h3 className="text-sm font-semibold text-slate-800">Parts/Material Cost (₱)</h3>
+            <p className="text-xs text-slate-500">Internal-only — never shown to the customer or included in the Total Amount above. Deducted from the Total Amount on Sales &gt; Home Service before the 70/30 split.</p>
+            <input name="partsCost" type="number" min={0} step="0.01" className="input" placeholder="0.00" />
           </div>
         </div>
       )}

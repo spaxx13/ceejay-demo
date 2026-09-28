@@ -70,7 +70,7 @@ export default function AgreementSummary({
           </div>
           {agreement.laborCost > 0 && (
             <div className="flex items-center justify-between text-sm text-slate-500">
-              <span>Labor/Service Cost</span>
+              <span>Service Fee</span>
               <span>+₱{agreement.laborCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
             </div>
           )}

@@ -32,7 +32,7 @@ export default async function HomeServiceSalesPage({ searchParams }: { searchPar
   const inRange = (date: string) => (!from || date >= from) && (!to || date <= to);
 
   // Home service jobs only — a job only has revenue once its Post-Repair
-  // checklist is completed. Repair Price + Labor/Service Cost together are
+  // checklist is completed. Repair Price + Service Fee together are
   // the Total Amount charged to the customer (the same figure shown to the
   // customer on the checklist/receipt — Parts/Material Cost never appears
   // there), minus that job's visit fee if it's currently waived (Admin >

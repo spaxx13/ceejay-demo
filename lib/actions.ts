@@ -88,7 +88,7 @@ import {
 } from "./email";
 import { isOnTheWayStatus } from "./technicianTracking";
 import { sendSms, sendOtpSms, smsConfigured, normalizePhone, isValidPhone, getAccountStatus, type SmsAccountStatus } from "./sms";
-import { SUNDAY_ONLY_PROVINCES, DOWNPAYMENT_PROVINCES, serviceFeeAmount, PICKUP_DELIVERY_FEE_PESOS } from "./homeServiceFees";
+import { SUNDAY_ONLY_PROVINCES, DOWNPAYMENT_PROVINCES, serviceFeeAmount, requestServiceFee, PICKUP_DELIVERY_FEE_PESOS } from "./homeServiceFees";
 import { getRepairQuote } from "./servicePricing";
 import { formatDate, isCheckInOpen } from "./format";
 import { createCheckoutSession as createPaymongoCheckoutSession, paymongoConfigured } from "./paymongo";
@@ -3616,8 +3616,15 @@ export async function submitChecklist(_prev: SubmitChecklistResult | undefined, 
       if (!costRaw) return { ok: false, error: "Price of the repair is required." };
       cost = Math.max(0, Number(costRaw) || 0);
       partsCost = Math.max(0, Number(str(formData, "partsCost")) || 0);
-      laborCost = Math.max(0, Number(str(formData, "laborCost")) || 0);
-      otherExpenses = Math.max(0, Number(str(formData, "otherExpenses")) || 0);
+      // The service fee is the one the customer was quoted when they booked
+      // (province/city, Pickup & Delivery flat fee, or ₱0 if waived) — stored
+      // in labor_cost so every Home Service report/receipt keeps reading
+      // "Repair Price + labor_cost" as the customer's Total Amount. Never
+      // taken from the form: the technician only types the Repair Price and
+      // the internal Parts/Material Cost. Other Expenses isn't collected on
+      // this flow at all.
+      laborCost = requestServiceFee(req!);
+      otherExpenses = 0;
     }
   }
 
@@ -3782,10 +3789,12 @@ export async function submitChecklist(_prev: SubmitChecklistResult | undefined, 
   return { ok: true, agreementId, phase };
 }
 
-// Lets a technician self-correct the Repair Price / Labor-Service Cost on
+// Lets a technician self-correct the Repair Price / Parts-Material Cost on
 // their own completed Post-Repair checklist (e.g. a typo at submission
 // time) — capped at MAX_PRICE_EDITS so it stays a correction tool, not an
-// open price field.
+// open price field. The service fee is re-derived from the request on every
+// edit (same rule as submitChecklist), so an edit also repairs an older
+// record whose fee was typed by hand.
 export type UpdateAgreementPriceResult = { ok: true } | { ok: false; error: string };
 
 export async function updateAgreementPrice(
@@ -3809,7 +3818,7 @@ export async function updateAgreementPrice(
   }
 
   const cost = Math.max(0, Number(str(formData, "cost")) || 0);
-  const laborCost = Math.max(0, Number(str(formData, "laborCost")) || 0);
+  const laborCost = requestServiceFee(req);
   const partsCost = Math.max(0, Number(str(formData, "partsCost")) || 0);
 
   await query("update service_agreements set cost=$1, labor_cost=$2, parts_cost=$3, price_edit_count=price_edit_count+1 where id=$4", [

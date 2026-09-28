@@ -34,20 +34,19 @@ export default function EditAgreementPriceForm({
   return (
     <form action={formAction} className="space-y-2 rounded-lg border border-slate-200 p-3">
       <input type="hidden" name="agreementId" value={agreementId} />
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-2 gap-2">
         <div className="space-y-1">
           <label className="text-xs font-medium text-slate-500">Repair Price (₱)</label>
           <input name="cost" type="number" min={0} step="0.01" defaultValue={cost} required className="input" />
-        </div>
-        <div className="space-y-1">
-          <label className="text-xs font-medium text-slate-500">Labor/Service Cost (₱)</label>
-          <input name="laborCost" type="number" min={0} step="0.01" defaultValue={laborCost} className="input" />
         </div>
         <div className="space-y-1">
           <label className="text-xs font-medium text-slate-500">Parts/Material Cost (₱)</label>
           <input name="partsCost" type="number" min={0} step="0.01" defaultValue={partsCost} className="input" />
         </div>
       </div>
+      <p className="text-[11px] text-slate-400">
+        Service Fee: ₱{laborCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} — set from the customer&apos;s booking, not editable here.
+      </p>
       {state && !state.ok && <p className="text-xs text-red-600">{state.error}</p>}
       <div className="flex items-center gap-2">
         <button type="submit" disabled={pending} className="btn-primary !px-3 !py-1 text-xs">
