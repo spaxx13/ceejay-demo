@@ -9,7 +9,8 @@ https://claude.ai/artifact/CqiQFoZaBxmHciivmkWrXi
 
 ```
 lib/
-  config.js       branch/service config (folder env var names, address, contact)
+  autoposter-config.js  branch/service config (folder env var names, address, contact)
+  image.js        magic-byte format sniffing, HEIC decode, resize + JPEG encode
   googleDrive.js  OAuth token refresh, list/download files, day-grouping
   caption.js      Claude API call that writes the Facebook caption
   facebook.js     Graph API: upload photos, publish album post
@@ -65,6 +66,14 @@ It's safe to call repeatedly in the same day — if there's no new closed
 - Facebook Page Access Tokens generated this way don't expire under normal
   use, but a password change or app review status change could invalidate
   it — same fix, regenerate via Graph API Explorer.
-- `MAX_PHOTOS_PER_POST` in `lib/config.js` caps a single day's post at 10
-  photos and caption generation looks at the first 6 of those (image/vision
-  cost control). Raise either if a branch tends to have busier days.
+- `MAX_PHOTOS_PER_POST` in `lib/autoposter-config.js` caps a single day's
+  post at 10 photos and caption generation looks at the first 4 of those
+  (`MAX_CAPTION_IMAGES` in `lib/caption.js`, image/vision cost control).
+  Raise either if a branch tends to have busier days.
+- Every photo is normalized to JPEG (max 1600px long edge, under 5 MB) by
+  `lib/image.js` before it reaches Claude or Facebook. The real format is
+  sniffed from magic bytes, not Drive's `mimeType`; HEIC/HEIF from iPhones
+  is decoded with `heic-convert` (pure JS) because the prebuilt `sharp`
+  binary has no HEVC decoder. A photo that can't be converted is skipped
+  with a `skipping <filename>` warning in the function logs and is not
+  posted; the rest of the day still goes out.
