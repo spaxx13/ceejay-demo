@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { CHECKLIST_TEMPLATE, SERVICE_AGREEMENT_TERMS } from "@/lib/checklist";
-import { getRequestById, getLookups, getDeviceModels, getServiceAgreements } from "@/lib/db";
+import { getRequestById, getLookups, getDeviceModels, getServiceAgreementsForRequest } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import ChecklistForm from "@/components/ChecklistForm";
 import AgreementSummary from "@/components/AgreementSummary";
@@ -16,7 +16,7 @@ export default async function TechnicianChecklistPage({ params }: { params: Prom
   const [lookups, deviceModels, agreements] = await Promise.all([
     getLookups(),
     getDeviceModels(),
-    getServiceAgreements(),
+    getServiceAgreementsForRequest(req.id),
   ]);
   const brand = lookups.find((l) => l.id === req.deviceBrandId);
   const model = deviceModels.find((m) => m.id === req.deviceModelId);

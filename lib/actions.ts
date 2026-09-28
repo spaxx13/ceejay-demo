@@ -38,6 +38,8 @@ import {
   getRequestsByBookingGroup,
   getRepairRecordById,
   getServiceAgreements,
+  getServiceAgreementsForRequest,
+  getServiceAgreementsForRepairRecord,
   getRepairRecordStatus,
   getCustomFormFields,
   getCrmBroadcastRecipients,
@@ -3546,7 +3548,7 @@ export async function submitChecklist(_prev: SubmitChecklistResult | undefined, 
     technicianName = record.technicianName || user.name;
   }
 
-  const agreements = await getServiceAgreements();
+  const agreements = requestId ? await getServiceAgreementsForRequest(requestId) : await getServiceAgreementsForRepairRecord(repairRecordId!);
   const existingForPhase = agreements.find((a) =>
     requestId ? a.requestId === requestId && a.phase === phase : a.repairRecordId === repairRecordId && a.phase === phase
   );
@@ -3855,7 +3857,7 @@ export async function resendReceiptEmail(_prev: ResendReceiptResult | undefined,
     return { ok: false, error: "Technicians can only resend home service receipts." };
   }
 
-  const agreements = await getServiceAgreements();
+  const agreements = requestId ? await getServiceAgreementsForRequest(requestId) : await getServiceAgreementsForRepairRecord(repairRecordId!);
 
   if (requestId) {
     const req = await getRequestById(requestId);

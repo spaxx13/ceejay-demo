@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
-import { getRepairRecords, getServiceAgreementsForEarnings, getTechnicians, getExpenses } from "@/lib/db";
+import { getRepairRecords, getServiceAgreements, getTechnicians, getExpenses } from "@/lib/db";
 import { computeTechnicianEarnings, resolveEarningsRange, type EarningsPeriod, type EarningsJob } from "@/lib/earnings";
 
 // Every numeric field is non-optional on the iOS EarningsJob decoder, so a
@@ -32,7 +32,7 @@ export async function GET(req: NextRequest) {
   const [technicians, repairRecords, agreements, expenses] = await Promise.all([
     getTechnicians(),
     getRepairRecords(),
-    getServiceAgreementsForEarnings(),
+    getServiceAgreements(),
     getExpenses(),
   ]);
   const technician = technicians.find((t) => t.id === user.technicianId);
