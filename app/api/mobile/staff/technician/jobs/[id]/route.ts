@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { CHECKLIST_TEMPLATE, SERVICE_AGREEMENT_TERMS } from "@/lib/checklist";
 import { MAX_PRICE_EDITS } from "@/lib/config";
 import { getCurrentUser } from "@/lib/auth";
-import { getRequestById, getLookups, getDeviceModels, getServiceAgreements } from "@/lib/db";
+import { getRequestById, getLookups, getDeviceModels, getServiceAgreementsForRequest } from "@/lib/db";
 import type { ServiceAgreement } from "@/lib/types";
 
 // Everything the checklist screens need for one job, mirroring
@@ -44,7 +44,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     return NextResponse.json({ ok: false, error: "This job isn't assigned to you." }, { status: 403 });
   }
 
-  const [lookups, deviceModels, agreements] = await Promise.all([getLookups(), getDeviceModels(), getServiceAgreements()]);
+  const [lookups, deviceModels, agreements] = await Promise.all([getLookups(), getDeviceModels(), getServiceAgreementsForRequest(request.id)]);
   const brand = lookups.find((l) => l.id === request.deviceBrandId);
   const model = deviceModels.find((m) => m.id === request.deviceModelId);
   const deviceLabel = brand ? `${brand.label} ${model?.name ?? ""}`.trim() : request.deviceOther || "Device";

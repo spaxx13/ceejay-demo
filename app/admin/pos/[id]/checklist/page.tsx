@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { CHECKLIST_TEMPLATE, SERVICE_AGREEMENT_TERMS } from "@/lib/checklist";
-import { getRepairRecordById, getServiceAgreements } from "@/lib/db";
+import { getRepairRecordById, getServiceAgreementsForRepairRecord } from "@/lib/db";
 import ChecklistForm from "@/components/ChecklistForm";
 import AgreementSummary from "@/components/AgreementSummary";
 
@@ -10,7 +10,7 @@ export default async function RepairRecordChecklistPage({ params }: { params: Pr
   const record = await getRepairRecordById(id);
   if (!record) notFound();
 
-  const agreements = await getServiceAgreements();
+  const agreements = await getServiceAgreementsForRepairRecord(record.id);
   const pre = agreements.find((a) => a.repairRecordId === record.id && a.phase === "pre_repair");
   const post = agreements.find((a) => a.repairRecordId === record.id && a.phase === "post_repair");
 
