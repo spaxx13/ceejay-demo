@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getLookups, getDeviceModels, getRequestFormContent, getCustomFormFields, getBranches } from "@/lib/db";
 import { OTP_GATE_ENABLED, PICKUP_DELIVERY_MOBILE_ENABLED, PICKUP_DELIVERY_PUBLIC_ENABLED } from "@/lib/config";
+import { emailConfigured } from "@/lib/email";
 import {
   PROVINCE_FEES,
   SUNDAY_ONLY_PROVINCES,
@@ -41,6 +42,9 @@ export async function GET() {
         // PICKUP_DELIVERY_MOBILE_ENABLED, or everywhere via the public flag.
         pickupDeliveryPublicEnabled: PICKUP_DELIVERY_PUBLIC_ENABLED || PICKUP_DELIVERY_MOBILE_ENABLED,
         otpGateEnabled: OTP_GATE_ENABLED,
+        // Walk-in pre-registration verifies by email, and only when email
+        // sending is really configured — same gate WalkInForm.tsx applies.
+        walkInEmailOtpEnabled: OTP_GATE_ENABLED && emailConfigured(),
       },
     },
     { headers: { "Cache-Control": "no-store" } },
