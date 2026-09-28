@@ -85,4 +85,6 @@ exercise download + conversion + caption without posting anything.
 - Any route accepts `?dryRun=1` (e.g. `/api/post-cubao?dryRun=1`): it
   downloads, converts and writes the caption for the next unposted day but
   posts nothing and records nothing, and the response includes per-stage
-  timings. Use it to test after a deploy without touching the Facebook Page.
+  timings plus a read-only `facebook` preflight (`ok`, `pageName`, or the
+  Graph API `error` if the Page token / FB_PAGE_ID is wrong). Use it to test
+  after a deploy without touching the Facebook Page.
