@@ -54,7 +54,8 @@ curl https://<your-deployment>.vercel.app/api/post-cubao
 
 It's safe to call repeatedly in the same day — if there's no new closed
 (i.e. finished, past 11:59 PM) day of photos to post, it responds with
-`{"posted": false, "reason": "..."}"` and does nothing.
+`{"posted": false, "reason": "..."}"` and does nothing. Add `?dryRun=1` to
+exercise download + conversion + caption without posting anything.
 
 ## Known limits / things to revisit
 
@@ -73,7 +74,15 @@ It's safe to call repeatedly in the same day — if there's no new closed
 - Every photo is normalized to JPEG (max 1600px long edge, under 5 MB) by
   `lib/image.js` before it reaches Claude or Facebook. The real format is
   sniffed from magic bytes, not Drive's `mimeType`; HEIC/HEIF from iPhones
-  is decoded with `heic-convert` (pure JS) because the prebuilt `sharp`
-  binary has no HEVC decoder. A photo that can't be converted is skipped
+  is decoded with `heic-decode` (pure JS/WASM libheif) because the prebuilt
+  `sharp` binary has no HEVC decoder. A photo that can't be converted is skipped
   with a `skipping <filename>` warning in the function logs and is not
-  posted; the rest of the day still goes out.
+  posted; the rest of the day still goes out. Same for a photo Facebook
+  rejects. If no photo of a day can be converted, the day is recorded with
+  no photos so the branch moves on to the next day instead of failing on
+  the same day forever. Claude API calls retry twice on 429/5xx/network
+  errors, and a failed call logs the full response body.
+- Any route accepts `?dryRun=1` (e.g. `/api/post-cubao?dryRun=1`): it
+  downloads, converts and writes the caption for the next unposted day but
+  posts nothing and records nothing, and the response includes per-stage
+  timings. Use it to test after a deploy without touching the Facebook Page.
