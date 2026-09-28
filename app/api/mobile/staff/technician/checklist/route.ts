@@ -8,9 +8,11 @@ import { submitChecklist } from "@/lib/actions";
 // matching the checkbox `.has()` convention. Expected JSON keys mirror
 // the web form: requestId, phase, result_<key>, notes_<key>,
 // customerSignature, technicianSignature, summaryNotes, agreedToTerms,
-// receiptPhotoDataUrl, warrantyCoverage, cost, partsCost, laborCost,
-// otherExpenses. Body carries several base64 images — Vercel's ~4.5MB
-// request cap applies, so the app compresses photos client-side first.
+// receiptPhotoDataUrl, warrantyCoverage, cost, partsCost. (laborCost /
+// otherExpenses are ignored if sent — the service fee is derived from the
+// request itself, see requestServiceFee in lib/homeServiceFees.ts.) Body
+// carries several base64 images — Vercel's ~4.5MB request cap applies, so
+// the app compresses photos client-side first.
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);
   if (!body || typeof body !== "object") {

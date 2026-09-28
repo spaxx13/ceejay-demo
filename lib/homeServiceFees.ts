@@ -112,3 +112,21 @@ export function serviceFeeAmount(province: string, city: string): number | null 
   if (fee.higherTowns && fee.higherFee && city && fee.higherTowns.includes(city)) return fee.higherFee;
   return fee.base;
 }
+
+// The service fee this specific booking's customer actually pays, in pesos
+// — what the Post-Repair checklist adds to the Repair Price for the
+// customer-facing Total Amount (lib/actions.ts submitChecklist /
+// updateAgreementPrice). Derived from the request the customer filled out,
+// never typed by the technician: the province/city visit fee for an
+// on-site visit, the flat Pickup & Delivery fee for that mode, and ₱0 when
+// staff waived the fee (Admin > Requests > Waive Service Fee).
+export function requestServiceFee(req: {
+  province: string;
+  city: string;
+  serviceFeeWaived: boolean;
+  fulfillmentMode: "on_site" | "pickup_delivery";
+}): number {
+  if (req.serviceFeeWaived) return 0;
+  if (req.fulfillmentMode === "pickup_delivery") return PICKUP_DELIVERY_FEE_PESOS;
+  return serviceFeeAmount(req.province, req.city) ?? 0;
+}

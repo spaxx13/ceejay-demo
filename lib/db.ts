@@ -1041,8 +1041,12 @@ export function homeServiceSalesByTechnician(
     const request = a.requestId ? requestById.get(a.requestId) : undefined;
     if (a.requestId && !request) continue; // request moved to Trash — excluded from Sales until restored
     const bucket = ensure(a.technicianName);
+    // labor_cost holds the service fee the customer was charged. Checklists
+    // completed after the fee was waived already store ₱0 there (lib/actions
+    // submitChecklist), so only subtract the waived fee from what was
+    // actually stored — never below zero — to avoid double-counting it.
     const waivedFee = request?.serviceFeeWaived ? serviceFeeAmount(request.province, request.city) ?? 0 : 0;
-    const amount = Math.max(0, a.cost + a.laborCost - waivedFee);
+    const amount = Math.max(0, a.cost + Math.max(0, a.laborCost - waivedFee));
     bucket.count += 1;
     bucket.totalAmount += amount;
     bucket.partsCost += a.partsCost;
