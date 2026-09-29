@@ -13,21 +13,25 @@ type Tech = {
   branchIds: string[];
   active: boolean;
   earningsSharePercent: number;
+  canPickupDelivery: boolean;
 };
 
 export default function TechnicianManager({ technicians, branches }: { technicians: Tech[]; branches: Opt[] }) {
   const formRef = useRef<HTMLFormElement>(null);
   const [branchSel, setBranchSel] = useState<string[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [canPickupDelivery, setCanPickupDelivery] = useState(false);
   const editing = technicians.find((t) => t.id === editingId);
 
   function startEdit(t: Tech) {
     setEditingId(t.id);
     setBranchSel(t.branchIds);
+    setCanPickupDelivery(t.canPickupDelivery);
   }
   function reset() {
     setEditingId(null);
     setBranchSel([]);
+    setCanPickupDelivery(false);
     formRef.current?.reset();
   }
 
@@ -88,6 +92,21 @@ export default function TechnicianManager({ technicians, branches }: { technicia
               </p>
             </div>
           </div>
+          <label className="flex items-start gap-2 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              name="canPickupDelivery"
+              checked={canPickupDelivery}
+              onChange={(e) => setCanPickupDelivery(e.target.checked)}
+              className="mt-0.5 h-4 w-4 rounded border-slate-300"
+            />
+            <span>
+              Can handle Pickup &amp; Delivery
+              <span className="block text-[11px] font-normal text-slate-400">
+                Only technicians with this on show up when assigning the repair for a Pickup &amp; Delivery job.
+              </span>
+            </span>
+          </label>
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-slate-500">Branch(es)</label>
             <div className="flex flex-wrap gap-2">
@@ -149,6 +168,8 @@ export default function TechnicianManager({ technicians, branches }: { technicia
               <span className="text-right text-slate-600">{branches.filter((b) => t.branchIds.includes(b.id)).map((b) => b.name).join(", ") || "—"}</span>
               <span className="text-slate-400">Earnings Share</span>
               <span className="text-right text-slate-600">{t.earningsSharePercent}%</span>
+              <span className="text-slate-400">Pickup &amp; Delivery</span>
+              <span className="text-right text-slate-600">{t.canPickupDelivery ? "Yes" : "No"}</span>
             </div>
             <div className="flex gap-1.5 pt-1">
               <button className="btn-secondary flex-1 !py-1.5 text-xs" onClick={() => startEdit(t)}>
@@ -179,6 +200,7 @@ export default function TechnicianManager({ technicians, branches }: { technicia
               <th className="pb-2 pr-3">Contact</th>
               <th className="pb-2 pr-3">Branch(es)</th>
               <th className="pb-2 pr-3">Earnings Share</th>
+              <th className="pb-2 pr-3">Pickup &amp; Delivery</th>
               <th className="pb-2 pr-3">Status</th>
               <th className="pb-2">Actions</th>
             </tr>
@@ -190,6 +212,7 @@ export default function TechnicianManager({ technicians, branches }: { technicia
                 <td className="py-3 pr-3 text-slate-500">{t.contactNumber}</td>
                 <td className="py-3 pr-3 text-slate-500">{branches.filter((b) => t.branchIds.includes(b.id)).map((b) => b.name).join(", ") || "—"}</td>
                 <td className="py-3 pr-3 text-slate-500">{t.earningsSharePercent}%</td>
+                <td className="py-3 pr-3 text-slate-500">{t.canPickupDelivery ? "Yes" : "No"}</td>
                 <td className="py-3 pr-3">
                   <form action={toggleTechnicianActive}>
                     <input type="hidden" name="id" value={t.id} />

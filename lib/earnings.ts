@@ -1,4 +1,4 @@
-import type { RepairRecord, ServiceAgreement } from "./types";
+import type { HomeServiceRequest, RepairRecord, ServiceAgreement } from "./types";
 
 export type EarningsPeriod = "day" | "week" | "month";
 
@@ -39,7 +39,11 @@ export const DEFAULT_EARNINGS_SHARE_PERCENT = 50;
 
 export type EarningsJob = {
   id: string;
-  source: "POS" | "Home Service";
+  // "Home Service" is on-site visits only — a job whose request is a
+  // Pickup & Delivery booking is labeled "Pickup & Delivery" instead, so
+  // the two revenue streams are never mixed in a technician's earnings
+  // (see computeTechnicianEarnings' `requests` param below).
+  source: "POS" | "Home Service" | "Pickup & Delivery";
   reference: string;
   customerName: string;
   date: string;
@@ -66,10 +70,11 @@ export type EarningsJob = {
 //   Sales, where revenue is the repair price alone and Parts/Service/Other
 //   are all deducted from it.
 //     Net = Repair Cost − Parts Cost − Service Fee − Other Expenses
-//   Home Service (source="Home Service"): the service fee IS billed to the
-//   customer on top of the repair price (the customer-facing Total Amount)
-//   — same as Home Service Sales, which only deducts Parts/Material Cost
-//   from that Total Amount.
+//   Home Service and Pickup & Delivery (source="Home Service" or "Pickup &
+//   Delivery"): the service fee IS billed to the customer on top of the
+//   repair price (the customer-facing Total Amount) — same as Sales > Home
+//   Service / Sales > Pickup & Delivery, which only deduct Parts/Material
+//   Cost from that Total Amount.
 //     Net = (Repair Cost + Service Fee) − Parts Cost
 export function toJob(
   id: string,
@@ -95,13 +100,19 @@ export function toJob(
 // Itemized, completed job orders credited to one technician (matched by
 // name — the same identity POS records and service agreements already use
 // for technician attribution elsewhere) within [from, to] inclusive.
+// `requests` (optional — defaults to none; pass getRequests()'s non-deleted
+// list) tells a request-linked job apart as "Home Service" (on-site) or
+// "Pickup & Delivery" — a job whose request isn't in this list (e.g.
+// trashed) falls back to "Home Service" rather than disappearing, same as
+// before this distinction existed.
 export function computeTechnicianEarnings(
   technicianName: string,
   repairRecords: RepairRecord[],
   agreements: ServiceAgreement[],
   from: string,
   to: string,
-  sharePercent: number = DEFAULT_EARNINGS_SHARE_PERCENT
+  sharePercent: number = DEFAULT_EARNINGS_SHARE_PERCENT,
+  requests: Pick<HomeServiceRequest, "id" | "fulfillmentMode">[] = []
 ): EarningsJob[] {
   const inRange = (date: string) => (!from || date >= from) && (!to || date <= to);
   // Case-insensitive so a job logged with a differently-cased name
@@ -109,6 +120,8 @@ export function computeTechnicianEarnings(
   // earnings instead of silently vanishing from their own report.
   const name = technicianName.trim().toLowerCase();
   if (!name) return [];
+
+  const requestById = new Map(requests.map((r) => [r.id, r]));
 
   const posJobs = repairRecords
     .filter((r) => !r.cancelled && r.technicianName.trim().toLowerCase() === name && inRange(r.serviceDate))
@@ -118,12 +131,13 @@ export function computeTechnicianEarnings(
 
   const homeServiceJobs = agreements
     .filter((a) => a.phase === "post_repair" && a.requestId && a.technicianName.trim().toLowerCase() === name && inRange(a.completedAt.slice(0, 10)))
-    .map((a) =>
-      toJob(
-        a.id, "Home Service", a.reference, a.customerName, a.completedAt.slice(0, 10), a.deviceLabel || "—",
+    .map((a) => {
+      const source: EarningsJob["source"] = requestById.get(a.requestId!)?.fulfillmentMode === "pickup_delivery" ? "Pickup & Delivery" : "Home Service";
+      return toJob(
+        a.id, source, a.reference, a.customerName, a.completedAt.slice(0, 10), a.deviceLabel || "—",
         a.cost, a.laborCost, a.partsCost, a.otherExpenses, sharePercent
-      )
-    );
+      );
+    });
 
   return [...posJobs, ...homeServiceJobs].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
 }

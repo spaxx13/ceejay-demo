@@ -40,7 +40,7 @@ import type {
 import { sendPushToUsers } from "./push";
 import { sendPushToTokens } from "./pushNotifications";
 import { sendSms, smsConfigured } from "./sms";
-import { serviceFeeAmount } from "./homeServiceFees";
+import { quotedServiceFee } from "./homeServiceFees";
 
 // Single pooled connection, reused across invocations within the same
 // serverless instance (and across all of local dev). Uses the pooled
@@ -277,12 +277,13 @@ function mapBranch(r: BranchRow): Branch {
 
 type TechnicianRow = {
   id: string; name: string; contact_number: string; email: string; employment_status: Technician["employmentStatus"];
-  branch_ids: string[]; active: boolean; earnings_share_percent: string | number;
+  branch_ids: string[]; active: boolean; earnings_share_percent: string | number; can_pickup_delivery: boolean;
 };
 function mapTechnician(r: TechnicianRow): Technician {
   return {
     id: r.id, name: r.name, contactNumber: r.contact_number, email: r.email, employmentStatus: r.employment_status,
     branchIds: r.branch_ids ?? [], active: r.active, earningsSharePercent: Number(r.earnings_share_percent ?? 50),
+    canPickupDelivery: r.can_pickup_delivery,
   };
 }
 
@@ -1020,13 +1021,21 @@ export type HomeServiceSalesRow = {
 // canonicalTechnicianName, so a name typed in a different case doesn't split
 // one technician into multiple rows; omit only where the caller has no
 // technicians list handy and grouping precision doesn't matter.
-export function homeServiceSalesByTechnician(
+type SalesRequestPick = Pick<HomeServiceRequest, "id" | "serviceFeeWaived" | "province" | "city" | "fulfillmentMode">;
+
+// Shared backing for homeServiceSalesByTechnician (on-site visits) and
+// pickupDeliverySalesByTechnician (Pickup & Delivery) below — a job from one
+// fulfillment mode is never counted in the other's totals, so on-site home
+// service revenue and Pickup & Delivery revenue stay fully separate
+// everywhere this is used (Sales, Dashboard, Requests page).
+function salesByTechnicianForMode(
   agreements: ServiceAgreement[],
   inRange: (date: string) => boolean,
-  requests: Pick<HomeServiceRequest, "id" | "serviceFeeWaived" | "province" | "city">[] = [],
-  technicians: Pick<Technician, "name">[] = []
+  requests: SalesRequestPick[],
+  technicians: Pick<Technician, "name">[],
+  mode: "on_site" | "pickup_delivery"
 ): HomeServiceSalesRow[] {
-  const requestById = new Map(requests.map((r) => [r.id, r]));
+  const requestById = new Map(requests.filter((r) => r.fulfillmentMode === mode).map((r) => [r.id, r]));
   const homeServiceJobs = agreements.filter((a) => a.phase === "post_repair" && a.requestId && inRange(a.completedAt.slice(0, 10)));
 
   type TechTotals = { name: string; count: number; totalAmount: number; partsCost: number; jobs: { deviceLabel: string; amount: number }[] };
@@ -1039,13 +1048,13 @@ export function homeServiceSalesByTechnician(
 
   for (const a of homeServiceJobs) {
     const request = a.requestId ? requestById.get(a.requestId) : undefined;
-    if (a.requestId && !request) continue; // request moved to Trash — excluded from Sales until restored
+    if (a.requestId && !request) continue; // trashed, or belongs to the other fulfillment mode — excluded either way
     const bucket = ensure(a.technicianName);
     // labor_cost holds the service fee the customer was charged. Checklists
     // completed after the fee was waived already store ₱0 there (lib/actions
     // submitChecklist), so only subtract the waived fee from what was
     // actually stored — never below zero — to avoid double-counting it.
-    const waivedFee = request?.serviceFeeWaived ? serviceFeeAmount(request.province, request.city) ?? 0 : 0;
+    const waivedFee = request?.serviceFeeWaived ? quotedServiceFee(request) : 0;
     const amount = Math.max(0, a.cost + Math.max(0, a.laborCost - waivedFee));
     bucket.count += 1;
     bucket.totalAmount += amount;
@@ -1063,6 +1072,34 @@ export function homeServiceSalesByTechnician(
       if (b.name === "Unassigned") return -1;
       return b.totalAmount - a.totalAmount;
     });
+}
+
+// requests (optional — defaults to none; every call site passes
+// getRequests()'s non-deleted list): only its on_site rows are matched, so
+// a job tied to a Pickup & Delivery request is silently excluded here, same
+// as one that's been moved to Trash. technicians (optional) resolves each
+// job's raw typed name to its configured Settings > Technicians casing.
+export function homeServiceSalesByTechnician(
+  agreements: ServiceAgreement[],
+  inRange: (date: string) => boolean,
+  requests: SalesRequestPick[] = [],
+  technicians: Pick<Technician, "name">[] = []
+): HomeServiceSalesRow[] {
+  return salesByTechnicianForMode(agreements, inRange, requests, technicians, "on_site");
+}
+
+// Same shape as homeServiceSalesByTechnician, but only its pickup_delivery
+// rows are matched — powers the dedicated Sales > Pickup & Delivery page,
+// kept fully separate from Sales > Home Service (and everywhere else
+// homeServiceSalesByTechnician is used) so the two revenue streams never
+// mix in a total.
+export function pickupDeliverySalesByTechnician(
+  agreements: ServiceAgreement[],
+  inRange: (date: string) => boolean,
+  requests: SalesRequestPick[] = [],
+  technicians: Pick<Technician, "name">[] = []
+): HomeServiceSalesRow[] {
+  return salesByTechnicianForMode(agreements, inRange, requests, technicians, "pickup_delivery");
 }
 
 export function sumHomeServiceSales(rows: HomeServiceSalesRow[]) {

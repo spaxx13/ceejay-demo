@@ -172,6 +172,12 @@ export type Technician = {
   // Falls back to 50 for a technician name with no matching record (e.g. a
   // typo, or a name no longer in the system).
   earningsSharePercent: number;
+  // Whether this technician can be assigned a Pickup & Delivery repair (once
+  // the rider brings the device to a branch) — set per technician on
+  // Settings > Technicians. Not every home-service technician is meant to
+  // also take Pickup & Delivery jobs, so the assignment dropdown on Admin >
+  // Pickup & Delivery only offers technicians with this on.
+  canPickupDelivery: boolean;
 };
 
 // A courier who handles the pickup/delivery legs of a Pickup & Delivery

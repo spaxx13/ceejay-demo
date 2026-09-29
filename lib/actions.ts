@@ -459,7 +459,7 @@ export async function createTechnician(formData: FormData) {
   const name = str(formData, "name");
   if (!name) return;
   await query(
-    "insert into technicians (name, contact_number, email, employment_status, branch_ids, earnings_share_percent) values ($1,$2,$3,$4,$5,$6)",
+    "insert into technicians (name, contact_number, email, employment_status, branch_ids, earnings_share_percent, can_pickup_delivery) values ($1,$2,$3,$4,$5,$6,$7)",
     [
       name,
       str(formData, "contactNumber"),
@@ -467,6 +467,7 @@ export async function createTechnician(formData: FormData) {
       str(formData, "employmentStatus") || "full_time",
       listStr(formData, "branchIds"),
       earningsSharePercentFromForm(formData),
+      formData.has("canPickupDelivery"),
     ]
   );
   revalidatePath("/admin/technicians");
@@ -479,7 +480,7 @@ export async function updateTechnician(formData: FormData) {
   const name = str(formData, "name");
   if (!name) return;
   await query(
-    "update technicians set name=$1, contact_number=$2, email=$3, employment_status=$4, branch_ids=$5, earnings_share_percent=$6 where id=$7",
+    "update technicians set name=$1, contact_number=$2, email=$3, employment_status=$4, branch_ids=$5, earnings_share_percent=$6, can_pickup_delivery=$7 where id=$8",
     [
       name,
       str(formData, "contactNumber"),
@@ -487,6 +488,7 @@ export async function updateTechnician(formData: FormData) {
       str(formData, "employmentStatus") || "full_time",
       listStr(formData, "branchIds"),
       earningsSharePercentFromForm(formData),
+      formData.has("canPickupDelivery"),
       techId,
     ]
   );
