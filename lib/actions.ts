@@ -3854,6 +3854,52 @@ export async function updateAgreementPrice(
   return { ok: true };
 }
 
+// Same fields as updateAgreementPrice above (Repair Price + Parts/Material
+// Cost — the Service Fee stays derived from the request via
+// requestServiceFee, never freely typed here either), but for an
+// owner/branch admin correcting a mistake from the request's own detail
+// page (Admin > Home Service Requests > [request]) rather than the
+// assigned technician self-correcting from their own job. Deliberately
+// uncapped — MAX_PRICE_EDITS is a guardrail on a technician's own
+// self-correction allowance, not a limit on the shop's own data-correction
+// tool — and gated on canManageHomeServiceRequests (the same access the
+// request page itself requires) instead of "assigned to me".
+export type UpdateAgreementPriceAdminResult = { ok: true } | { ok: false; error: string };
+
+export async function updateAgreementPriceAdmin(
+  _prev: UpdateAgreementPriceAdminResult | undefined,
+  formData: FormData
+): Promise<UpdateAgreementPriceAdminResult> {
+  const user = await getCurrentUser();
+  if (!canManageHomeServiceRequests(user)) return { ok: false, error: "You don't have access to edit this." };
+
+  const agreementId = str(formData, "agreementId");
+  const agreements = await getServiceAgreements();
+  const agreement = agreements.find((a) => a.id === agreementId);
+  if (!agreement) return { ok: false, error: "Checklist not found." };
+  if (agreement.phase !== "post_repair" || !agreement.requestId) return { ok: false, error: "This checklist can't be price-edited." };
+
+  const req = await getRequestById(agreement.requestId);
+  if (!req) return { ok: false, error: "Request not found." };
+  if (isBranchHidden(user, req.queueBranchId)) return { ok: false, error: "You don't have access to this request." };
+
+  const cost = Math.max(0, Number(str(formData, "cost")) || 0);
+  const laborCost = requestServiceFee(req);
+  const partsCost = Math.max(0, Number(str(formData, "partsCost")) || 0);
+
+  await query("update service_agreements set cost=$1, labor_cost=$2, parts_cost=$3 where id=$4", [cost, laborCost, partsCost, agreementId]);
+  await logActivity(
+    "home_service_request",
+    req.id,
+    `${user!.name} edited the repair price/parts cost on ${agreement.reference}`,
+    user!.name
+  );
+  revalidatePath(`/admin/requests/${req.id}`);
+  revalidatePath("/admin/sales/home-service");
+  revalidatePath("/admin/sales/pickup-delivery");
+  return { ok: true };
+}
+
 // Re-sends the same PDF receipt that was emailed when the Post-Repair
 // checklist was completed — for when a customer calls back asking for
 // another copy. Reads straight off the already-saved record/agreements

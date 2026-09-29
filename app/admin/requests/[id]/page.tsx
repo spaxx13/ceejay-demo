@@ -32,6 +32,7 @@ import { getRepairQuote } from "@/lib/servicePricing";
 import { directionsUrl, isTrackingClosed } from "@/lib/technicianTracking";
 import { getTrackingSnapshotForRequest } from "@/lib/trackingSnapshot";
 import AdminLiveMap from "@/components/AdminLiveMap";
+import EditAgreementPriceAdminForm from "@/components/EditAgreementPriceAdminForm";
 
 const peso = (n: number) => `₱${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
@@ -282,6 +283,17 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
                 <span className="font-medium text-blue-300">Technician Share (70%)</span>
                 <span className="font-semibold text-blue-300">{peso(revenueSplit.technicianShare)}</span>
               </div>
+              {canManageHomeServiceRequests(user) && postAgreement && (
+                <div className="border-t border-slate-200 pt-2">
+                  <EditAgreementPriceAdminForm
+                    key={`${postAgreement.cost}-${postAgreement.laborCost}-${postAgreement.partsCost}`}
+                    agreementId={postAgreement.id}
+                    cost={postAgreement.cost}
+                    laborCost={postAgreement.laborCost}
+                    partsCost={postAgreement.partsCost}
+                  />
+                </div>
+              )}
             </div>
           )}
           {canWaiveServiceFee(user) && quotedServiceFee !== null && !req.serviceFeeWaived && (
