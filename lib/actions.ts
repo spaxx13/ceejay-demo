@@ -2829,6 +2829,7 @@ export async function deleteHomeServiceRequest(formData: FormData) {
   const requestId = str(formData, "id");
   await query("update home_service_requests set deleted_at=now() where id=$1", [requestId]);
   revalidatePath("/admin/requests");
+  revalidatePath("/admin/pickup-delivery");
   revalidatePath("/admin/pos");
   revalidatePath("/admin/sales/home-service");
   revalidatePath("/admin/sales/materials");
@@ -2844,6 +2845,7 @@ export async function restoreHomeServiceRequest(formData: FormData) {
   const requestId = str(formData, "id");
   await query("update home_service_requests set deleted_at=null where id=$1", [requestId]);
   revalidatePath("/admin/requests");
+  revalidatePath("/admin/pickup-delivery");
   revalidatePath("/admin/pos");
   revalidatePath("/admin/sales/home-service");
   revalidatePath("/admin/sales/materials");

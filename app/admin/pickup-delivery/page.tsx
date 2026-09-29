@@ -6,15 +6,18 @@ import {
   getLookups,
   getRequestExceptions,
   canManageHomeServiceRequests,
+  canDeleteHomeServiceRequests,
   isBranchHidden,
   pickupDeliveryStage,
   PICKUP_DELIVERY_STAGE_LABELS,
   type PickupDeliveryStage,
 } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
+import { deleteHomeServiceRequest } from "@/lib/actions";
 import StatusBadge from "@/components/StatusBadge";
 import BarBreakdownChart from "@/components/BarBreakdownChart";
 import OpenIssuesList from "@/components/OpenIssuesList";
+import DeleteButton from "@/components/DeleteButton";
 
 // Same list → table → "View" detail-page pattern as Admin > Home Service
 // Requests, instead of the old 4-column Kanban board — one consistent
@@ -126,7 +129,7 @@ export default async function PickupDeliveryPage({ searchParams }: { searchParam
       <div className="space-y-3 sm:hidden">
         {jobsByStage.length === 0 && <p className="card text-center text-sm text-slate-400">No jobs match.</p>}
         {jobsByStage.map((j) => (
-          <Link key={j.id} href={`/admin/pickup-delivery/${j.id}`} className="card block space-y-2">
+          <div key={j.id} className="card space-y-2">
             <div className="flex items-start justify-between gap-2">
               <p className="font-mono text-xs text-blue-300">{j.reference}</p>
               <StatusBadge label={PICKUP_DELIVERY_STAGE_LABELS[j.stage]} />
@@ -140,7 +143,21 @@ export default async function PickupDeliveryPage({ searchParams }: { searchParam
               <span className="text-slate-400">Rider</span>
               <span className={j.riderName ? "text-right text-slate-600" : "text-right text-amber-700"}>{j.riderName ?? "Unassigned"}</span>
             </div>
-          </Link>
+            <div className="flex gap-1.5 pt-1">
+              <Link href={`/admin/pickup-delivery/${j.id}`} className="btn-secondary flex-1 text-center !py-1.5 text-xs">
+                View
+              </Link>
+              {canDeleteHomeServiceRequests(user) && (
+                <DeleteButton
+                  id={j.id}
+                  action={deleteHomeServiceRequest}
+                  confirmMessage={`Move Pickup & Delivery request ${j.reference} to Trash? You can restore it later from Trash.`}
+                  label="Move to Trash"
+                  className="btn-secondary !py-1.5 text-xs !text-red-600"
+                />
+              )}
+            </div>
+          </div>
         ))}
       </div>
 
@@ -181,9 +198,19 @@ export default async function PickupDeliveryPage({ searchParams }: { searchParam
                   </Link>
                 </td>
                 <td className="py-3">
-                  <Link href={`/admin/pickup-delivery/${j.id}`} className="btn-secondary !px-3 !py-1 text-xs">
-                    View
-                  </Link>
+                  <div className="flex gap-1.5">
+                    <Link href={`/admin/pickup-delivery/${j.id}`} className="btn-secondary !px-3 !py-1 text-xs">
+                      View
+                    </Link>
+                    {canDeleteHomeServiceRequests(user) && (
+                      <DeleteButton
+                        id={j.id}
+                        action={deleteHomeServiceRequest}
+                        confirmMessage={`Move Pickup & Delivery request ${j.reference} to Trash? You can restore it later from Trash.`}
+                        label="Move to Trash"
+                      />
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}
