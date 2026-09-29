@@ -16,6 +16,8 @@ import {
   canDeleteHomeServiceRequests,
   canWaiveServiceFee,
   isBranchHidden,
+  HOME_SERVICE_COMPANY_SHARE,
+  HOME_SERVICE_TECHNICIAN_SHARE,
 } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import StatusBadge from "@/components/StatusBadge";
@@ -168,6 +170,25 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
     .filter((e) => e.field);
   const preAgreement = agreements.find((a) => a.requestId === req.id && a.phase === "pre_repair");
   const postAgreement = agreements.find((a) => a.requestId === req.id && a.phase === "post_repair");
+  // The actual 30/70 split for this job, once completed — from the
+  // Post-Repair checklist's real Repair Price/Service Fee/Parts Cost, the
+  // same figures and formula Sales > Home Service uses, so this can never
+  // disagree with that report. Distinct from the Quotation above (the
+  // customer-facing estimate quoted before the job was even started).
+  const revenueSplit = postAgreement
+    ? (() => {
+        const waivedFee = req.serviceFeeWaived ? quotedServiceFee ?? 0 : 0;
+        const totalAmount = Math.max(0, postAgreement.cost + Math.max(0, postAgreement.laborCost - waivedFee));
+        const netAmount = Math.max(0, totalAmount - postAgreement.partsCost);
+        return {
+          totalAmount,
+          partsCost: postAgreement.partsCost,
+          netAmount,
+          companyShare: netAmount * HOME_SERVICE_COMPANY_SHARE,
+          technicianShare: netAmount * HOME_SERVICE_TECHNICIAN_SHARE,
+        };
+      })()
+    : null;
 
   return (
     <div className="space-y-6">
@@ -236,6 +257,31 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
             <div className="flex items-center justify-between gap-3 border-t border-slate-200 pt-2 text-sm font-semibold">
               <p className="text-slate-700">Total</p>
               <span className="text-slate-900">{peso(quotationDevices.reduce((sum, d) => sum + (d.repairCost ?? 0), 0) + quotedServiceFee)}</span>
+            </div>
+          )}
+          {revenueSplit && (
+            <div className="space-y-1.5 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Revenue Split (from the completed job)</p>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-500">Total Amount</span>
+                <span className="text-slate-800">{peso(revenueSplit.totalAmount)}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-500">Parts/Material Cost</span>
+                <span className="text-red-700">−{peso(revenueSplit.partsCost)}</span>
+              </div>
+              <div className="flex items-center justify-between border-t border-slate-200 pt-1.5 font-semibold">
+                <span className="text-slate-700">Net Amount</span>
+                <span className="text-slate-900">{peso(revenueSplit.netAmount)}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-green-700">Company Share (30%)</span>
+                <span className="font-medium text-green-700">{peso(revenueSplit.companyShare)}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="font-medium text-blue-300">Technician Share (70%)</span>
+                <span className="font-semibold text-blue-300">{peso(revenueSplit.technicianShare)}</span>
+              </div>
             </div>
           )}
           {canWaiveServiceFee(user) && quotedServiceFee !== null && !req.serviceFeeWaived && (
