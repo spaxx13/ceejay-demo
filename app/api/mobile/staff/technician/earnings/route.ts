@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
-import { getRepairRecords, getServiceAgreements, getTechnicians, getExpenses } from "@/lib/db";
+import { getRepairRecords, getServiceAgreements, getTechnicians, getExpenses, getRequests } from "@/lib/db";
 import { computeTechnicianEarnings, resolveEarningsRange, type EarningsPeriod, type EarningsJob } from "@/lib/earnings";
 
 // Every numeric field is non-optional on the iOS EarningsJob decoder, so a
@@ -29,11 +29,12 @@ export async function GET(req: NextRequest) {
   }
 
   const sp = req.nextUrl.searchParams;
-  const [technicians, repairRecords, agreements, expenses] = await Promise.all([
+  const [technicians, repairRecords, agreements, expenses, requests] = await Promise.all([
     getTechnicians(),
     getRepairRecords(),
     getServiceAgreements(),
     getExpenses(),
+    getRequests(),
   ]);
   const technician = technicians.find((t) => t.id === user.technicianId);
   if (!technician) {
@@ -45,7 +46,7 @@ export async function GET(req: NextRequest) {
   const { from, to } = resolveEarningsRange(period, sp.get("from") ?? undefined, sp.get("to") ?? undefined);
   const inRange = (date: string) => (!from || date >= from) && (!to || date <= to);
 
-  const jobs = computeTechnicianEarnings(technician.name, repairRecords, agreements, from, to, technician.earningsSharePercent).map(sanitizeJob);
+  const jobs = computeTechnicianEarnings(technician.name, repairRecords, agreements, from, to, technician.earningsSharePercent, requests).map(sanitizeJob);
   const businessExpenses = expenses
     .filter((e) => e.target === "technician_final_total_sales" && e.technicianName === technician.name && inRange(e.expenseDate))
     .reduce((s, e) => s + e.amount, 0);

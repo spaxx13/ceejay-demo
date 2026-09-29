@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getRepairRecords, getServiceAgreements, getTechnicians, getExpenses, isBranchHidden, homeServiceBranchId } from "@/lib/db";
+import { getRepairRecords, getServiceAgreements, getTechnicians, getExpenses, getRequests, isBranchHidden, homeServiceBranchId } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { computeTechnicianEarnings, resolveEarningsRange, type EarningsPeriod } from "@/lib/earnings";
 import SalesTabs from "@/components/SalesTabs";
@@ -15,12 +15,13 @@ export default async function TechnicianEarningsDetailPage({
 }) {
   const { id } = await params;
   const sp = await searchParams;
-  const [user, technicians, allRepairRecords, allAgreements, allExpenses] = await Promise.all([
+  const [user, technicians, allRepairRecords, allAgreements, allExpenses, requests] = await Promise.all([
     getCurrentUser(),
     getTechnicians(),
     getRepairRecords(),
     getServiceAgreements(),
     getExpenses(),
+    getRequests(),
   ]);
   const technician = technicians.find((t) => t.id === id);
   if (!technician) notFound();
@@ -37,7 +38,7 @@ export default async function TechnicianEarningsDetailPage({
   const isCustomRange = !!(sp.from || sp.to);
   const { from, to } = resolveEarningsRange(period, sp.from, sp.to);
   const inRange = (date: string) => (!from || date >= from) && (!to || date <= to);
-  const jobs = computeTechnicianEarnings(technician.name, repairRecords, agreements, from, to, technician.earningsSharePercent);
+  const jobs = computeTechnicianEarnings(technician.name, repairRecords, agreements, from, to, technician.earningsSharePercent, requests);
   const businessExpenses = expenses
     .filter((e) => e.target === "technician_final_total_sales" && e.technicianName === technician.name && inRange(e.expenseDate))
     .reduce((s, e) => s + e.amount, 0);

@@ -25,6 +25,9 @@ export default async function RiderLayout({ children }: { children: React.ReactN
             <Link href="/rider" className="text-xs font-medium text-slate-500 hover:text-slate-800">
               My Jobs
             </Link>
+            <Link href="/rider/history" className="text-xs font-medium text-slate-500 hover:text-slate-800">
+              History
+            </Link>
             <span className="text-xs text-slate-400">{user.name}</span>
             <form action={logoutAction}>
               <button className="btn-secondary !px-3 !py-1.5 text-xs" type="submit">
