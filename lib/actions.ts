@@ -58,6 +58,8 @@ import {
   markHomeServiceDownpaymentPending,
   markRepairRecordQrPaymentPending,
   getTodayCheckIn,
+  pickupDeliveryStage,
+  type PickupDeliveryStage,
 } from "./db";
 import { getCurrentUser, setSession, clearSession, requireRole } from "./auth";
 import {
@@ -611,9 +613,19 @@ export async function assignPickupRider(formData: FormData) {
 }
 
 // Same as assignPickupRider, but only meaningful once the repair itself is
-// done (pickupDeliveryStage === "ready_for_delivery") — enforced in the UI,
-// not re-checked here, since an admin correcting an early assignment isn't
-// harmful.
+// done (pickupDeliveryStage === "ready_for_delivery" or later, e.g. an admin
+// correcting an already-assigned rider) — re-checked here as a server-side
+// backstop, since a delivery rider dispatched before the repair is actually
+// done would hand back a device that was never fixed.
+const DELIVERY_NOT_READY_STAGES = new Set<PickupDeliveryStage>([
+  "requested",
+  "pickup_assigned",
+  "pickup_started",
+  "picked_up",
+  "heading_to_shop",
+  "at_shop",
+]);
+
 export async function assignDeliveryRider(formData: FormData) {
   const user = await getCurrentUser();
   if (!canManageHomeServiceRequests(user)) return;
@@ -622,6 +634,9 @@ export async function assignDeliveryRider(formData: FormData) {
   const riderId = str(formData, "riderId");
   const req = await getRequestById(requestId);
   if (!req || req.fulfillmentMode !== "pickup_delivery" || !riderId) return;
+  const statusLbl = (await getLookups()).find((l) => l.id === req.statusId)?.label;
+  const stage = pickupDeliveryStage(req, statusLbl);
+  if (!stage || DELIVERY_NOT_READY_STAGES.has(stage)) return;
 
   await query("update home_service_requests set delivery_rider_id=$1, delivery_rider_accepted_at=null where id=$2", [riderId, requestId]);
   const riderRow = await queryOne<{ name: string }>("select name from riders where id=$1", [riderId]);
@@ -869,12 +884,18 @@ export async function riderUpdateDeliveryStatus(_prev: RiderStatusResult | undef
   if (!req || req.deliveryRiderId !== user.riderId) return { ok: false, error: "This job isn't assigned to you." };
 
   switch (status) {
-    case "on_the_way":
+    case "on_the_way": {
       if (req.outForDeliveryAt) break;
       if (!req.deliveryRiderAcceptedAt) return { ok: false, error: "Please accept this job before starting the trip." };
+      const statusLbl = (await getLookups()).find((l) => l.id === req.statusId)?.label;
+      const stage = pickupDeliveryStage(req, statusLbl);
+      if (!stage || DELIVERY_NOT_READY_STAGES.has(stage)) {
+        return { ok: false, error: "This device isn't marked repaired yet — please check with the shop before starting the delivery trip." };
+      }
       await query("update home_service_requests set out_for_delivery_at=now() where id=$1", [requestId]);
       await logActivity("home_service_request", requestId, `Rider ${user.name} is on the way to deliver the device`, user.name);
       break;
+    }
     case "delivered":
       if (req.deliveredAt) break;
       await query("update home_service_requests set delivered_at=now(), delivery_signature_data_url=$1 where id=$2", [
@@ -1676,8 +1697,26 @@ export async function verifyHomeServiceOtp(phoneInput: string, codeInput: string
 
 // ---------- Public Home Service Request ----------
 
+// Shown directly on the submission success screen (HomeServiceForm.tsx) so
+// the customer can decide whether to confirm without needing to open an
+// email at all — computed for every booking, not just ones with an email.
+export type QuotationSummary = {
+  devices: { reference: string; deviceLabel: string; serviceType: string; repairCost: number | null }[];
+  serviceFee: number | null;
+  total: number | null; // only set once every device's repairCost is known — same rule as the quotation email/PDF
+};
+
 export type SubmitResult =
-  | { ok: true; references: string[]; downpaymentRequired: boolean; downpaymentAmount: number | null; confirmationUrl: string | null }
+  | {
+      ok: true;
+      references: string[];
+      downpaymentRequired: boolean;
+      downpaymentAmount: number | null;
+      confirmationUrl: string | null;
+      confirmationToken: string | null;
+      needsConfirmation: boolean;
+      quotation: QuotationSummary;
+    }
   | { ok: false; error: string };
 
 // System fields carry fixed input names (independent of the admin's chosen
@@ -2055,12 +2094,42 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
   }
 
   const referenceList = createdRequests.map((r) => r.reference).join(", ");
+
+  // Quotation breakdown — computed for every booking now, not just ones with
+  // an email, since the success screen (HomeServiceForm.tsx) shows it
+  // directly so the customer can decide whether to confirm right there,
+  // without needing to open an email at all. One combined quotation for the
+  // whole booking, not one per device — the service fee is for the
+  // technician's single visit to one address, so it must only ever appear
+  // (and be charged) once, no matter how many devices are in the booking;
+  // each device still gets its own line with its own estimated repair cost.
+  const address = [street, barangay, city, province].filter(Boolean).join(", ") || "Not specified";
+  const serviceFee = serviceFeeAmount(province, city);
+  const [deviceModels, servicePrices] = await Promise.all([getDeviceModels(), getServicePrices()]);
+  const quotationDevices = createdRequests.map((cr) => {
+    const brand = allLookups.find((l) => l.id === cr.device.validDeviceBrandId);
+    const deviceModel = deviceModels.find((m) => m.id === cr.device.validDeviceModelId);
+    const deviceLabel = brand ? `${brand.label} ${deviceModel?.name ?? ""}`.trim() : cr.device.finalDeviceOther || "Not specified";
+    const repairCost = cr.device.serviceTypeLabel
+      ? getRepairQuote(servicePrices, cr.device.serviceTypeLabel, cr.device.validDeviceModelId ?? "", cr.device.screenQuality)
+      : null;
+    return {
+      reference: cr.reference,
+      deviceLabel,
+      serviceType: cr.device.serviceTypeLabel || "Not specified",
+      issueDescription: cr.device.issueDescription || "—",
+      repairCost,
+    };
+  });
+  const allCostsKnown = quotationDevices.every((d) => d.repairCost !== null);
+  const quotationTotal = allCostsKnown ? quotationDevices.reduce((s, d) => s + (d.repairCost ?? 0), 0) + (serviceFee ?? 0) : null;
+
   let smsNote = "";
   if (phone && smsConfigured()) {
     const confirmMessage =
       createdRequests.length > 1
-        ? `Hi ${name || "there"}, your Ceejay repair requests ${referenceList} have been received! Please check your email and tap Confirm within ${BOOKING_CONFIRMATION_WINDOW_HOURS} hours to keep your booking, or it will be automatically cancelled.`
-        : `Hi ${name || "there"}, your Ceejay repair request ${referenceList} has been received! Please check your email and tap Confirm within ${BOOKING_CONFIRMATION_WINDOW_HOURS} hours to keep your booking, or it will be automatically cancelled.`;
+        ? `Hi ${name || "there"}, your Ceejay repair requests ${referenceList} have been received! Please confirm your booking within ${BOOKING_CONFIRMATION_WINDOW_HOURS} hours on the confirmation page shown after you submitted, or it will be automatically cancelled.`
+        : `Hi ${name || "there"}, your Ceejay repair request ${referenceList} has been received! Please confirm your booking within ${BOOKING_CONFIRMATION_WINDOW_HOURS} hours on the confirmation page shown after you submitted, or it will be automatically cancelled.`;
     try {
       await sendSms(phone, confirmMessage);
       smsNote = ` — confirmation SMS sent to ${phone}`;
@@ -2070,35 +2139,16 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
   }
 
   // Automatic quotation email — best-effort, same as the SMS confirmation
-  // above: a missing RESEND_API_KEY, an unmatched device/service (no price
-  // on file), or any other failure here must never block the request
-  // itself from saving, so this always falls through to logActivity below.
-  // One combined email for the whole booking, not one per device — the
-  // service fee is for the technician's single visit to one address, so it
-  // must only ever appear (and be charged) once, no matter how many
-  // devices are in the booking; each device still gets its own line with
-  // its own estimated repair cost.
-  const address = [street, barangay, city, province].filter(Boolean).join(", ") || "Not specified";
-  const serviceFee = serviceFeeAmount(province, city);
+  // above: a missing RESEND_API_KEY or any other failure here must never
+  // block the request itself from saving, so this always falls through to
+  // logActivity below. Sent as a record/reference copy only now — the
+  // customer confirms right on the success screen instead of clicking a
+  // link in this email, so confirmationUrl is only ever passed through for
+  // a down-payment booking (where paying via QR Ph, not a plain click, is
+  // still the real next step and worth a reminder if they navigate away).
   let quoteNote = "";
   if (email) {
     try {
-      const [deviceModels, servicePrices] = await Promise.all([getDeviceModels(), getServicePrices()]);
-      const quotationDevices = createdRequests.map((cr) => {
-        const brand = allLookups.find((l) => l.id === cr.device.validDeviceBrandId);
-        const deviceModel = deviceModels.find((m) => m.id === cr.device.validDeviceModelId);
-        const deviceLabel = brand ? `${brand.label} ${deviceModel?.name ?? ""}`.trim() : cr.device.finalDeviceOther || "Not specified";
-        const repairCost = cr.device.serviceTypeLabel
-          ? getRepairQuote(servicePrices, cr.device.serviceTypeLabel, cr.device.validDeviceModelId ?? "", cr.device.screenQuality)
-          : null;
-        return {
-          reference: cr.reference,
-          deviceLabel,
-          serviceType: cr.device.serviceTypeLabel || "Not specified",
-          issueDescription: cr.device.issueDescription || "—",
-          repairCost,
-        };
-      });
       await sendQuotationEmail(email, {
         customerName: name || "Customer",
         referenceList,
@@ -2107,7 +2157,7 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
         preferredDate: preferredDatetime ? formatDate(preferredDatetime) : "To be confirmed",
         address,
         serviceFee,
-        confirmationUrl: confirmationToken ? `${SITE_URL}/confirm-booking/${confirmationToken}` : null,
+        confirmationUrl: downpaymentActive && confirmationToken ? `${SITE_URL}/confirm-booking/${confirmationToken}` : null,
         confirmationWindowHours: BOOKING_CONFIRMATION_WINDOW_HOURS,
         downpaymentRequired: downpaymentActive,
         downpaymentAmount,
@@ -2130,7 +2180,7 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
       "new_request",
       cr.id,
       needsConfirmation
-        ? `${name || "A customer"} submitted a new Home Service Request ${cr.reference} — awaiting their confirmation email click.`
+        ? `${name || "A customer"} submitted a new Home Service Request ${cr.reference} — awaiting their confirmation.`
         : `${name || "A customer"} submitted a new Home Service Request ${cr.reference} — now in the Unassigned queue.`
     );
   }
@@ -2145,6 +2195,13 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
     downpaymentRequired: downpaymentActive,
     downpaymentAmount,
     confirmationUrl: confirmationToken ? `${SITE_URL}/confirm-booking/${confirmationToken}` : null,
+    confirmationToken,
+    needsConfirmation,
+    quotation: {
+      devices: quotationDevices.map((d) => ({ reference: d.reference, deviceLabel: d.deviceLabel, serviceType: d.serviceType, repairCost: d.repairCost })),
+      serviceFee,
+      total: quotationTotal,
+    },
   };
 }
 
@@ -2178,6 +2235,16 @@ export async function confirmBooking(token: string): Promise<ConfirmBookingResul
   }
 
   return confirmBookingRows(reqs);
+}
+
+// Wraps confirmBooking() in the (prevState, formData) => result shape
+// useActionState needs, so the submission success screen (HomeServiceForm.tsx)
+// can confirm the booking with one on-page button right after submitting —
+// no email click required.
+export async function confirmBookingFromForm(_prev: ConfirmBookingResult | undefined, formData: FormData): Promise<ConfirmBookingResult> {
+  const token = str(formData, "token");
+  if (!token) return { ok: false, error: "not_found" };
+  return confirmBooking(token);
 }
 
 export type StartHomeServiceDownpaymentResult = { ok: false; error: string };
@@ -2736,10 +2803,15 @@ export async function reassignRequest(formData: FormData) {
   }
 
   // A technician does the whole visit to one address, so (re)assigning one
-  // device in a multi-device booking cascades the same technician to every
-  // other device in that booking still open enough to move (see
-  // CASCADE_EXCLUDED_STATUSES) — same for clearing an assignment.
-  if (req.bookingGroupId) {
+  // device in a multi-device Home Service booking cascades the same
+  // technician to every other device in that booking still open enough to
+  // move (see CASCADE_EXCLUDED_STATUSES) — same for clearing an assignment.
+  // Doesn't apply to Pickup & Delivery: each device in a multi-device P&D
+  // booking is picked up, repaired, and delivered independently (different
+  // riders, different timing), so one device reaching the shop and getting
+  // a technician assigned says nothing about whether a sibling device has
+  // even been picked up yet.
+  if (req.bookingGroupId && req.fulfillmentMode !== "pickup_delivery") {
     const siblings = (await getRequestsByBookingGroup(req.bookingGroupId)).filter(
       (s) => s.id !== req.id && !CASCADE_EXCLUDED_STATUSES.has(statusLabel(s.statusId))
     );
@@ -3243,6 +3315,12 @@ export async function addConversationMessage(formData: FormData) {
 // mints its tracking token and emails the customer the live map link
 // (/track-technician/<token>). Returns a note for the activity log.
 async function startTechnicianTrackingIfOnTheWay(req: HomeServiceRequest, newStatusLabel: string): Promise<string> {
+  // Pickup & Delivery devices are repaired in-shop, not visited at the
+  // customer's address — a technician going "En Route" there just means
+  // walking to their bench, not heading to the customer, so this (Home
+  // Service-only) "technician is on the way to you" tracking/email must
+  // never fire for it. The delivery leg has its own rider tracking instead.
+  if (req.fulfillmentMode === "pickup_delivery") return "";
   if (!isOnTheWayStatus(newStatusLabel) || req.trackingToken) return "";
   const token = crypto.randomUUID().replace(/-/g, "");
   await query("update home_service_requests set tracking_token=$1 where id=$2", [token, req.id]);
