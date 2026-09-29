@@ -25,6 +25,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     deviceLabel: record.deviceLabel,
     createdByName: record.createdByName,
     warrantyCoverage: post.warrantyCoverage,
+    repairCost: post.cost,
+    serviceFee: post.laborCost, // parts/material cost and other expenses are internal-only, never included here
     postNotes: post.summaryNotes,
     preItems: pre?.items ?? [],
     postItems: post.items,

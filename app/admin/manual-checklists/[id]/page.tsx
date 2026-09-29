@@ -4,8 +4,11 @@ import { getManualRepairRecordById, getManualChecklists, getManualRecordStatus, 
 import { getCurrentUser } from "@/lib/auth";
 import { formatDateTime } from "@/lib/format";
 import DeleteButton from "@/components/DeleteButton";
-import { deleteManualChecklist } from "@/lib/actions";
+import ManualResendReceiptButton from "@/components/ManualResendReceiptButton";
+import { deleteManualChecklist, updateManualRecordDetails } from "@/lib/actions";
 import type { ChecklistItem } from "@/lib/types";
+
+const peso = (n: number) => `₱${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 const RESULT_LABEL: Record<string, string> = { pass: "Pass", fail: "Fail", na: "N/A" };
 const RESULT_CLASS: Record<string, string> = {
@@ -52,7 +55,7 @@ export default async function ManualChecklistDetailPage({ params }: { params: Pr
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+      <div className="flex flex-wrap items-start justify-between gap-3 print:hidden">
         <div>
           <Link href="/admin/manual-checklists" className="text-xs text-slate-400 hover:text-slate-600">
             ← Back to Manual Checklists
@@ -115,15 +118,22 @@ export default async function ManualChecklistDetailPage({ params }: { params: Pr
             <h4 className="text-xs font-semibold text-slate-600">Warranty Coverage</h4>
             <p className="text-sm text-slate-500">{post.warrantyCoverage || "—"}</p>
           </div>
-          <div>
-            <h4 className="text-xs font-semibold text-slate-600">Receipt Email</h4>
-            <p className="text-sm text-slate-500">
-              {post.sentToCustomerAt
-                ? `Emailed to ${record.customerEmail} on ${formatDateTime(post.sentToCustomerAt)}`
-                : record.customerEmail
-                  ? "Failed to send — see activity log"
-                  : "No email on file"}
-            </p>
+          <div className="flex items-center justify-between rounded-lg border-2 border-blue-300 bg-blue-50 px-3 py-2">
+            <span className="text-sm font-semibold text-blue-900">Total Amount (Repair Price + Labor/Service Cost)</span>
+            <span className="text-lg font-bold text-blue-900">{peso(post.cost + post.laborCost)}</span>
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-2 print:hidden">
+            <div>
+              <h4 className="text-xs font-semibold text-slate-600">Receipt Email</h4>
+              <p className="text-sm text-slate-500">
+                {post.sentToCustomerAt
+                  ? `Emailed to ${record.customerEmail} on ${formatDateTime(post.sentToCustomerAt)}`
+                  : record.customerEmail
+                    ? "Failed to send — see activity log"
+                    : "No email on file"}
+              </p>
+            </div>
+            <ManualResendReceiptButton manualRecordId={record.id} email={record.customerEmail} />
           </div>
           {post.summaryNotes && (
             <div>
@@ -133,6 +143,83 @@ export default async function ManualChecklistDetailPage({ params }: { params: Pr
           )}
         </div>
       )}
+
+      <details className="card print:hidden">
+        <summary className="cursor-pointer text-sm font-medium text-blue-700">Edit Customer & Ticket Details</summary>
+        <form action={updateManualRecordDetails} className="mt-3 space-y-3">
+          <input type="hidden" name="id" value={record.id} />
+          <p className="text-xs text-slate-500">
+            Fix any incorrect or missing information — this stays editable even after completion. This won&apos;t automatically resend the
+            receipt; use &quot;Resend Receipt&quot; above for that.
+          </p>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-slate-500">Customer Name *</label>
+              <input name="customerName" required defaultValue={record.customerName} className="input" />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-slate-500">Branch</label>
+              <select name="branchId" defaultValue={record.branchId ?? ""} className="input">
+                <option value="">—</option>
+                {allBranches.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-slate-500">Contact Number</label>
+              <input name="customerPhone" defaultValue={record.customerPhone} className="input" />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-slate-500">Email</label>
+              <input name="customerEmail" type="email" defaultValue={record.customerEmail} className="input" />
+            </div>
+            <div className="space-y-1.5 sm:col-span-2">
+              <label className="text-xs font-medium text-slate-500">Device *</label>
+              <input name="deviceLabel" required defaultValue={record.deviceLabel} className="input" />
+            </div>
+          </div>
+          {post && (
+            <>
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-slate-500">Warranty Coverage</label>
+                <textarea name="warrantyCoverage" rows={2} defaultValue={post.warrantyCoverage} className="input" />
+              </div>
+              <p className="text-xs font-medium text-slate-500">Pricing</p>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-slate-500">Repair Price (₱)</label>
+                  <input name="cost" type="number" min={0} step="0.01" defaultValue={post.cost} className="input" />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-slate-500">Labor/Service Cost (₱)</label>
+                  <input name="laborCost" type="number" min={0} step="0.01" defaultValue={post.laborCost} className="input" />
+                </div>
+              </div>
+              <p className="text-xs font-medium text-slate-500">Expenses (internal-only — never shown to the customer)</p>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-slate-500">Parts/Material Cost (₱)</label>
+                  <input name="partsCost" type="number" min={0} step="0.01" defaultValue={post.partsCost} className="input" />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-slate-500">Other Expenses (₱)</label>
+                  <input name="otherExpenses" type="number" min={0} step="0.01" defaultValue={post.otherExpenses} className="input" />
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-slate-500">Notes</label>
+                <textarea name="summaryNotes" rows={2} defaultValue={post.summaryNotes} className="input" />
+              </div>
+            </>
+          )}
+          <button type="submit" className="btn-primary w-full">
+            Save Details
+          </button>
+        </form>
+      </details>
     </div>
   );
 }
