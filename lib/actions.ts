@@ -591,26 +591,38 @@ export async function setRiderOnDuty(formData: FormData) {
   revalidatePath("/admin/pickup-delivery");
 }
 
-export async function deleteRider(formData: FormData) {
+export async function deleteRider(formData: FormData): Promise<{ ok: true } | { ok: false; error: string }> {
   const actor = await requireRole("owner_admin");
-  if (!actor) return;
+  if (!actor) return { ok: false, error: "Only the owner admin can delete riders." };
 
   const riderId = str(formData, "id");
 
   // Block deleting a rider still assigned to an in-flight pickup or delivery
   // leg — same reasoning as deleteTechnician: reassign first rather than
-  // silently leaving a job's rider field pointing nowhere.
-  const requests = await getRequests();
-  const hasOpenLeg = requests.some(
+  // silently leaving a job's rider field pointing nowhere. Cancelled and
+  // Completed jobs never block: nothing is left for the rider to do on them.
+  const [requests, lookups] = await Promise.all([getRequests(), getLookups()]);
+  const closedStatusIds = new Set(
+    lookups.filter((l) => l.kind === "request_status" && (l.label === "Completed" || l.label === "Cancelled")).map((l) => l.id)
+  );
+  const blocking = requests.filter(
     (r) =>
       r.fulfillmentMode === "pickup_delivery" &&
+      !closedStatusIds.has(r.statusId) &&
       ((r.pickupRiderId === riderId && !r.pickedUpAt) || (r.deliveryRiderId === riderId && !r.deliveredAt))
   );
-  if (hasOpenLeg) return;
+  if (blocking.length > 0) {
+    const refs = blocking.map((r) => r.reference).join(", ");
+    return {
+      ok: false,
+      error: `This rider is still assigned to ${refs}. Reassign or cancel ${blocking.length === 1 ? "that job" : "those jobs"} first, then delete.`,
+    };
+  }
 
   await query("delete from riders where id=$1", [riderId]);
   revalidatePath("/admin/riders");
   revalidatePath("/admin/users");
+  return { ok: true };
 }
 
 // Admin assigns (or reassigns) a rider to a request's pickup leg — manual,
