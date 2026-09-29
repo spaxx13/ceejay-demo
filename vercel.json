@@ -2,10 +2,6 @@
   "crons": [
     { "path": "/api/cron/appointment-reminders", "schedule": "0 0 * * *" },
     { "path": "/api/cron/void-unconfirmed-requests", "schedule": "*/5 * * * *" },
-    { "path": "/api/cron/send-scheduled-broadcasts", "schedule": "*/5 * * * *" },
-    { "path": "/api/post-cubao", "schedule": "0 1 * * *" },
-    { "path": "/api/post-greenhills", "schedule": "0 3 * * *" },
-    { "path": "/api/post-malolos", "schedule": "0 8 * * *" },
-    { "path": "/api/post-homeservice", "schedule": "0 11 * * *" }
+    { "path": "/api/cron/send-scheduled-broadcasts", "schedule": "*/5 * * * *" }
   ]
 }
