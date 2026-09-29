@@ -38,6 +38,8 @@ import {
   getRequestsByBookingGroup,
   getRepairRecordById,
   getServiceAgreements,
+  getServiceAgreementsForRequest,
+  getServiceAgreementsForRepairRecord,
   getRepairRecordStatus,
   getCustomFormFields,
   getCrmBroadcastRecipients,
@@ -86,7 +88,7 @@ import {
 } from "./email";
 import { isOnTheWayStatus } from "./technicianTracking";
 import { sendSms, sendOtpSms, smsConfigured, normalizePhone, isValidPhone, getAccountStatus, type SmsAccountStatus } from "./sms";
-import { SUNDAY_ONLY_PROVINCES, DOWNPAYMENT_PROVINCES, serviceFeeAmount, PICKUP_DELIVERY_FEE_PESOS } from "./homeServiceFees";
+import { SUNDAY_ONLY_PROVINCES, DOWNPAYMENT_PROVINCES, serviceFeeAmount, requestServiceFee, PICKUP_DELIVERY_FEE_PESOS } from "./homeServiceFees";
 import { getRepairQuote } from "./servicePricing";
 import { formatDate, isCheckInOpen } from "./format";
 import { createCheckoutSession as createPaymongoCheckoutSession, paymongoConfigured } from "./paymongo";
@@ -457,7 +459,7 @@ export async function createTechnician(formData: FormData) {
   const name = str(formData, "name");
   if (!name) return;
   await query(
-    "insert into technicians (name, contact_number, email, employment_status, branch_ids, earnings_share_percent) values ($1,$2,$3,$4,$5,$6)",
+    "insert into technicians (name, contact_number, email, employment_status, branch_ids, earnings_share_percent, can_pickup_delivery) values ($1,$2,$3,$4,$5,$6,$7)",
     [
       name,
       str(formData, "contactNumber"),
@@ -465,6 +467,7 @@ export async function createTechnician(formData: FormData) {
       str(formData, "employmentStatus") || "full_time",
       listStr(formData, "branchIds"),
       earningsSharePercentFromForm(formData),
+      formData.has("canPickupDelivery"),
     ]
   );
   revalidatePath("/admin/technicians");
@@ -477,7 +480,7 @@ export async function updateTechnician(formData: FormData) {
   const name = str(formData, "name");
   if (!name) return;
   await query(
-    "update technicians set name=$1, contact_number=$2, email=$3, employment_status=$4, branch_ids=$5, earnings_share_percent=$6 where id=$7",
+    "update technicians set name=$1, contact_number=$2, email=$3, employment_status=$4, branch_ids=$5, earnings_share_percent=$6, can_pickup_delivery=$7 where id=$8",
     [
       name,
       str(formData, "contactNumber"),
@@ -485,6 +488,7 @@ export async function updateTechnician(formData: FormData) {
       str(formData, "employmentStatus") || "full_time",
       listStr(formData, "branchIds"),
       earningsSharePercentFromForm(formData),
+      formData.has("canPickupDelivery"),
       techId,
     ]
   );
@@ -589,26 +593,38 @@ export async function setRiderOnDuty(formData: FormData) {
   revalidatePath("/admin/pickup-delivery");
 }
 
-export async function deleteRider(formData: FormData) {
+export async function deleteRider(formData: FormData): Promise<{ ok: true } | { ok: false; error: string }> {
   const actor = await requireRole("owner_admin");
-  if (!actor) return;
+  if (!actor) return { ok: false, error: "Only the owner admin can delete riders." };
 
   const riderId = str(formData, "id");
 
   // Block deleting a rider still assigned to an in-flight pickup or delivery
   // leg — same reasoning as deleteTechnician: reassign first rather than
-  // silently leaving a job's rider field pointing nowhere.
-  const requests = await getRequests();
-  const hasOpenLeg = requests.some(
+  // silently leaving a job's rider field pointing nowhere. Cancelled and
+  // Completed jobs never block: nothing is left for the rider to do on them.
+  const [requests, lookups] = await Promise.all([getRequests(), getLookups()]);
+  const closedStatusIds = new Set(
+    lookups.filter((l) => l.kind === "request_status" && (l.label === "Completed" || l.label === "Cancelled")).map((l) => l.id)
+  );
+  const blocking = requests.filter(
     (r) =>
       r.fulfillmentMode === "pickup_delivery" &&
+      !closedStatusIds.has(r.statusId) &&
       ((r.pickupRiderId === riderId && !r.pickedUpAt) || (r.deliveryRiderId === riderId && !r.deliveredAt))
   );
-  if (hasOpenLeg) return;
+  if (blocking.length > 0) {
+    const refs = blocking.map((r) => r.reference).join(", ");
+    return {
+      ok: false,
+      error: `This rider is still assigned to ${refs}. Reassign or cancel ${blocking.length === 1 ? "that job" : "those jobs"} first, then delete.`,
+    };
+  }
 
   await query("delete from riders where id=$1", [riderId]);
   revalidatePath("/admin/riders");
   revalidatePath("/admin/users");
+  return { ok: true };
 }
 
 // Admin assigns (or reassigns) a rider to a request's pickup leg — manual,
@@ -3546,7 +3562,7 @@ export async function submitChecklist(_prev: SubmitChecklistResult | undefined, 
     technicianName = record.technicianName || user.name;
   }
 
-  const agreements = await getServiceAgreements();
+  const agreements = requestId ? await getServiceAgreementsForRequest(requestId) : await getServiceAgreementsForRepairRecord(repairRecordId!);
   const existingForPhase = agreements.find((a) =>
     requestId ? a.requestId === requestId && a.phase === phase : a.repairRecordId === repairRecordId && a.phase === phase
   );
@@ -3614,8 +3630,15 @@ export async function submitChecklist(_prev: SubmitChecklistResult | undefined, 
       if (!costRaw) return { ok: false, error: "Price of the repair is required." };
       cost = Math.max(0, Number(costRaw) || 0);
       partsCost = Math.max(0, Number(str(formData, "partsCost")) || 0);
-      laborCost = Math.max(0, Number(str(formData, "laborCost")) || 0);
-      otherExpenses = Math.max(0, Number(str(formData, "otherExpenses")) || 0);
+      // The service fee is the one the customer was quoted when they booked
+      // (province/city, Pickup & Delivery flat fee, or ₱0 if waived) — stored
+      // in labor_cost so every Home Service report/receipt keeps reading
+      // "Repair Price + labor_cost" as the customer's Total Amount. Never
+      // taken from the form: the technician only types the Repair Price and
+      // the internal Parts/Material Cost. Other Expenses isn't collected on
+      // this flow at all.
+      laborCost = requestServiceFee(req!);
+      otherExpenses = 0;
     }
   }
 
@@ -3780,10 +3803,12 @@ export async function submitChecklist(_prev: SubmitChecklistResult | undefined, 
   return { ok: true, agreementId, phase };
 }
 
-// Lets a technician self-correct the Repair Price / Labor-Service Cost on
+// Lets a technician self-correct the Repair Price / Parts-Material Cost on
 // their own completed Post-Repair checklist (e.g. a typo at submission
 // time) — capped at MAX_PRICE_EDITS so it stays a correction tool, not an
-// open price field.
+// open price field. The service fee is re-derived from the request on every
+// edit (same rule as submitChecklist), so an edit also repairs an older
+// record whose fee was typed by hand.
 export type UpdateAgreementPriceResult = { ok: true } | { ok: false; error: string };
 
 export async function updateAgreementPrice(
@@ -3807,7 +3832,7 @@ export async function updateAgreementPrice(
   }
 
   const cost = Math.max(0, Number(str(formData, "cost")) || 0);
-  const laborCost = Math.max(0, Number(str(formData, "laborCost")) || 0);
+  const laborCost = requestServiceFee(req);
   const partsCost = Math.max(0, Number(str(formData, "partsCost")) || 0);
 
   await query("update service_agreements set cost=$1, labor_cost=$2, parts_cost=$3, price_edit_count=price_edit_count+1 where id=$4", [
@@ -3826,6 +3851,52 @@ export async function updateAgreementPrice(
   revalidatePath(`/technician/requests/${req.id}/checklist`);
   revalidatePath("/admin/requests");
   revalidatePath(`/admin/requests/${req.id}`);
+  return { ok: true };
+}
+
+// Same fields as updateAgreementPrice above (Repair Price + Parts/Material
+// Cost — the Service Fee stays derived from the request via
+// requestServiceFee, never freely typed here either), but for an
+// owner/branch admin correcting a mistake from the request's own detail
+// page (Admin > Home Service Requests > [request]) rather than the
+// assigned technician self-correcting from their own job. Deliberately
+// uncapped — MAX_PRICE_EDITS is a guardrail on a technician's own
+// self-correction allowance, not a limit on the shop's own data-correction
+// tool — and gated on canManageHomeServiceRequests (the same access the
+// request page itself requires) instead of "assigned to me".
+export type UpdateAgreementPriceAdminResult = { ok: true } | { ok: false; error: string };
+
+export async function updateAgreementPriceAdmin(
+  _prev: UpdateAgreementPriceAdminResult | undefined,
+  formData: FormData
+): Promise<UpdateAgreementPriceAdminResult> {
+  const user = await getCurrentUser();
+  if (!canManageHomeServiceRequests(user)) return { ok: false, error: "You don't have access to edit this." };
+
+  const agreementId = str(formData, "agreementId");
+  const agreements = await getServiceAgreements();
+  const agreement = agreements.find((a) => a.id === agreementId);
+  if (!agreement) return { ok: false, error: "Checklist not found." };
+  if (agreement.phase !== "post_repair" || !agreement.requestId) return { ok: false, error: "This checklist can't be price-edited." };
+
+  const req = await getRequestById(agreement.requestId);
+  if (!req) return { ok: false, error: "Request not found." };
+  if (isBranchHidden(user, req.queueBranchId)) return { ok: false, error: "You don't have access to this request." };
+
+  const cost = Math.max(0, Number(str(formData, "cost")) || 0);
+  const laborCost = requestServiceFee(req);
+  const partsCost = Math.max(0, Number(str(formData, "partsCost")) || 0);
+
+  await query("update service_agreements set cost=$1, labor_cost=$2, parts_cost=$3 where id=$4", [cost, laborCost, partsCost, agreementId]);
+  await logActivity(
+    "home_service_request",
+    req.id,
+    `${user!.name} edited the repair price/parts cost on ${agreement.reference}`,
+    user!.name
+  );
+  revalidatePath(`/admin/requests/${req.id}`);
+  revalidatePath("/admin/sales/home-service");
+  revalidatePath("/admin/sales/pickup-delivery");
   return { ok: true };
 }
 
@@ -3855,7 +3926,7 @@ export async function resendReceiptEmail(_prev: ResendReceiptResult | undefined,
     return { ok: false, error: "Technicians can only resend home service receipts." };
   }
 
-  const agreements = await getServiceAgreements();
+  const agreements = requestId ? await getServiceAgreementsForRequest(requestId) : await getServiceAgreementsForRepairRecord(repairRecordId!);
 
   if (requestId) {
     const req = await getRequestById(requestId);
@@ -4085,6 +4156,10 @@ export async function submitManualChecklist(
   let agreedToTerms = false;
   let warrantyCoverage = "";
   let receiptPhotoDataUrl: string | null = null;
+  let cost = 0;
+  let partsCost = 0;
+  let laborCost = 0;
+  let otherExpenses = 0;
   if (phase === "post_repair") {
     agreedToTerms = formData.has("agreedToTerms");
     if (!agreedToTerms) return { ok: false, error: "The customer must acknowledge the terms and conditions." };
@@ -4092,13 +4167,17 @@ export async function submitManualChecklist(
     if (!warrantyCoverage) return { ok: false, error: "Warranty coverage is required." };
     const photo = str(formData, "receiptPhotoDataUrl");
     receiptPhotoDataUrl = photo.startsWith("data:image/") ? photo : null;
+    cost = Math.max(0, Number(str(formData, "cost")) || 0);
+    partsCost = Math.max(0, Number(str(formData, "partsCost")) || 0);
+    laborCost = Math.max(0, Number(str(formData, "laborCost")) || 0);
+    otherExpenses = Math.max(0, Number(str(formData, "otherExpenses")) || 0);
   }
 
   const created = await queryOne<{ id: string }>(
     `insert into manual_checklists
-       (manual_record_id, phase, items, summary_notes, agreed_to_terms, warranty_coverage, receipt_photo_data_url, customer_signature_data_url, staff_signature_data_url, completed_at)
-     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,now()) returning id`,
-    [manualRecordId, phase, JSON.stringify(items), summaryNotes, agreedToTerms, warrantyCoverage, receiptPhotoDataUrl, customerSignatureDataUrl, staffSignatureDataUrl]
+       (manual_record_id, phase, items, summary_notes, agreed_to_terms, warranty_coverage, cost, parts_cost, labor_cost, other_expenses, receipt_photo_data_url, customer_signature_data_url, staff_signature_data_url, completed_at)
+     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,now()) returning id`,
+    [manualRecordId, phase, JSON.stringify(items), summaryNotes, agreedToTerms, warrantyCoverage, cost, partsCost, laborCost, otherExpenses, receiptPhotoDataUrl, customerSignatureDataUrl, staffSignatureDataUrl]
   );
 
   let emailNote = "no email on file — receipt not emailed";
@@ -4113,6 +4192,8 @@ export async function submitManualChecklist(
           deviceLabel: record.deviceLabel,
           createdByName: user!.name,
           warrantyCoverage,
+          repairCost: cost,
+          serviceFee: laborCost, // parts/material cost and other expenses are internal-only, never included here
           postNotes: summaryNotes,
           preItems: preChecklist?.items ?? [],
           postItems: items,
@@ -4149,6 +4230,106 @@ export async function deleteManualChecklist(formData: FormData) {
   await query("update manual_repair_records set deleted_at=now() where id=$1", [id]);
   await logActivity("manual_checklist", id, `Manual repair ticket ${record.reference} deleted by ${user.name}`, user.name);
   revalidatePath("/admin/manual-checklists");
+}
+
+// Edits a manual repair ticket's customer/device/branch info, and — once
+// its Post-Repair checklist exists — also its warranty coverage, notes, and
+// price/cost fields, so a mistake found after completion isn't stuck.
+// Mirrors updateRepairRecordDetails: stays editable anytime the ticket
+// isn't deleted, and never auto-resends the receipt on its own — use
+// resendManualChecklistReceiptEmail for that.
+export async function updateManualRecordDetails(formData: FormData) {
+  const user = await getCurrentUser();
+  const id = str(formData, "id");
+  const record = await getManualRepairRecordById(id);
+  if (!record || record.deletedAt) return;
+  if (!canEditManualRecord(user, record)) return;
+
+  const customerName = str(formData, "customerName");
+  const deviceLabel = str(formData, "deviceLabel");
+  if (!customerName || !deviceLabel) return;
+  const customerPhone = str(formData, "customerPhone");
+  const customerEmail = str(formData, "customerEmail");
+  const branchId = str(formData, "branchId") || null;
+
+  await query(
+    "update manual_repair_records set customer_name=$1, customer_phone=$2, customer_email=$3, device_label=$4, branch_id=$5 where id=$6",
+    [customerName, customerPhone, customerEmail, deviceLabel, branchId, id]
+  );
+
+  if (formData.has("warrantyCoverage")) {
+    const post = (await getManualChecklists()).find((c) => c.manualRecordId === id && c.phase === "post_repair");
+    if (post) {
+      const warrantyCoverage = str(formData, "warrantyCoverage");
+      const summaryNotes = str(formData, "summaryNotes");
+      const cost = Math.max(0, Number(str(formData, "cost")) || 0);
+      const partsCost = Math.max(0, Number(str(formData, "partsCost")) || 0);
+      const laborCost = Math.max(0, Number(str(formData, "laborCost")) || 0);
+      const otherExpenses = Math.max(0, Number(str(formData, "otherExpenses")) || 0);
+      await query(
+        "update manual_checklists set warranty_coverage=$1, summary_notes=$2, cost=$3, parts_cost=$4, labor_cost=$5, other_expenses=$6 where id=$7",
+        [warrantyCoverage, summaryNotes, cost, partsCost, laborCost, otherExpenses, post.id]
+      );
+    }
+  }
+
+  await logActivity("manual_checklist", id, `Manual repair ticket ${record.reference} details updated by ${user!.name}`, user!.name);
+  revalidatePath("/admin/manual-checklists");
+  revalidatePath(`/admin/manual-checklists/${id}`);
+  revalidatePath("/technician/manual-checklists");
+  revalidatePath(`/technician/manual-checklists/${id}`);
+}
+
+// Re-sends the same PDF receipt that was emailed when the Post-Repair
+// checklist was completed — for when a customer calls back asking for
+// another copy, or after fixing a detail via updateManualRecordDetails.
+export type ResendManualChecklistReceiptResult = { ok: true; email: string } | { ok: false; error: string };
+
+export async function resendManualChecklistReceiptEmail(
+  _prev: ResendManualChecklistReceiptResult | undefined,
+  formData: FormData
+): Promise<ResendManualChecklistReceiptResult> {
+  const user = await getCurrentUser();
+  const manualRecordId = str(formData, "manualRecordId");
+  const record = await getManualRepairRecordById(manualRecordId);
+  if (!record || record.deletedAt) return { ok: false, error: "Ticket not found." };
+  if (!canEditManualRecord(user, record)) return { ok: false, error: "You don't have access to this ticket." };
+  if (!record.customerEmail) return { ok: false, error: "No email on file for this customer." };
+
+  const checklists = (await getManualChecklists()).filter((c) => c.manualRecordId === manualRecordId);
+  const pre = checklists.find((c) => c.phase === "pre_repair");
+  const post = checklists.find((c) => c.phase === "post_repair");
+  if (!post) return { ok: false, error: "The Post-Repair checklist hasn't been completed yet — there's no receipt to resend." };
+
+  try {
+    await sendManualChecklistReceiptEmail(record.customerEmail, {
+      customerName: record.customerName,
+      customerPhone: record.customerPhone,
+      reference: record.reference,
+      serviceDate: post.completedAt?.slice(0, 10) ?? record.createdAt.slice(0, 10),
+      deviceLabel: record.deviceLabel,
+      createdByName: record.createdByName,
+      warrantyCoverage: post.warrantyCoverage,
+      repairCost: post.cost,
+      serviceFee: post.laborCost, // parts/material cost and other expenses are internal-only, never included here
+      postNotes: post.summaryNotes,
+      preItems: pre?.items ?? [],
+      postItems: post.items,
+      preCustomerSignature: pre?.customerSignatureDataUrl ?? null,
+      preStaffSignature: pre?.staffSignatureDataUrl ?? null,
+      postCustomerSignature: post.customerSignatureDataUrl,
+      postStaffSignature: post.staffSignatureDataUrl,
+      receiptPhoto: post.receiptPhotoDataUrl,
+    });
+  } catch (err) {
+    return { ok: false, error: `Couldn't send the email — ${err instanceof Error ? err.message : "unknown error"}. Please try again.` };
+  }
+
+  await query("update manual_checklists set sent_to_customer_at=now() where id=$1", [post.id]);
+  await logActivity("manual_checklist", record.id, `Receipt for ${record.reference} resent to ${record.customerEmail} by ${user!.name}`, user!.name);
+  revalidatePath(`/admin/manual-checklists/${manualRecordId}`);
+  revalidatePath(`/technician/manual-checklists/${manualRecordId}`);
+  return { ok: true, email: record.customerEmail };
 }
 
 // ---------- Web Push subscriptions ----------

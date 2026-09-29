@@ -1,38 +1,39 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { updateAgreementPrice } from "@/lib/actions";
+import { updateAgreementPriceAdmin } from "@/lib/actions";
 
-export default function EditAgreementPriceForm({
+// Admin-side counterpart to EditAgreementPriceForm.tsx (the technician's
+// own, MAX_PRICE_EDITS-capped self-correction tool) — this one is
+// uncapped, for an owner/branch admin fixing a mistake directly from the
+// request's own detail page. Same two editable fields (Repair Price,
+// Parts/Material Cost); the Service Fee is shown read-only since it's
+// always derived from the customer's own booking (requestServiceFee),
+// never freely typed.
+export default function EditAgreementPriceAdminForm({
   agreementId,
   cost,
   laborCost,
   partsCost,
-  editsRemaining,
 }: {
   agreementId: string;
   cost: number;
   laborCost: number;
   partsCost: number;
-  editsRemaining: number;
 }) {
-  const [state, formAction, pending] = useActionState(updateAgreementPrice, undefined);
+  const [state, formAction, pending] = useActionState(updateAgreementPriceAdmin, undefined);
   const [open, setOpen] = useState(false);
-
-  if (editsRemaining <= 0) {
-    return <p className="text-[11px] text-slate-400">No price edits remaining for this job.</p>;
-  }
 
   if (!open) {
     return (
       <button type="button" onClick={() => setOpen(true)} className="text-xs font-medium text-blue-700 hover:underline">
-        Edit price ({editsRemaining} edit{editsRemaining === 1 ? "" : "s"} left)
+        Edit Repair Price / Parts Cost
       </button>
     );
   }
 
   return (
-    <form action={formAction} className="space-y-2 rounded-lg border border-slate-200 p-3">
+    <form action={formAction} className="space-y-2 rounded-lg border border-slate-200 bg-white p-3">
       <input type="hidden" name="agreementId" value={agreementId} />
       <div className="grid grid-cols-2 gap-2">
         <div className="space-y-1">
@@ -45,19 +46,18 @@ export default function EditAgreementPriceForm({
         </div>
       </div>
       <p className="text-[11px] text-slate-400">
-        Service Fee: ₱{laborCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} — set from the customer&apos;s booking, not editable here.
+        Service Fee: ₱{laborCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} — set from the customer&apos;s
+        booking, not editable here.
       </p>
       {state && !state.ok && <p className="text-xs text-red-600">{state.error}</p>}
       <div className="flex items-center gap-2">
         <button type="submit" disabled={pending} className="btn-primary !px-3 !py-1 text-xs">
-          {pending ? "Saving..." : "Save Price"}
+          {pending ? "Saving..." : "Save"}
         </button>
         <button type="button" onClick={() => setOpen(false)} className="btn-secondary !px-3 !py-1 text-xs">
           Cancel
         </button>
-        <span className="text-[11px] text-slate-400">
-          {editsRemaining} edit{editsRemaining === 1 ? "" : "s"} left, including this one
-        </span>
+        {state?.ok && <span className="text-[11px] text-green-700">✓ Saved</span>}
       </div>
     </form>
   );

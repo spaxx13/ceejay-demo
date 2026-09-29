@@ -112,3 +112,31 @@ export function serviceFeeAmount(province: string, city: string): number | null 
   if (fee.higherTowns && fee.higherFee && city && fee.higherTowns.includes(city)) return fee.higherFee;
   return fee.base;
 }
+
+// The "sticker price" service fee for this booking — what it would cost
+// regardless of whether it's actually been waived (Admin > Requests > Waive
+// Service Fee). Used both by requestServiceFee below (the fee the customer
+// actually pays) and by Sales/Earnings reports that need to know how much a
+// currently-waived fee originally would have been, to correctly exclude it
+// from a job whose stored labor_cost/laborCost predates the waiver.
+export function quotedServiceFee(req: { province: string; city: string; fulfillmentMode: "on_site" | "pickup_delivery" }): number {
+  if (req.fulfillmentMode === "pickup_delivery") return PICKUP_DELIVERY_FEE_PESOS;
+  return serviceFeeAmount(req.province, req.city) ?? 0;
+}
+
+// The service fee this specific booking's customer actually pays, in pesos
+// — what the Post-Repair checklist adds to the Repair Price for the
+// customer-facing Total Amount (lib/actions.ts submitChecklist /
+// updateAgreementPrice). Derived from the request the customer filled out,
+// never typed by the technician: the province/city visit fee for an
+// on-site visit, the flat Pickup & Delivery fee for that mode, and ₱0 when
+// staff waived the fee (Admin > Requests > Waive Service Fee).
+export function requestServiceFee(req: {
+  province: string;
+  city: string;
+  serviceFeeWaived: boolean;
+  fulfillmentMode: "on_site" | "pickup_delivery";
+}): number {
+  if (req.serviceFeeWaived) return 0;
+  return quotedServiceFee(req);
+}

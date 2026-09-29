@@ -15,9 +15,8 @@ const RESULT_OPTIONS: { value: ChecklistResult; label: string; activeClass: stri
 ];
 
 // The Post-Repair half of a Manual Repair Record — same structure as
-// ChecklistForm.tsx's post_repair branch (terms, warranty, signatures,
-// optional receipt photo), minus the cost/pricing fields, which don't apply
-// to this un-priced ticket type.
+// ChecklistForm.tsx's post_repair branch (terms, warranty, pricing,
+// signatures, optional receipt photo).
 export default function ManualPostChecklistForm({
   manualRecordId,
   reference,
@@ -44,9 +43,12 @@ export default function ManualPostChecklistForm({
   );
   const [agreed, setAgreed] = useState(false);
   const [warrantyCoverage, setWarrantyCoverage] = useState("");
+  const [cost, setCost] = useState("");
+  const [laborCost, setLaborCost] = useState("");
+  const totalAmount = (Number(cost) || 0) + (Number(laborCost) || 0);
 
   const allAnswered = CHECKLIST_TEMPLATE.every((i) => results[i.key]);
-  const canSubmit = allAnswered && agreed && warrantyCoverage.trim();
+  const canSubmit = allAnswered && agreed && warrantyCoverage.trim() && cost;
 
   useEffect(() => {
     if (wasPending.current && !pending && formRef.current) {
@@ -194,6 +196,60 @@ export default function ManualPostChecklistForm({
         />
       </div>
 
+      <div className="card space-y-3">
+        <div className="space-y-2">
+          <h3 className="text-sm font-semibold text-slate-800">Repair Price</h3>
+          <p className="text-xs text-slate-500">The base repair price — combined with the Labor/Service Cost below for the total charged to the customer.</p>
+          <input
+            name="cost"
+            type="number"
+            min={0}
+            step="0.01"
+            required
+            value={cost}
+            onChange={(e) => setCost(e.target.value)}
+            className="input"
+            placeholder="0.00"
+          />
+        </div>
+        <div className="space-y-2">
+          <h3 className="text-sm font-semibold text-slate-800">Expenses</h3>
+          <p className="text-xs text-slate-500">
+            Parts/Material Cost and Other Expenses are internal-only — tracked for net profit on the Sales reports, never shown to the customer
+            or included on the receipt. Labor/Service Cost is added to the Repair Price as the customer-facing total.
+          </p>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-slate-500">Parts/Material Cost (₱)</label>
+              <input name="partsCost" type="number" min={0} step="0.01" className="input" placeholder="0.00" />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-slate-500">Labor/Service Cost (₱)</label>
+              <input
+                name="laborCost"
+                type="number"
+                min={0}
+                step="0.01"
+                value={laborCost}
+                onChange={(e) => setLaborCost(e.target.value)}
+                className="input"
+                placeholder="0.00"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-slate-500">Other Expenses (₱)</label>
+              <input name="otherExpenses" type="number" min={0} step="0.01" className="input" placeholder="0.00" />
+            </div>
+          </div>
+        </div>
+        <div className="flex items-center justify-between rounded-lg border-2 border-blue-300 bg-blue-50 px-3 py-2">
+          <span className="text-sm font-semibold text-blue-900">Total Amount (Repair Price + Labor/Service Cost)</span>
+          <span className="text-lg font-bold text-blue-900">
+            ₱{totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </span>
+        </div>
+      </div>
+
       <div className="card space-y-2">
         <h3 className="text-sm font-semibold text-slate-800">Receipt</h3>
         <p className="text-xs text-slate-500">Attach a photo of the receipt, if there is one — optional.</p>
@@ -211,7 +267,9 @@ export default function ManualPostChecklistForm({
             ? "Mark every checklist item to continue."
             : !agreed
               ? "Check the customer acknowledgement to continue."
-              : "Enter the warranty coverage for this repair to continue."}
+              : !warrantyCoverage.trim()
+                ? "Enter the warranty coverage for this repair to continue."
+                : "Enter the repair price to continue."}
         </p>
       )}
     </form>

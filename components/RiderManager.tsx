@@ -45,6 +45,13 @@ export default function RiderManager({ riders, branches }: { riders: RiderRow[];
   function startEdit(r: RiderRow) {
     setEditingId(r.id);
   }
+  // deleteRider refuses a rider who still has an open pickup/delivery leg;
+  // surface its reason instead of letting the click silently do nothing.
+  async function handleDelete(name: string, fd: FormData) {
+    if (!confirm(`Delete "${name}"? This can't be undone. Any account linked to them stays, just unlinked.`)) return;
+    const result = await deleteRider(fd);
+    if (!result.ok) alert(result.error);
+  }
   function reset() {
     setEditingId(null);
     formRef.current?.reset();
@@ -153,7 +160,7 @@ export default function RiderManager({ riders, branches }: { riders: RiderRow[];
               <form
                 className="flex-1"
                 action={(fd) => {
-                  if (confirm(`Delete "${r.name}"? This can't be undone. Any account linked to them stays, just unlinked.`)) deleteRider(fd);
+                  handleDelete(r.name, fd);
                 }}
               >
                 <input type="hidden" name="id" value={r.id} />
@@ -208,7 +215,7 @@ export default function RiderManager({ riders, branches }: { riders: RiderRow[];
                     </button>
                     <form
                       action={(fd) => {
-                        if (confirm(`Delete "${r.name}"? This can't be undone. Any account linked to them stays, just unlinked.`)) deleteRider(fd);
+                        handleDelete(r.name, fd);
                       }}
                     >
                       <input type="hidden" name="id" value={r.id} />

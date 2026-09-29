@@ -3,7 +3,8 @@ import { updateAgreementPrice } from "@/lib/actions";
 
 // Wraps updateAgreementPrice (lib/actions.ts) unchanged — same ownership
 // check, 3-edit cap, and activity log. JSON keys: agreementId, cost,
-// laborCost, partsCost.
+// partsCost. (laborCost is ignored — the service fee is derived from the
+// request, see requestServiceFee in lib/homeServiceFees.ts.)
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);
   if (!body || typeof body !== "object") {
@@ -11,7 +12,7 @@ export async function POST(req: NextRequest) {
   }
 
   const fd = new FormData();
-  for (const key of ["agreementId", "cost", "laborCost", "partsCost"]) {
+  for (const key of ["agreementId", "cost", "partsCost"]) {
     const value = (body as Record<string, unknown>)[key];
     if (value !== null && value !== undefined) fd.set(key, String(value));
   }

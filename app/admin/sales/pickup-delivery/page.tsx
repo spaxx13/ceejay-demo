@@ -1,69 +1,41 @@
 import Link from "next/link";
-import {
-  getServiceAgreements,
-  getRequests,
-  getTechnicians,
-  getBranches,
-  getExpenses,
-  homeServiceSalesByTechnician,
-  sumHomeServiceSales,
-  homeServiceBusinessExpenses,
-} from "@/lib/db";
+import { getServiceAgreements, getRequests, getTechnicians, pickupDeliverySalesByTechnician, sumHomeServiceSales } from "@/lib/db";
 import SalesTabs from "@/components/SalesTabs";
 
 const peso = (n: number) => `₱${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-export default async function HomeServiceSalesPage({ searchParams }: { searchParams: Promise<{ from?: string; to?: string }> }) {
+// Mirrors Sales > Home Service exactly (same peso helper, same layout, same
+// 30/70 split) but reads pickupDeliverySalesByTechnician instead of
+// homeServiceSalesByTechnician — a Pickup & Delivery job never appears on
+// the Home Service tab, and an on-site home service job never appears here,
+// so the two revenue streams stay completely separate.
+export default async function PickupDeliverySalesPage({ searchParams }: { searchParams: Promise<{ from?: string; to?: string }> }) {
   const sp = await searchParams;
-  const [agreements, requests, technicians, branches, expenses] = await Promise.all([
-    getServiceAgreements(),
-    getRequests(),
-    getTechnicians(),
-    getBranches(),
-    getExpenses(),
-  ]);
+  const [agreements, requests, technicians] = await Promise.all([getServiceAgreements(), getRequests(), getTechnicians()]);
 
-  // Default to today so the page always opens on the most current sales —
-  // an explicit From/To filter (even a partial one) overrides this.
   const today = new Date().toISOString().slice(0, 10);
   const hasFilter = !!(sp.from || sp.to);
   const from = hasFilter ? sp.from : today;
   const to = hasFilter ? sp.to : today;
   const inRange = (date: string) => (!from || date >= from) && (!to || date <= to);
 
-  // Home service jobs only — a job only has revenue once its Post-Repair
-  // checklist is completed. Repair Price + Service Fee together are
-  // the Total Amount charged to the customer (the same figure shown to the
-  // customer on the checklist/receipt — Parts/Material Cost never appears
-  // there), minus that job's visit fee if it's currently waived (Admin >
-  // Requests > Waive Service Fee) — reflected here immediately, and
-  // reversed immediately if the waiver is later restored from Trash, since
-  // this whole report is recomputed from source data on every load. For
-  // the 30/70 split, Parts/Material Cost is deducted from that
-  // Total Amount to get a Net Amount — an internal-records-only figure,
-  // never shown to the customer. Distinct from the Net Profit / 50% split
-  // used on the combined By Branch and By Technician reports. Not
-  // branch-scoped: this report is organized by technician, and a job's
-  // branch tag is incidental (whichever branch the technician was
-  // dispatched from), not a meaningful visibility boundary — every account
-  // that can open Sales sees all of it.
-  const rows = homeServiceSalesByTechnician(agreements, inRange, requests, technicians);
+  // Pickup & Delivery jobs only — a job only has revenue once its
+  // Post-Repair checklist is completed. The device's repair price plus the
+  // flat Pickup & Delivery fee together are the Total Amount charged to the
+  // customer, minus that job's visit fee if it's currently waived, same as
+  // Sales > Home Service — for the 30/70 split, Parts/Material Cost is
+  // deducted from that Total Amount to get a Net Amount.
+  const rows = pickupDeliverySalesByTechnician(agreements, inRange, requests, technicians);
   const grandTotal = sumHomeServiceSales(rows);
-  // "Owner's Final Total Sales" expenses logged against a Home Service queue
-  // branch (Sales > Expenses, Branch = Home Service) — deducted here since
-  // this is the one place that figure has anywhere to land; nothing else on
-  // this report is branch-scoped.
-  const homeServiceQueueBranchIds = branches.filter((b) => b.homeServiceQueue !== null).map((b) => b.id);
-  const businessExpenses = homeServiceBusinessExpenses(expenses, inRange, homeServiceQueueBranchIds);
-  const businessShareNet = grandTotal.companyShare - businessExpenses;
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-xl font-bold text-slate-900">Home Service Sales</h1>
+        <h1 className="text-xl font-bold text-slate-900">Pickup &amp; Delivery Sales</h1>
         <p className="mt-1 text-sm text-slate-400">
-          Each technician&apos;s home service earnings — Total Amount is Repair Price + Labor/Service Cost (what the customer is charged).
-          Parts/Material Cost is deducted internally to get the Net Amount, split 30% to the business and 70% to the technician.
+          Each technician&apos;s Pickup &amp; Delivery earnings — Total Amount is Repair Price + Pickup &amp; Delivery Fee (what the customer is
+          charged). Parts/Material Cost is deducted internally to get the Net Amount, split 30% to the business and 70% to the technician.
+          Completely separate from Sales &gt; Home Service — no job counts in both.
         </p>
       </div>
 
@@ -81,19 +53,17 @@ export default async function HomeServiceSalesPage({ searchParams }: { searchPar
         <button type="submit" className="btn-secondary">
           Filter
         </button>
-        <Link href="/admin/sales/home-service" className="btn-secondary">
+        <Link href="/admin/sales/pickup-delivery" className="btn-secondary">
           Reset to Today
         </Link>
       </form>
       {!hasFilter && <p className="-mt-3 text-xs text-slate-400">Showing today&apos;s sales ({today}). Set a date range above to see other days.</p>}
 
-      {rows.length === 0 && <p className="card text-center text-sm text-slate-400">No home service sales recorded for this range.</p>}
+      {rows.length === 0 && <p className="card text-center text-sm text-slate-400">No Pickup & Delivery sales recorded for this range.</p>}
 
       {rows.length > 0 && (
         <>
-          {/* Mobile: one stacked card per technician — a 7-column table
-              doesn't fit a phone screen, so this reflows the same figures
-              as label/value pairs instead of forcing horizontal scroll. */}
+          {/* Mobile: one stacked card per technician. */}
           <div className="space-y-2 sm:hidden">
             {rows.map((r) => (
               <div key={r.name} className={`card space-y-2 ${r.name === "Unassigned" ? "opacity-60" : ""}`}>
@@ -139,10 +109,6 @@ export default async function HomeServiceSalesPage({ searchParams }: { searchPar
                 <span className="text-right font-medium text-green-700">{peso(grandTotal.companyShare)}</span>
                 <span className="font-medium text-blue-300">Technician Share (70%)</span>
                 <span className="text-right font-medium text-blue-300">{peso(grandTotal.technicianShare)}</span>
-                <span className="text-slate-500">− Business Expenses</span>
-                <span className="text-right text-red-700">−{peso(businessExpenses)}</span>
-                <span className="font-semibold text-blue-300">Business Share (Net)</span>
-                <span className="text-right font-semibold text-blue-300">{peso(businessShareNet)}</span>
               </div>
             </div>
           </div>
@@ -159,9 +125,7 @@ export default async function HomeServiceSalesPage({ searchParams }: { searchPar
                   <th className="pb-2 pr-3 font-medium">Parts/Material Cost</th>
                   <th className="pb-2 pr-3 font-medium">Net Amount</th>
                   <th className="pb-2 pr-3 font-medium">Company Share (30%)</th>
-                  <th className="pb-2 pr-3 font-medium">Technician Share (70%)</th>
-                  <th className="pb-2 pr-3 font-medium">Business Expenses</th>
-                  <th className="pb-2 font-medium">Business Share (Net)</th>
+                  <th className="pb-2 font-medium">Technician Share (70%)</th>
                 </tr>
               </thead>
               <tbody>
@@ -180,9 +144,7 @@ export default async function HomeServiceSalesPage({ searchParams }: { searchPar
                     <td className="py-3 pr-3 text-red-700">−{peso(r.partsCost)}</td>
                     <td className="py-3 pr-3 font-semibold text-slate-900">{peso(r.netAmount)}</td>
                     <td className="py-3 pr-3 text-green-700">{peso(r.companyShare)}</td>
-                    <td className="py-3 pr-3 font-semibold text-blue-300">{peso(r.technicianShare)}</td>
-                    <td className="py-3 pr-3 text-slate-400">—</td>
-                    <td className="py-3 text-slate-400">—</td>
+                    <td className="py-3 font-semibold text-blue-300">{peso(r.technicianShare)}</td>
                   </tr>
                 ))}
                 <tr className="font-semibold text-slate-900">
@@ -193,9 +155,7 @@ export default async function HomeServiceSalesPage({ searchParams }: { searchPar
                   <td className="pt-3 pr-3 text-red-700">−{peso(grandTotal.partsCost)}</td>
                   <td className="pt-3 pr-3">{peso(grandTotal.netAmount)}</td>
                   <td className="pt-3 pr-3 text-green-700">{peso(grandTotal.companyShare)}</td>
-                  <td className="pt-3 pr-3 text-blue-300">{peso(grandTotal.technicianShare)}</td>
-                  <td className="pt-3 pr-3 text-red-700">−{peso(businessExpenses)}</td>
-                  <td className="pt-3 text-blue-300">{peso(businessShareNet)}</td>
+                  <td className="pt-3 text-blue-300">{peso(grandTotal.technicianShare)}</td>
                 </tr>
               </tbody>
             </table>

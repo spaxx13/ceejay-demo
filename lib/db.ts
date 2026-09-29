@@ -40,7 +40,7 @@ import type {
 import { sendPushToUsers } from "./push";
 import { sendPushToTokens } from "./pushNotifications";
 import { sendSms, smsConfigured } from "./sms";
-import { serviceFeeAmount } from "./homeServiceFees";
+import { quotedServiceFee } from "./homeServiceFees";
 
 // Single pooled connection, reused across invocations within the same
 // serverless instance (and across all of local dev). Uses the pooled
@@ -277,12 +277,13 @@ function mapBranch(r: BranchRow): Branch {
 
 type TechnicianRow = {
   id: string; name: string; contact_number: string; email: string; employment_status: Technician["employmentStatus"];
-  branch_ids: string[]; active: boolean; earnings_share_percent: string | number;
+  branch_ids: string[]; active: boolean; earnings_share_percent: string | number; can_pickup_delivery: boolean;
 };
 function mapTechnician(r: TechnicianRow): Technician {
   return {
     id: r.id, name: r.name, contactNumber: r.contact_number, email: r.email, employmentStatus: r.employment_status,
     branchIds: r.branch_ids ?? [], active: r.active, earningsSharePercent: Number(r.earnings_share_percent ?? 50),
+    canPickupDelivery: r.can_pickup_delivery,
   };
 }
 
@@ -913,34 +914,34 @@ export async function getRequestFormContent(): Promise<RequestFormContent> {
 export async function getCustomFormFields() {
   return (await query<CustomFieldRow>("select * from custom_form_fields order by order_num")).map(mapCustomField);
 }
+// Every agreement, WITHOUT the three base64 columns (signatures, receipt
+// photo) — those come back as null. `select *` over this table pulls every
+// job's signature/photo blobs into memory, and as completed jobs pile up
+// that's enough to blow a serverless function's time/memory budget and 5xx
+// the POS list, dashboard, and Sales pages. Nothing that lists or totals
+// agreements ever renders those blobs; the per-job screens that do use the
+// ...ForRequest / ...ForRepairRecord loaders below, which fetch full rows
+// for one job only.
+type ServiceAgreementLightRow = Omit<ServiceAgreementRow, "customer_signature_data_url" | "technician_signature_data_url" | "receipt_photo_data_url">;
+const SERVICE_AGREEMENT_LIGHT_COLUMNS =
+  "id, request_id, repair_record_id, phase, reference, customer_name, device_label, branch_id, technician_id, technician_name, " +
+  "items, summary_notes, agreed_to_terms, warranty_coverage, cost, parts_cost, labor_cost, other_expenses, price_edit_count, " +
+  "completed_at, sent_to_customer_at, created_at";
 export async function getServiceAgreements() {
-  return (await query<ServiceAgreementRow>("select * from service_agreements order by created_at desc")).map(mapServiceAgreement);
-}
-// Earnings-only variant: computeTechnicianEarnings reads just names, costs,
-// phase and dates — never the signature/receipt-photo columns. `select *`
-// here pulls every agreement's base64 blobs into memory, which on a cold
-// serverless function is enough to blow the time/memory budget and 5xx the
-// mobile earnings route (the web page tolerates it under a warmer runtime).
-// Selecting only the needed columns keeps the payload tiny. Heavy fields are
-// returned as harmless defaults so the result still satisfies ServiceAgreement.
-export async function getServiceAgreementsForEarnings(): Promise<ServiceAgreement[]> {
-  type Light = Pick<ServiceAgreementRow,
-    "id" | "request_id" | "repair_record_id" | "phase" | "reference" | "customer_name" | "device_label" |
-    "technician_id" | "technician_name" | "cost" | "parts_cost" | "labor_cost" | "other_expenses" | "completed_at">;
-  const rows = await query<Light>(
-    `select id, request_id, repair_record_id, phase, reference, customer_name, device_label,
-            technician_id, technician_name, cost, parts_cost, labor_cost, other_expenses, completed_at
-     from service_agreements order by created_at desc`
+  const rows = await query<ServiceAgreementLightRow>(`select ${SERVICE_AGREEMENT_LIGHT_COLUMNS} from service_agreements order by created_at desc`);
+  return rows.map((r) =>
+    mapServiceAgreement({ ...r, customer_signature_data_url: null, technician_signature_data_url: null, receipt_photo_data_url: null })
   );
-  return rows.map((r) => ({
-    id: r.id, requestId: r.request_id, repairRecordId: r.repair_record_id, phase: r.phase, reference: r.reference,
-    customerName: r.customer_name, deviceLabel: r.device_label, branchId: null, technicianId: r.technician_id,
-    technicianName: r.technician_name, items: [], summaryNotes: "", agreedToTerms: false,
-    customerSignatureDataUrl: null, technicianSignatureDataUrl: null, receiptPhotoDataUrl: null, warrantyCoverage: "",
-    cost: Number(r.cost ?? 0), partsCost: Number(r.parts_cost ?? 0), laborCost: Number(r.labor_cost ?? 0),
-    otherExpenses: Number(r.other_expenses ?? 0), priceEditCount: 0, completedAt: toIso(r.completed_at),
-    sentToCustomerAt: null, createdAt: toIso(r.completed_at),
-  }));
+}
+// Full rows (blobs included) for one job's pre/post pair — the only shape
+// the checklist/receipt screens and receipt emails need.
+export async function getServiceAgreementsForRequest(requestId: string) {
+  return (await query<ServiceAgreementRow>("select * from service_agreements where request_id=$1 order by created_at desc", [requestId])).map(mapServiceAgreement);
+}
+export async function getServiceAgreementsForRepairRecord(repairRecordId: string) {
+  return (
+    await query<ServiceAgreementRow>("select * from service_agreements where repair_record_id=$1 order by created_at desc", [repairRecordId])
+  ).map(mapServiceAgreement);
 }
 
 type ManualRepairRecordRow = {
@@ -966,14 +967,17 @@ export async function getManualRepairRecordById(id: string) {
 
 type ManualChecklistRow = {
   id: string; manual_record_id: string; phase: ManualChecklist["phase"]; items: ManualChecklist["items"]; summary_notes: string;
-  agreed_to_terms: boolean; warranty_coverage: string; receipt_photo_data_url: string | null;
+  agreed_to_terms: boolean; warranty_coverage: string; cost: string; parts_cost: string; labor_cost: string; other_expenses: string;
+  receipt_photo_data_url: string | null;
   customer_signature_data_url: string | null; staff_signature_data_url: string | null;
   completed_at: Date | null; sent_to_customer_at: Date | null; created_at: Date;
 };
 function mapManualChecklist(r: ManualChecklistRow): ManualChecklist {
   return {
     id: r.id, manualRecordId: r.manual_record_id, phase: r.phase, items: r.items ?? [], summaryNotes: r.summary_notes,
-    agreedToTerms: r.agreed_to_terms, warrantyCoverage: r.warranty_coverage ?? "", receiptPhotoDataUrl: r.receipt_photo_data_url,
+    agreedToTerms: r.agreed_to_terms, warrantyCoverage: r.warranty_coverage ?? "",
+    cost: Number(r.cost ?? 0), partsCost: Number(r.parts_cost ?? 0), laborCost: Number(r.labor_cost ?? 0), otherExpenses: Number(r.other_expenses ?? 0),
+    receiptPhotoDataUrl: r.receipt_photo_data_url,
     customerSignatureDataUrl: r.customer_signature_data_url, staffSignatureDataUrl: r.staff_signature_data_url,
     completedAt: toIsoOrNull(r.completed_at), sentToCustomerAt: toIsoOrNull(r.sent_to_customer_at), createdAt: toIso(r.created_at),
   };
@@ -1020,13 +1024,21 @@ export type HomeServiceSalesRow = {
 // canonicalTechnicianName, so a name typed in a different case doesn't split
 // one technician into multiple rows; omit only where the caller has no
 // technicians list handy and grouping precision doesn't matter.
-export function homeServiceSalesByTechnician(
+type SalesRequestPick = Pick<HomeServiceRequest, "id" | "serviceFeeWaived" | "province" | "city" | "fulfillmentMode">;
+
+// Shared backing for homeServiceSalesByTechnician (on-site visits) and
+// pickupDeliverySalesByTechnician (Pickup & Delivery) below — a job from one
+// fulfillment mode is never counted in the other's totals, so on-site home
+// service revenue and Pickup & Delivery revenue stay fully separate
+// everywhere this is used (Sales, Dashboard, Requests page).
+function salesByTechnicianForMode(
   agreements: ServiceAgreement[],
   inRange: (date: string) => boolean,
-  requests: Pick<HomeServiceRequest, "id" | "serviceFeeWaived" | "province" | "city">[] = [],
-  technicians: Pick<Technician, "name">[] = []
+  requests: SalesRequestPick[],
+  technicians: Pick<Technician, "name">[],
+  mode: "on_site" | "pickup_delivery"
 ): HomeServiceSalesRow[] {
-  const requestById = new Map(requests.map((r) => [r.id, r]));
+  const requestById = new Map(requests.filter((r) => r.fulfillmentMode === mode).map((r) => [r.id, r]));
   const homeServiceJobs = agreements.filter((a) => a.phase === "post_repair" && a.requestId && inRange(a.completedAt.slice(0, 10)));
 
   type TechTotals = { name: string; count: number; totalAmount: number; partsCost: number; jobs: { deviceLabel: string; amount: number }[] };
@@ -1039,10 +1051,14 @@ export function homeServiceSalesByTechnician(
 
   for (const a of homeServiceJobs) {
     const request = a.requestId ? requestById.get(a.requestId) : undefined;
-    if (a.requestId && !request) continue; // request moved to Trash — excluded from Sales until restored
+    if (a.requestId && !request) continue; // trashed, or belongs to the other fulfillment mode — excluded either way
     const bucket = ensure(a.technicianName);
-    const waivedFee = request?.serviceFeeWaived ? serviceFeeAmount(request.province, request.city) ?? 0 : 0;
-    const amount = Math.max(0, a.cost + a.laborCost - waivedFee);
+    // labor_cost holds the service fee the customer was charged. Checklists
+    // completed after the fee was waived already store ₱0 there (lib/actions
+    // submitChecklist), so only subtract the waived fee from what was
+    // actually stored — never below zero — to avoid double-counting it.
+    const waivedFee = request?.serviceFeeWaived ? quotedServiceFee(request) : 0;
+    const amount = Math.max(0, a.cost + Math.max(0, a.laborCost - waivedFee));
     bucket.count += 1;
     bucket.totalAmount += amount;
     bucket.partsCost += a.partsCost;
@@ -1059,6 +1075,34 @@ export function homeServiceSalesByTechnician(
       if (b.name === "Unassigned") return -1;
       return b.totalAmount - a.totalAmount;
     });
+}
+
+// requests (optional — defaults to none; every call site passes
+// getRequests()'s non-deleted list): only its on_site rows are matched, so
+// a job tied to a Pickup & Delivery request is silently excluded here, same
+// as one that's been moved to Trash. technicians (optional) resolves each
+// job's raw typed name to its configured Settings > Technicians casing.
+export function homeServiceSalesByTechnician(
+  agreements: ServiceAgreement[],
+  inRange: (date: string) => boolean,
+  requests: SalesRequestPick[] = [],
+  technicians: Pick<Technician, "name">[] = []
+): HomeServiceSalesRow[] {
+  return salesByTechnicianForMode(agreements, inRange, requests, technicians, "on_site");
+}
+
+// Same shape as homeServiceSalesByTechnician, but only its pickup_delivery
+// rows are matched — powers the dedicated Sales > Pickup & Delivery page,
+// kept fully separate from Sales > Home Service (and everywhere else
+// homeServiceSalesByTechnician is used) so the two revenue streams never
+// mix in a total.
+export function pickupDeliverySalesByTechnician(
+  agreements: ServiceAgreement[],
+  inRange: (date: string) => boolean,
+  requests: SalesRequestPick[] = [],
+  technicians: Pick<Technician, "name">[] = []
+): HomeServiceSalesRow[] {
+  return salesByTechnicianForMode(agreements, inRange, requests, technicians, "pickup_delivery");
 }
 
 export function sumHomeServiceSales(rows: HomeServiceSalesRow[]) {

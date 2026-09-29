@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { getCurrentUser } from "@/lib/auth";
 import { getRequests, getBranches, getRiderById } from "@/lib/db";
 import {
@@ -51,11 +52,16 @@ export default async function RiderPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-lg font-bold text-slate-900">My Jobs</h1>
-        <p className="text-sm text-slate-400">
-          {myPickups.length} pickup{myPickups.length === 1 ? "" : "s"}, {myDeliveries.length} deliver{myDeliveries.length === 1 ? "y" : "ies"} waiting on you.
-        </p>
+      <div className="flex items-center justify-between gap-2">
+        <div>
+          <h1 className="text-lg font-bold text-slate-900">My Jobs</h1>
+          <p className="text-sm text-slate-400">
+            {myPickups.length} pickup{myPickups.length === 1 ? "" : "s"}, {myDeliveries.length} deliver{myDeliveries.length === 1 ? "y" : "ies"} waiting on you.
+          </p>
+        </div>
+        <Link href="/rider/history" className="text-xs text-blue-500 hover:underline">
+          My History &rarr;
+        </Link>
       </div>
 
       {rider && <RiderOnDutyToggle initialOnDuty={rider.onDuty} />}

@@ -172,6 +172,12 @@ export type Technician = {
   // Falls back to 50 for a technician name with no matching record (e.g. a
   // typo, or a name no longer in the system).
   earningsSharePercent: number;
+  // Whether this technician can be assigned a Pickup & Delivery repair (once
+  // the rider brings the device to a branch) — set per technician on
+  // Settings > Technicians. Not every home-service technician is meant to
+  // also take Pickup & Delivery jobs, so the assignment dropdown on Admin >
+  // Pickup & Delivery only offers technicians with this on.
+  canPickupDelivery: boolean;
 };
 
 // A courier who handles the pickup/delivery legs of a Pickup & Delivery
@@ -659,8 +665,7 @@ export type ManualRepairRecord = {
 };
 
 // One phase (pre or post-repair) of a ManualRepairRecord — same shape and
-// purpose as ServiceAgreement, just without the pricing fields that only
-// make sense for a priced POS/home-service job.
+// purpose as ServiceAgreement.
 export type ManualChecklist = {
   id: string;
   manualRecordId: string;
@@ -669,6 +674,10 @@ export type ManualChecklist = {
   summaryNotes: string;
   agreedToTerms: boolean; // only collected/required for phase === "post_repair"
   warrantyCoverage: string; // only collected/required for phase === "post_repair"
+  cost: number; // repair price — only collected for phase === "post_repair"; 0/unused for pre-repair
+  partsCost: number; // internal-only, deducted on Sales for net profit — never shown to the customer or on the receipt
+  laborCost: number; // service fee — added to cost for the customer-facing Total Amount
+  otherExpenses: number; // internal-only, same scope as partsCost
   receiptPhotoDataUrl: string | null; // optional, phase === "post_repair" only
   customerSignatureDataUrl: string | null;
   staffSignatureDataUrl: string | null;
