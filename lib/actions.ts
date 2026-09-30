@@ -56,6 +56,7 @@ import {
   canManageWalkIns,
   canWaiveServiceFee,
   canManageRepairPricing,
+  canEditRepairPrice,
   canManageManualChecklists,
   getManualRepairRecordById,
   getManualChecklists,
@@ -209,6 +210,7 @@ export async function createUser(formData: FormData) {
   const canManageWalkInsFlag = role === "branch_admin" ? formData.get("canManageWalkIns") === "on" : true;
   const canWaiveServiceFeeFlag = role === "branch_admin" ? formData.get("canWaiveServiceFee") === "on" : true;
   const canManageRepairPricingFlag = role === "branch_admin" ? formData.get("canManageRepairPricing") === "on" : true;
+  const canEditRepairPriceFlag = role === "branch_admin" ? formData.get("canEditRepairPrice") === "on" : true;
   const canManageManualChecklistsFlag = role === "technician" ? formData.get("canManageManualChecklists") === "on" : true;
   const phone = str(formData, "phone");
   if (!name || !email || !password || !role) return;
@@ -233,7 +235,7 @@ export async function createUser(formData: FormData) {
 
   const passwordHash = await bcrypt.hash(password, 10);
   const created = await queryOne<{ id: string }>(
-    "insert into users (name, email, password_hash, role, technician_id, rider_id, assigned_branch_ids, can_manage_requests, can_delete_requests, can_view_all_branches, can_access_crm, can_manage_walkins, can_waive_service_fee, can_manage_repair_pricing, can_manage_manual_checklists, phone) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) returning id",
+    "insert into users (name, email, password_hash, role, technician_id, rider_id, assigned_branch_ids, can_manage_requests, can_delete_requests, can_view_all_branches, can_access_crm, can_manage_walkins, can_waive_service_fee, can_manage_repair_pricing, can_edit_repair_price, can_manage_manual_checklists, phone) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) returning id",
     [
       name,
       email,
@@ -249,6 +251,7 @@ export async function createUser(formData: FormData) {
       canManageWalkInsFlag,
       canWaiveServiceFeeFlag,
       canManageRepairPricingFlag,
+      canEditRepairPriceFlag,
       canManageManualChecklistsFlag,
       phone,
     ]
@@ -287,6 +290,7 @@ export async function updateUser(formData: FormData) {
   const canManageWalkInsFlag = role === "branch_admin" ? formData.get("canManageWalkIns") === "on" : true;
   const canWaiveServiceFeeFlag = role === "branch_admin" ? formData.get("canWaiveServiceFee") === "on" : true;
   const canManageRepairPricingFlag = role === "branch_admin" ? formData.get("canManageRepairPricing") === "on" : true;
+  const canEditRepairPriceFlag = role === "branch_admin" ? formData.get("canEditRepairPrice") === "on" : true;
   const canManageManualChecklistsFlag = role === "technician" ? formData.get("canManageManualChecklists") === "on" : true;
   const phone = formData.has("phone") ? str(formData, "phone") : user.phone;
 
@@ -316,7 +320,7 @@ export async function updateUser(formData: FormData) {
   if (password) {
     const passwordHash = await bcrypt.hash(password, 10);
     await query(
-      "update users set name=$1, email=$2, password_hash=$3, role=$4, technician_id=$5, rider_id=$6, assigned_branch_ids=$7, can_manage_requests=$8, can_delete_requests=$9, can_view_all_branches=$10, can_access_crm=$11, can_manage_walkins=$12, can_waive_service_fee=$13, can_manage_repair_pricing=$14, can_manage_manual_checklists=$15, phone=$16 where id=$17",
+      "update users set name=$1, email=$2, password_hash=$3, role=$4, technician_id=$5, rider_id=$6, assigned_branch_ids=$7, can_manage_requests=$8, can_delete_requests=$9, can_view_all_branches=$10, can_access_crm=$11, can_manage_walkins=$12, can_waive_service_fee=$13, can_manage_repair_pricing=$14, can_edit_repair_price=$15, can_manage_manual_checklists=$16, phone=$17 where id=$18",
       [
         name,
         email || user.email,
@@ -332,6 +336,7 @@ export async function updateUser(formData: FormData) {
         canManageWalkInsFlag,
         canWaiveServiceFeeFlag,
         canManageRepairPricingFlag,
+        canEditRepairPriceFlag,
         canManageManualChecklistsFlag,
         phone,
         userId,
@@ -339,7 +344,7 @@ export async function updateUser(formData: FormData) {
     );
   } else {
     await query(
-      "update users set name=$1, email=$2, role=$3, technician_id=$4, rider_id=$5, assigned_branch_ids=$6, can_manage_requests=$7, can_delete_requests=$8, can_view_all_branches=$9, can_access_crm=$10, can_manage_walkins=$11, can_waive_service_fee=$12, can_manage_repair_pricing=$13, can_manage_manual_checklists=$14, phone=$15 where id=$16",
+      "update users set name=$1, email=$2, role=$3, technician_id=$4, rider_id=$5, assigned_branch_ids=$6, can_manage_requests=$7, can_delete_requests=$8, can_view_all_branches=$9, can_access_crm=$10, can_manage_walkins=$11, can_waive_service_fee=$12, can_manage_repair_pricing=$13, can_edit_repair_price=$14, can_manage_manual_checklists=$15, phone=$16 where id=$17",
       [
         name,
         email || user.email,
@@ -354,6 +359,7 @@ export async function updateUser(formData: FormData) {
         canManageWalkInsFlag,
         canWaiveServiceFeeFlag,
         canManageRepairPricingFlag,
+        canEditRepairPriceFlag,
         canManageManualChecklistsFlag,
         phone,
         userId,
@@ -4324,7 +4330,7 @@ export async function updateAgreementPriceAdmin(
   formData: FormData
 ): Promise<UpdateAgreementPriceAdminResult> {
   const user = await getCurrentUser();
-  if (!canManageHomeServiceRequests(user)) return { ok: false, error: "You don't have access to edit this." };
+  if (!canEditRepairPrice(user)) return { ok: false, error: "You don't have access to edit this." };
 
   const agreementId = str(formData, "agreementId");
   const agreements = await getServiceAgreements();
