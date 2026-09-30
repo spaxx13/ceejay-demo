@@ -86,6 +86,7 @@ import {
   emailConfigured,
 } from "./email";
 import { isOnTheWayStatus, distanceKm } from "./technicianTracking";
+import { storageConfigured, createSignedUploadUrl, deleteStorageObject } from "./storage";
 import { sendSms, sendOtpSms, smsConfigured, normalizePhone, isValidPhone, getAccountStatus, type SmsAccountStatus } from "./sms";
 import { SUNDAY_ONLY_PROVINCES, DOWNPAYMENT_PROVINCES, serviceFeeAmount, requestServiceFee, PICKUP_DELIVERY_FEE_PESOS } from "./homeServiceFees";
 import { getRepairQuote } from "./servicePricing";
@@ -1006,6 +1007,107 @@ export async function riderUpdateDeliveryStatus(_prev: RiderStatusResult | undef
   revalidatePath("/admin/pickup-delivery");
   revalidatePath(`/admin/requests/${requestId}`);
   return { ok: true };
+}
+
+// Unboxing video — recorded in-app (components/UnboxingVideoRecorder.tsx)
+// by the technician when a Pickup & Delivery package is opened at the shop.
+// The browser uploads straight to Supabase Storage through a signed URL
+// minted here (the file never passes through a server action), then
+// reports the stored path back so it can be attached to the request and
+// the customer told to watch it on /track.
+
+export type UnboxingUploadTarget = { ok: true; uploadUrl: string; path: string } | { ok: false; error: string };
+export type UnboxingSaveResult = { ok: true } | { ok: false; error: string };
+
+function canRecordUnboxing(user: Awaited<ReturnType<typeof getCurrentUser>>) {
+  return !!user && (user.role === "technician" || canManageHomeServiceRequests(user));
+}
+
+export async function createUnboxingUploadUrl(requestId: string, contentType: string): Promise<UnboxingUploadTarget> {
+  const user = await getCurrentUser();
+  if (!canRecordUnboxing(user)) return { ok: false, error: "Please sign in as a technician or admin to record this." };
+  const req = await getRequestById(requestId);
+  if (!req || req.fulfillmentMode !== "pickup_delivery") return { ok: false, error: "Request not found." };
+  if (!req.receivedAtShopAt) return { ok: false, error: "The device hasn't been received at the shop yet." };
+  if (!contentType.startsWith("video/")) return { ok: false, error: "Only video recordings can be uploaded here." };
+  if (!storageConfigured()) {
+    return { ok: false, error: "Video storage isn't set up yet — SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY need to be configured." };
+  }
+  const ext = contentType.includes("mp4") ? "mp4" : contentType.includes("quicktime") ? "mov" : "webm";
+  const path = `${requestId}/${Date.now()}.${ext}`;
+  try {
+    return { ok: true, uploadUrl: await createSignedUploadUrl(path), path };
+  } catch {
+    return { ok: false, error: "Couldn't prepare the upload — please try again in a moment." };
+  }
+}
+
+export async function saveUnboxingVideo(requestId: string, path: string, contentType: string, durationSeconds: number): Promise<UnboxingSaveResult> {
+  const user = await getCurrentUser();
+  if (!canRecordUnboxing(user)) return { ok: false, error: "Please sign in as a technician or admin to record this." };
+  const req = await getRequestById(requestId);
+  if (!req || req.fulfillmentMode !== "pickup_delivery") return { ok: false, error: "Request not found." };
+  // Only a path createUnboxingUploadUrl could have minted for this request.
+  if (!/^[0-9a-f-]+\/\d+\.(mp4|mov|webm)$/i.test(path) || !path.startsWith(`${requestId}/`)) return { ok: false, error: "Invalid video path." };
+
+  if (req.unboxingVideoPath && req.unboxingVideoPath !== path) {
+    try {
+      await deleteStorageObject(req.unboxingVideoPath);
+    } catch {
+      // Best-effort — an orphaned old file is a storage cost, not a correctness problem.
+    }
+  }
+  await query(
+    "update home_service_requests set unboxing_video_path=$1, unboxing_video_content_type=$2, unboxing_video_recorded_at=now(), unboxing_video_recorded_by=$3 where id=$4",
+    [path, contentType, user!.name, requestId]
+  );
+  await logActivity("home_service_request", requestId, `Unboxing video recorded by ${user!.name} (${Math.round(durationSeconds)}s)`, user!.name);
+
+  const trackUrl = `/track?reference=${encodeURIComponent(req.reference)}&phone=${encodeURIComponent(req.phone)}`;
+  if (req.customerId) {
+    sendCustomerPush(req.customerId, "Your device has arrived at the shop", `Watch the unboxing video for ${req.reference} on your tracking page.`, trackUrl).catch(
+      () => {}
+    );
+  }
+  if (req.email && emailConfigured()) {
+    try {
+      await sendTrackingLinkEmail(req.email, { customerName: req.customerName, reference: req.reference, phone: req.phone, stage: "unboxing_ready" });
+    } catch {
+      // Best-effort — the video is saved either way.
+    }
+  }
+
+  revalidatePath("/technician");
+  revalidatePath(`/technician/requests/${requestId}/unboxing`);
+  revalidatePath("/admin/pickup-delivery");
+  revalidatePath(`/admin/pickup-delivery/${requestId}`);
+  revalidatePath("/track");
+  revalidatePath("/my");
+  return { ok: true };
+}
+
+export async function deleteUnboxingVideo(formData: FormData) {
+  const user = await getCurrentUser();
+  if (!canManageHomeServiceRequests(user)) return;
+  const requestId = str(formData, "id");
+  const req = await getRequestById(requestId);
+  if (!req?.unboxingVideoPath) return;
+  try {
+    await deleteStorageObject(req.unboxingVideoPath);
+  } catch {
+    // Still clear the reference — a dangling file is cheaper than a broken player.
+  }
+  await query(
+    "update home_service_requests set unboxing_video_path=null, unboxing_video_content_type=null, unboxing_video_recorded_at=null, unboxing_video_recorded_by=null where id=$1",
+    [requestId]
+  );
+  await logActivity("home_service_request", requestId, `Unboxing video deleted by ${user!.name}`, user!.name);
+  revalidatePath("/technician");
+  revalidatePath(`/technician/requests/${requestId}/unboxing`);
+  revalidatePath("/admin/pickup-delivery");
+  revalidatePath(`/admin/pickup-delivery/${requestId}`);
+  revalidatePath("/track");
+  revalidatePath("/my");
 }
 
 export type ReportExceptionResult = { ok: true } | { ok: false; error: string };

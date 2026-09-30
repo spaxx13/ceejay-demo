@@ -392,16 +392,22 @@ export async function sendCancellationEmail(to: string, opts: { customerName: st
 // now rather than needing two different URLs.
 export async function sendTrackingLinkEmail(
   to: string,
-  opts: { customerName: string; reference: string; phone: string; stage: "heading_to_pickup" | "heading_to_shop" }
+  opts: { customerName: string; reference: string; phone: string; stage: "heading_to_pickup" | "heading_to_shop" | "unboxing_ready" }
 ) {
   const client = getClient();
   const trackingUrl = `${SITE_URL}/track?reference=${encodeURIComponent(opts.reference)}&phone=${encodeURIComponent(opts.phone)}`;
   const heading =
-    opts.stage === "heading_to_pickup" ? "Your rider is on the way!" : "Your device is on its way to the shop!";
+    opts.stage === "heading_to_pickup"
+      ? "Your rider is on the way!"
+      : opts.stage === "heading_to_shop"
+        ? "Your device is on its way to the shop!"
+        : "Your device has arrived at the shop!";
   const body =
     opts.stage === "heading_to_pickup"
       ? "A rider is heading to your address now to pick up your device. You can follow their live location on the tracking page below."
-      : "Your rider has your device and is on the way to the shop. You can follow their live location on the tracking page below.";
+      : opts.stage === "heading_to_shop"
+        ? "Your rider has your device and is on the way to the shop. You can follow their live location on the tracking page below."
+        : "Our technician recorded a short video of your device being unboxed and inspected at the shop, so you can see exactly how it arrived. Watch it on the tracking page below.";
 
   const { error } = await client.emails.send({
     from: FROM,

@@ -71,6 +71,9 @@ export default async function TechnicianPage() {
         onTheWay: isOnTheWayStatus(status?.label),
         hasPreAgreement: agreements.some((a) => a.requestId === r.id && a.phase === "pre_repair"),
         hasPostAgreement: agreements.some((a) => a.requestId === r.id && a.phase === "post_repair"),
+        fulfillmentMode: r.fulfillmentMode,
+        receivedAtShopAt: r.receivedAtShopAt,
+        hasUnboxingVideo: !!r.unboxingVideoPath,
         customFieldEntries: Object.entries(r.customFields)
           .map(([key, value]) => ({ label: customFormFields.find((f) => f.key === key)?.label, value }))
           .filter((e): e is { label: string; value: string | boolean } => !!e.label),
