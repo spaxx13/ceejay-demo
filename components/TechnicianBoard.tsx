@@ -47,6 +47,7 @@ type Req = {
   fulfillmentMode: "on_site" | "pickup_delivery";
   receivedAtShopAt: string | null;
   hasUnboxingVideo: boolean;
+  unboxingVideoSent: boolean;
 };
 
 // One stacked label-over-value row for the Request Details block — bigger
@@ -218,9 +219,13 @@ export default function TechnicianBoard({ requests, statuses }: { requests: Req[
             {r.fulfillmentMode === "pickup_delivery" && r.receivedAtShopAt && (
               <Link
                 href={`/technician/requests/${r.id}/unboxing`}
-                className={r.hasUnboxingVideo ? "btn-secondary block w-full text-center text-xs" : "btn-primary block w-full text-center text-xs"}
+                className={r.hasUnboxingVideo && r.unboxingVideoSent ? "btn-secondary block w-full text-center text-xs" : "btn-primary block w-full text-center text-xs"}
               >
-                {r.hasUnboxingVideo ? "🎥 View Unboxing Video" : "🎥 Record Unboxing Video"}
+                {!r.hasUnboxingVideo
+                  ? "🎥 Record Unboxing Video"
+                  : r.unboxingVideoSent
+                    ? "🎥 View Unboxing Video (sent)"
+                    : "🎥 Unboxing Video — review & send to customer"}
               </Link>
             )}
 

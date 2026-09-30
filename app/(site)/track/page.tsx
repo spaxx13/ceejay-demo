@@ -119,7 +119,8 @@ export default async function TrackPage({ searchParams }: { searchParams: Promis
         ? pickupRider
         : null;
   const stageIndex = STAGE_ORDER.indexOf(stage);
-  const unboxingUrl = await getUnboxingVideoUrl(req.unboxingVideoPath);
+  // Drafts stay staff-only until "Send to Customer".
+  const unboxingUrl = req.unboxingVideoPublishedAt ? await getUnboxingVideoUrl(req.unboxingVideoPath) : null;
 
   return (
     <main className="grid-bg px-4 py-10 sm:px-6">

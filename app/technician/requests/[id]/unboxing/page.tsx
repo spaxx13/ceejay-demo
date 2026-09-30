@@ -3,8 +3,8 @@ import { notFound, redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import { getRequestById, getBranches, canManageHomeServiceRequests } from "@/lib/db";
 import { getUnboxingVideoUrl } from "@/lib/storage";
-import { formatDateTime } from "@/lib/format";
 import UnboxingVideoRecorder from "@/components/UnboxingVideoRecorder";
+import UnboxingVideoReview from "@/components/UnboxingVideoReview";
 
 // Technician-side unboxing page for a Pickup & Delivery job that has
 // reached the shop — record (or re-record) the video the customer will
@@ -39,15 +39,15 @@ export default async function TechnicianUnboxingPage({ params }: { params: Promi
       ) : (
         <div className="card space-y-4">
           {videoUrl && (
-            <div className="space-y-1.5">
-              <p className="text-xs font-semibold text-slate-700">Current video</p>
-              <video controls playsInline preload="metadata" src={videoUrl} className="w-full rounded-lg border border-slate-200 bg-black" />
-              <p className="text-[11px] text-slate-400">
-                Recorded by {req.unboxingVideoRecordedBy ?? "—"}
-                {req.unboxingVideoRecordedAt ? ` — ${formatDateTime(req.unboxingVideoRecordedAt)}` : ""}. The customer can watch this on their
-                tracking page.
-              </p>
-            </div>
+            <UnboxingVideoReview
+              requestId={req.id}
+              reference={req.reference}
+              videoUrl={videoUrl}
+              recordedBy={req.unboxingVideoRecordedBy}
+              recordedAt={req.unboxingVideoRecordedAt}
+              publishedAt={req.unboxingVideoPublishedAt}
+              canDelete={canManageHomeServiceRequests(user) || !req.unboxingVideoPublishedAt}
+            />
           )}
           <UnboxingVideoRecorder requestId={req.id} existing={!!req.unboxingVideoPath} />
         </div>

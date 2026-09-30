@@ -74,6 +74,7 @@ export default async function TechnicianPage() {
         fulfillmentMode: r.fulfillmentMode,
         receivedAtShopAt: r.receivedAtShopAt,
         hasUnboxingVideo: !!r.unboxingVideoPath,
+        unboxingVideoSent: !!r.unboxingVideoPublishedAt,
         customFieldEntries: Object.entries(r.customFields)
           .map(([key, value]) => ({ label: customFormFields.find((f) => f.key === key)?.label, value }))
           .filter((e): e is { label: string; value: string | boolean } => !!e.label),
