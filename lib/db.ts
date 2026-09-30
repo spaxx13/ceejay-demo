@@ -946,12 +946,14 @@ export async function getServiceAgreementsForRepairRecord(repairRecordId: string
 
 type ManualRepairRecordRow = {
   id: string; reference: string; branch_id: string | null; created_by_user_id: string | null; created_by_name: string;
-  customer_name: string; customer_phone: string; customer_email: string; device_label: string; created_at: Date; deleted_at: Date | null;
+  customer_name: string; customer_phone: string; customer_email: string; device_label: string; issue_description: string;
+  created_at: Date; deleted_at: Date | null;
 };
 function mapManualRepairRecord(r: ManualRepairRecordRow): ManualRepairRecord {
   return {
     id: r.id, reference: r.reference, branchId: r.branch_id, createdByUserId: r.created_by_user_id, createdByName: r.created_by_name,
     customerName: r.customer_name, customerPhone: r.customer_phone, customerEmail: r.customer_email, deviceLabel: r.device_label,
+    issueDescription: r.issue_description ?? "",
     createdAt: toIso(r.created_at), deletedAt: toIsoOrNull(r.deleted_at),
   };
 }
@@ -968,6 +970,7 @@ export async function getManualRepairRecordById(id: string) {
 type ManualChecklistRow = {
   id: string; manual_record_id: string; phase: ManualChecklist["phase"]; items: ManualChecklist["items"]; summary_notes: string;
   agreed_to_terms: boolean; warranty_coverage: string; cost: string; parts_cost: string; labor_cost: string; other_expenses: string;
+  technician_name: string;
   receipt_photo_data_url: string | null;
   customer_signature_data_url: string | null; staff_signature_data_url: string | null;
   completed_at: Date | null; sent_to_customer_at: Date | null; created_at: Date;
@@ -977,6 +980,7 @@ function mapManualChecklist(r: ManualChecklistRow): ManualChecklist {
     id: r.id, manualRecordId: r.manual_record_id, phase: r.phase, items: r.items ?? [], summaryNotes: r.summary_notes,
     agreedToTerms: r.agreed_to_terms, warrantyCoverage: r.warranty_coverage ?? "",
     cost: Number(r.cost ?? 0), partsCost: Number(r.parts_cost ?? 0), laborCost: Number(r.labor_cost ?? 0), otherExpenses: Number(r.other_expenses ?? 0),
+    technicianName: r.technician_name ?? "",
     receiptPhotoDataUrl: r.receipt_photo_data_url,
     customerSignatureDataUrl: r.customer_signature_data_url, staffSignatureDataUrl: r.staff_signature_data_url,
     completedAt: toIsoOrNull(r.completed_at), sentToCustomerAt: toIsoOrNull(r.sent_to_customer_at), createdAt: toIso(r.created_at),

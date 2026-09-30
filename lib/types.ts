@@ -660,6 +660,7 @@ export type ManualRepairRecord = {
   customerPhone: string;
   customerEmail: string;
   deviceLabel: string;
+  issueDescription: string; // the reported problem — shown as "Nature of Repair" on the invoice, same as a normal booking's issueDescription
   createdAt: string;
   deletedAt: string | null;
 };
@@ -678,6 +679,7 @@ export type ManualChecklist = {
   partsCost: number; // internal-only, deducted on Sales for net profit — never shown to the customer or on the receipt
   laborCost: number; // service fee — added to cost for the customer-facing Total Amount
   otherExpenses: number; // internal-only, same scope as partsCost
+  technicianName: string; // whoever actually completed THIS phase — the parent record's createdByName is only who opened the ticket
   receiptPhotoDataUrl: string | null; // optional, phase === "post_repair" only
   customerSignatureDataUrl: string | null;
   staffSignatureDataUrl: string | null;

@@ -437,81 +437,11 @@ export async function generateRepairReceiptPdf(opts: {
   return w.save();
 }
 
-// Pre/Post-Repair checklist + receipt (ManualRepairRecord + its
-// ManualChecklist phases) — same two-phase structure and cost breakdown as
-// generateRepairReceiptPdf above. repairCost + serviceFee are the only
-// figures ever shown here — parts/other cost is internal-only and never
-// reaches this PDF, so the same document is safe to both view internally
-// and email to the customer.
-export async function generateManualChecklistReceiptPdf(opts: {
-  reference: string;
-  serviceDate: string;
-  customerName: string;
-  customerPhone: string;
-  deviceLabel: string;
-  createdByName: string;
-  warrantyCoverage: string;
-  repairCost: number;
-  serviceFee: number;
-  postNotes: string;
-  preItems: ChecklistItem[];
-  postItems: ChecklistItem[];
-  preCustomerSignature: string | null;
-  preStaffSignature: string | null;
-  postCustomerSignature: string | null;
-  postStaffSignature: string | null;
-  receiptPhoto: string | null;
-}): Promise<Uint8Array> {
-  const w = await Writer.create();
-
-  w.header(opts.reference, "Device Checklist & Receipt");
-
-  w.heading("Customer & Device Details");
-  w.row("Customer Name", opts.customerName, { boldValue: true });
-  w.row("Contact Number", opts.customerPhone);
-  w.row("Date", opts.serviceDate);
-  w.row("Device", opts.deviceLabel);
-  w.row("Attended By", opts.createdByName || "—");
-  w.row("Warranty Coverage", opts.warrantyCoverage);
-
-  w.heading("Cost Breakdown");
-  w.costBreakdown(opts.repairCost, opts.serviceFee, opts.repairCost + opts.serviceFee);
-
-  w.heading("Pre-Repair Checklist");
-  w.checklistTable(opts.preItems);
-  await w.signatureRow(opts.preCustomerSignature, opts.preStaffSignature, "Staff Signature");
-
-  w.newPage();
-  w.heading("Post-Repair Checklist");
-  w.checklistTable(opts.postItems);
-  await w.signatureRow(opts.postCustomerSignature, opts.postStaffSignature, "Staff Signature");
-
-  if (opts.postNotes) {
-    w.heading("Notes (Post-Repair)");
-    w.paragraph(opts.postNotes);
-  }
-
-  if (opts.receiptPhoto) {
-    const decoded = dataUrlBytes(opts.receiptPhoto);
-    if (decoded) {
-      w.newPage();
-      w.heading("Receipt Photo");
-      const embedded = decoded.isPng ? await w.doc.embedPng(decoded.bytes) : await w.doc.embedJpg(decoded.bytes);
-      const maxW = CONTENT_W;
-      const maxH = 320;
-      const scale = Math.min(maxW / embedded.width, maxH / embedded.height, 1) || 1;
-      const width = embedded.width * scale;
-      const height = embedded.height * scale;
-      w.ensureSpace(height + 10);
-      w.page.drawImage(embedded, { x: MARGIN, y: w.y - height, width, height });
-      w.y -= height + 10;
-    }
-  }
-
-  w.stampAllPages(opts.reference);
-
-  return w.save();
-}
+// Manual (walk-in) repair tickets deliberately reuse generateRepairReceiptPdf
+// above rather than a separate template — the shop wants the exact same
+// invoice a normal Home Service/POS booking produces, not a lookalike, so
+// there's exactly one receipt layout to keep correct. See
+// lib/actions.ts submitManualChecklist/resendManualChecklistReceiptEmail.
 
 export async function generateQuotationPdf(opts: {
   referenceList: string;

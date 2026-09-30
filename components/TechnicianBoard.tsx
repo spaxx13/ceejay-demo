@@ -5,7 +5,7 @@ import Link from "next/link";
 import { technicianUpdateStatus } from "@/lib/actions";
 import StatusBadge from "./StatusBadge";
 import Linkify from "./Linkify";
-import { formatDate, formatDateTime } from "@/lib/format";
+import { formatDate } from "@/lib/format";
 import { directionsUrl } from "@/lib/technicianTracking";
 import TechnicianLocationSharer from "./TechnicianLocationSharer";
 
@@ -60,10 +60,22 @@ function DetailRow({ label, children }: { label: string; children: React.ReactNo
 
 const peso = (n: number) => `₱${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
+// Statuses a technician is never allowed to manually set from Update
+// Status — "Pending Confirmation" is a customer/admin-side booking state,
+// and "Completed" only ever happens automatically, once the Post-Repair
+// checklist itself is submitted (lib/actions.ts submitChecklist). Kept as
+// labels (not ids) since both are shop-wide fixed lookup rows, and
+// enforced again server-side in technicianUpdateStatus.
+const TECHNICIAN_RESTRICTED_STATUSES = new Set(["Pending Confirmation", "Completed"]);
+
 export default function TechnicianBoard({ requests, statuses }: { requests: Req[]; statuses: Status[] }) {
   const [openId, setOpenId] = useState<string | null>(null);
   const [tab, setTab] = useState<"pending" | "completed">("pending");
-  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
+  // The date a job is actually scheduled FOR the technician (the visit
+  // date, preferredDatetime) — never the customer's booking submission
+  // date, which the technician doesn't need and no longer sees below.
+  // null/"" = no date picked, so every job in the current tab still shows.
+  const [selectedDate, setSelectedDate] = useState("");
 
   if (requests.length === 0) {
     return <p className="card text-center text-sm text-slate-400">No requests assigned to you right now.</p>;
@@ -73,9 +85,8 @@ export default function TechnicianBoard({ requests, statuses }: { requests: Req[
   const pending = requests.filter((r) => r.statusId !== completedStatusId);
   const completed = requests.filter((r) => r.statusId === completedStatusId);
   const tabbed = tab === "pending" ? pending : completed;
-  const visible = [...tabbed].sort((a, b) =>
-    sortOrder === "asc" ? (a.preferredDatetime < b.preferredDatetime ? -1 : 1) : a.preferredDatetime < b.preferredDatetime ? 1 : -1
-  );
+  const dateFiltered = selectedDate ? tabbed.filter((r) => r.preferredDatetime.slice(0, 10) === selectedDate) : tabbed;
+  const visible = [...dateFiltered].sort((a, b) => (a.preferredDatetime < b.preferredDatetime ? -1 : 1));
 
   return (
     <div className="space-y-4">
@@ -99,17 +110,27 @@ export default function TechnicianBoard({ requests, statuses }: { requests: Req[
           </button>
         </div>
         <label className="flex items-center gap-2 text-xs text-slate-500">
-          Sort by date
-          <select value={sortOrder} onChange={(e) => setSortOrder(e.target.value as "asc" | "desc")} className="input w-auto !py-1.5 text-xs">
-            <option value="asc">Soonest first</option>
-            <option value="desc">Latest first</option>
-          </select>
+          Filter by date
+          <input
+            type="date"
+            value={selectedDate}
+            onChange={(e) => setSelectedDate(e.target.value)}
+            className="input w-auto !py-1.5 text-xs"
+          />
+          {selectedDate && (
+            <button type="button" onClick={() => setSelectedDate("")} className="text-blue-500 hover:underline">
+              Clear
+            </button>
+          )}
         </label>
       </div>
-
       {visible.length === 0 && (
         <p className="card text-center text-sm text-slate-400">
-          {tab === "pending" ? "No pending jobs right now." : "No completed jobs yet."}
+          {selectedDate
+            ? "No jobs scheduled for you on this date."
+            : tab === "pending"
+              ? "No pending jobs right now."
+              : "No completed jobs yet."}
         </p>
       )}
 
@@ -178,7 +199,6 @@ export default function TechnicianBoard({ requests, statuses }: { requests: Req[
                   {typeof e.value === "boolean" ? (e.value ? "Yes" : "No") : e.value || "—"}
                 </DetailRow>
               ))}
-              <DetailRow label="Submitted">{formatDateTime(r.createdAt)}</DetailRow>
               {r.photoDataUrl && (
                 <div>
                   <p className="text-sm text-slate-400">Photo</p>
@@ -218,11 +238,13 @@ export default function TechnicianBoard({ requests, statuses }: { requests: Req[
               >
                 <input type="hidden" name="id" value={r.id} />
                 <select name="statusId" defaultValue={r.statusId} className="input">
-                  {statuses.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.label}
-                    </option>
-                  ))}
+                  {statuses
+                    .filter((s) => !TECHNICIAN_RESTRICTED_STATUSES.has(s.label) || s.id === r.statusId)
+                    .map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.label}
+                      </option>
+                    ))}
                 </select>
                 <textarea name="note" rows={2} className="input" placeholder="Job note (optional)" />
                 <button type="submit" className="btn-primary w-full">

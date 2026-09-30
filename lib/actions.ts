@@ -75,7 +75,6 @@ import {
 import { getCurrentUser, setSession, clearSession, requireRole } from "./auth";
 import {
   sendRepairReceiptEmail,
-  sendManualChecklistReceiptEmail,
   sendCancellationEmail,
   sendQuotationEmail,
   sendLeadReplyEmail,
@@ -3427,6 +3426,14 @@ export async function technicianUpdateStatus(formData: FormData) {
   const status = lookups.find((l) => l.id === statusId && l.kind === "request_status");
   // Only the technician assigned to this job may move it.
   if (!req || !status || req.assignedTechnicianId !== user.technicianId) return;
+  // "Pending Confirmation" is a customer/admin-side booking state, and
+  // "Completed" only ever happens automatically once the Post-Repair
+  // checklist is submitted (submitChecklist) — a technician is never
+  // allowed to set either manually. Mirrors the restriction already
+  // applied client-side in TechnicianBoard.tsx's status dropdown. A no-op
+  // change (already at that status) is still allowed through, so saving a
+  // note alone never fails.
+  if (statusId !== req.statusId && (status.label === "Pending Confirmation" || status.label === "Completed")) return;
 
   const statusHistory = [...req.statusHistory, { statusId, at: new Date().toISOString() }];
   const adminNotes = note ? (req.adminNotes ? `${req.adminNotes}\n[${user?.name}] ${note}` : `[${user?.name}] ${note}`) : req.adminNotes;
@@ -4059,6 +4066,7 @@ export async function createManualRepairRecord(
   const customerPhone = str(formData, "customerPhone");
   const customerEmail = str(formData, "customerEmail");
   const deviceLabel = str(formData, "deviceLabel");
+  const issueDescription = str(formData, "issueDescription");
   const branchId = str(formData, "branchId") || null;
   const summaryNotes = str(formData, "summaryNotes");
   if (!customerName || !deviceLabel) return { ok: false, error: "Customer name and device are required." };
@@ -4095,9 +4103,9 @@ export async function createManualRepairRecord(
     try {
       record = await queryOne<{ id: string }>(
         `insert into manual_repair_records
-           (reference, branch_id, created_by_user_id, created_by_name, customer_name, customer_phone, customer_email, device_label)
-         values ($1,$2,$3,$4,$5,$6,$7,$8) returning id`,
-        [reference, branchId, user!.id, user!.name, customerName, customerPhone, customerEmail, deviceLabel]
+           (reference, branch_id, created_by_user_id, created_by_name, customer_name, customer_phone, customer_email, device_label, issue_description)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9) returning id`,
+        [reference, branchId, user!.id, user!.name, customerName, customerPhone, customerEmail, deviceLabel, issueDescription]
       );
       break;
     } catch (err) {
@@ -4108,9 +4116,9 @@ export async function createManualRepairRecord(
   }
 
   await query(
-    `insert into manual_checklists (manual_record_id, phase, items, summary_notes, customer_signature_data_url, staff_signature_data_url, completed_at)
-     values ($1,'pre_repair',$2,$3,$4,$5,now())`,
-    [record!.id, JSON.stringify(items), summaryNotes, customerSignatureDataUrl, staffSignatureDataUrl]
+    `insert into manual_checklists (manual_record_id, phase, items, summary_notes, technician_name, customer_signature_data_url, staff_signature_data_url, completed_at)
+     values ($1,'pre_repair',$2,$3,$4,$5,$6,now())`,
+    [record!.id, JSON.stringify(items), summaryNotes, user!.name, customerSignatureDataUrl, staffSignatureDataUrl]
   );
 
   await logActivity("manual_checklist", record!.id, `Manual repair ticket ${reference} created by ${user!.name}`, user!.name);
@@ -4175,32 +4183,36 @@ export async function submitManualChecklist(
 
   const created = await queryOne<{ id: string }>(
     `insert into manual_checklists
-       (manual_record_id, phase, items, summary_notes, agreed_to_terms, warranty_coverage, cost, parts_cost, labor_cost, other_expenses, receipt_photo_data_url, customer_signature_data_url, staff_signature_data_url, completed_at)
-     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,now()) returning id`,
-    [manualRecordId, phase, JSON.stringify(items), summaryNotes, agreedToTerms, warrantyCoverage, cost, partsCost, laborCost, otherExpenses, receiptPhotoDataUrl, customerSignatureDataUrl, staffSignatureDataUrl]
+       (manual_record_id, phase, items, summary_notes, agreed_to_terms, warranty_coverage, cost, parts_cost, labor_cost, other_expenses, technician_name, receipt_photo_data_url, customer_signature_data_url, staff_signature_data_url, completed_at)
+     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,now()) returning id`,
+    [manualRecordId, phase, JSON.stringify(items), summaryNotes, agreedToTerms, warrantyCoverage, cost, partsCost, laborCost, otherExpenses, user!.name, receiptPhotoDataUrl, customerSignatureDataUrl, staffSignatureDataUrl]
   );
 
   let emailNote = "no email on file — receipt not emailed";
   if (phase === "post_repair") {
     if (record.customerEmail) {
       try {
-        await sendManualChecklistReceiptEmail(record.customerEmail, {
+        // Deliberately reuses sendRepairReceiptEmail/generateRepairReceiptPdf —
+        // the exact same invoice a normal Home Service/POS booking produces
+        // once completed, not a lookalike template. See
+        // lib/receiptPdf.ts's note above generateQuotationPdf.
+        await sendRepairReceiptEmail(record.customerEmail, {
           customerName: record.customerName,
-          customerPhone: record.customerPhone,
           reference: record.reference,
           serviceDate: new Date().toISOString().slice(0, 10),
           deviceLabel: record.deviceLabel,
-          createdByName: user!.name,
+          natureOfRepair: record.issueDescription,
           warrantyCoverage,
+          postNotes: summaryNotes,
           repairCost: cost,
           serviceFee: laborCost, // parts/material cost and other expenses are internal-only, never included here
-          postNotes: summaryNotes,
+          technicianName: user!.name,
           preItems: preChecklist?.items ?? [],
           postItems: items,
           preCustomerSignature: preChecklist?.customerSignatureDataUrl ?? null,
-          preStaffSignature: preChecklist?.staffSignatureDataUrl ?? null,
+          preTechnicianSignature: preChecklist?.staffSignatureDataUrl ?? null,
           postCustomerSignature: customerSignatureDataUrl,
-          postStaffSignature: staffSignatureDataUrl,
+          postTechnicianSignature: staffSignatureDataUrl,
           receiptPhoto: receiptPhotoDataUrl,
         });
         await query("update manual_checklists set sent_to_customer_at=now() where id=$1", [created!.id]);
@@ -4250,11 +4262,12 @@ export async function updateManualRecordDetails(formData: FormData) {
   if (!customerName || !deviceLabel) return;
   const customerPhone = str(formData, "customerPhone");
   const customerEmail = str(formData, "customerEmail");
+  const issueDescription = str(formData, "issueDescription");
   const branchId = str(formData, "branchId") || null;
 
   await query(
-    "update manual_repair_records set customer_name=$1, customer_phone=$2, customer_email=$3, device_label=$4, branch_id=$5 where id=$6",
-    [customerName, customerPhone, customerEmail, deviceLabel, branchId, id]
+    "update manual_repair_records set customer_name=$1, customer_phone=$2, customer_email=$3, device_label=$4, branch_id=$5, issue_description=$6 where id=$7",
+    [customerName, customerPhone, customerEmail, deviceLabel, branchId, issueDescription, id]
   );
 
   if (formData.has("warrantyCoverage")) {
@@ -4302,23 +4315,23 @@ export async function resendManualChecklistReceiptEmail(
   if (!post) return { ok: false, error: "The Post-Repair checklist hasn't been completed yet — there's no receipt to resend." };
 
   try {
-    await sendManualChecklistReceiptEmail(record.customerEmail, {
+    await sendRepairReceiptEmail(record.customerEmail, {
       customerName: record.customerName,
-      customerPhone: record.customerPhone,
       reference: record.reference,
       serviceDate: post.completedAt?.slice(0, 10) ?? record.createdAt.slice(0, 10),
       deviceLabel: record.deviceLabel,
-      createdByName: record.createdByName,
+      natureOfRepair: record.issueDescription,
       warrantyCoverage: post.warrantyCoverage,
+      postNotes: post.summaryNotes,
       repairCost: post.cost,
       serviceFee: post.laborCost, // parts/material cost and other expenses are internal-only, never included here
-      postNotes: post.summaryNotes,
+      technicianName: post.technicianName || record.createdByName,
       preItems: pre?.items ?? [],
       postItems: post.items,
       preCustomerSignature: pre?.customerSignatureDataUrl ?? null,
-      preStaffSignature: pre?.staffSignatureDataUrl ?? null,
+      preTechnicianSignature: pre?.staffSignatureDataUrl ?? null,
       postCustomerSignature: post.customerSignatureDataUrl,
-      postStaffSignature: post.staffSignatureDataUrl,
+      postTechnicianSignature: post.staffSignatureDataUrl,
       receiptPhoto: post.receiptPhotoDataUrl,
     });
   } catch (err) {
