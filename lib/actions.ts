@@ -1057,11 +1057,37 @@ export async function saveUnboxingVideo(requestId: string, path: string, content
       // Best-effort — an orphaned old file is a storage cost, not a correctness problem.
     }
   }
+  // Saved as a draft: a replacement also goes back to draft, so a retake
+  // is reviewed before the customer sees it (publishUnboxingVideo).
   await query(
-    "update home_service_requests set unboxing_video_path=$1, unboxing_video_content_type=$2, unboxing_video_recorded_at=now(), unboxing_video_recorded_by=$3 where id=$4",
+    "update home_service_requests set unboxing_video_path=$1, unboxing_video_content_type=$2, unboxing_video_recorded_at=now(), unboxing_video_recorded_by=$3, unboxing_video_published_at=null where id=$4",
     [path, contentType, user!.name, requestId]
   );
-  await logActivity("home_service_request", requestId, `Unboxing video recorded by ${user!.name} (${Math.round(durationSeconds)}s)`, user!.name);
+  await logActivity("home_service_request", requestId, `Unboxing video recorded by ${user!.name} (${Math.round(durationSeconds)}s) — draft, not yet sent to the customer`, user!.name);
+  revalidateUnboxingPaths(requestId);
+  return { ok: true };
+}
+
+function revalidateUnboxingPaths(requestId: string) {
+  revalidatePath("/technician");
+  revalidatePath(`/technician/requests/${requestId}/unboxing`);
+  revalidatePath("/admin/pickup-delivery");
+  revalidatePath(`/admin/pickup-delivery/${requestId}`);
+  revalidatePath("/track");
+  revalidatePath("/my");
+}
+
+// "Send to Customer" — makes the draft visible on /track and My Bookings
+// and tells the customer their device has arrived (push + email).
+export async function publishUnboxingVideo(formData: FormData) {
+  const user = await getCurrentUser();
+  if (!canRecordUnboxing(user)) return;
+  const requestId = str(formData, "id");
+  const req = await getRequestById(requestId);
+  if (!req?.unboxingVideoPath || req.unboxingVideoPublishedAt) return;
+
+  await query("update home_service_requests set unboxing_video_published_at=now() where id=$1", [requestId]);
+  await logActivity("home_service_request", requestId, `Unboxing video sent to the customer by ${user!.name}`, user!.name);
 
   const trackUrl = `/track?reference=${encodeURIComponent(req.reference)}&phone=${encodeURIComponent(req.phone)}`;
   if (req.customerId) {
@@ -1073,41 +1099,33 @@ export async function saveUnboxingVideo(requestId: string, path: string, content
     try {
       await sendTrackingLinkEmail(req.email, { customerName: req.customerName, reference: req.reference, phone: req.phone, stage: "unboxing_ready" });
     } catch {
-      // Best-effort — the video is saved either way.
+      // Best-effort — the video is published either way.
     }
   }
-
-  revalidatePath("/technician");
-  revalidatePath(`/technician/requests/${requestId}/unboxing`);
-  revalidatePath("/admin/pickup-delivery");
-  revalidatePath(`/admin/pickup-delivery/${requestId}`);
-  revalidatePath("/track");
-  revalidatePath("/my");
-  return { ok: true };
+  revalidateUnboxingPaths(requestId);
 }
 
+// Admins can delete at any time; a technician only while it's still a
+// draft (once the customer has been sent it, taking it back is an admin call).
 export async function deleteUnboxingVideo(formData: FormData) {
   const user = await getCurrentUser();
-  if (!canManageHomeServiceRequests(user)) return;
   const requestId = str(formData, "id");
   const req = await getRequestById(requestId);
   if (!req?.unboxingVideoPath) return;
+  const isAdmin = canManageHomeServiceRequests(user);
+  const isTechnicianOnDraft = !!user && user.role === "technician" && !req.unboxingVideoPublishedAt;
+  if (!isAdmin && !isTechnicianOnDraft) return;
   try {
     await deleteStorageObject(req.unboxingVideoPath);
   } catch {
     // Still clear the reference — a dangling file is cheaper than a broken player.
   }
   await query(
-    "update home_service_requests set unboxing_video_path=null, unboxing_video_content_type=null, unboxing_video_recorded_at=null, unboxing_video_recorded_by=null where id=$1",
+    "update home_service_requests set unboxing_video_path=null, unboxing_video_content_type=null, unboxing_video_recorded_at=null, unboxing_video_recorded_by=null, unboxing_video_published_at=null where id=$1",
     [requestId]
   );
   await logActivity("home_service_request", requestId, `Unboxing video deleted by ${user!.name}`, user!.name);
-  revalidatePath("/technician");
-  revalidatePath(`/technician/requests/${requestId}/unboxing`);
-  revalidatePath("/admin/pickup-delivery");
-  revalidatePath(`/admin/pickup-delivery/${requestId}`);
-  revalidatePath("/track");
-  revalidatePath("/my");
+  revalidateUnboxingPaths(requestId);
 }
 
 export type ReportExceptionResult = { ok: true } | { ok: false; error: string };

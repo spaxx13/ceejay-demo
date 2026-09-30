@@ -189,7 +189,8 @@ export default function UnboxingVideoRecorder({ requestId, existing }: { request
   if (phase === "done") {
     return (
       <p className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm font-medium text-green-700">
-        ✅ Unboxing video saved — the customer can now watch it on their tracking page.
+        ✅ Saved as a draft — watch it back above, then tap <span className="font-semibold">Send to Customer</span> when you&apos;re happy with it (or
+        Retake / Delete).
       </p>
     );
   }

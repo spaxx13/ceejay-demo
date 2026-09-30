@@ -85,7 +85,7 @@ export default async function MyBookingsPage() {
                       📍 Track Live
                     </Link>
                   )}
-                  {r.unboxingVideoPath && (
+                  {r.unboxingVideoPath && r.unboxingVideoPublishedAt && (
                     <Link
                       href={`/track?reference=${encodeURIComponent(r.reference)}&phone=${encodeURIComponent(r.phone)}`}
                       className="btn-secondary block text-center !py-1.5 text-sm"

@@ -426,6 +426,9 @@ export type HomeServiceRequest = {
   unboxingVideoContentType: string | null;
   unboxingVideoRecordedAt: string | null;
   unboxingVideoRecordedBy: string | null;
+  // Null = draft (only staff can see it); set when "Send to Customer" is
+  // tapped — /track and My Bookings show the video only from then on.
+  unboxingVideoPublishedAt: string | null;
 };
 
 // Rider's device-condition checklist at "Picked Up" — a deliberate copy of
