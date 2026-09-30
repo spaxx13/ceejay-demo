@@ -762,6 +762,19 @@ export async function riderDeclineDelivery(formData: FormData) {
   revalidatePath(`/admin/requests/${requestId}`);
 }
 
+// Where a picked-up device should be brought: the nearest active physical
+// branch (by pin) to the customer's pin, or — without pins on both sides —
+// the first active physical branch. Null only when no branch has an address.
+async function pickDestinationBranch(req: HomeServiceRequest): Promise<{ id: string; name: string } | null> {
+  const physicalBranches = (await getBranches()).filter((b) => b.active && b.address);
+  const ranked = physicalBranches
+    .filter((b) => b.lat !== null && b.lng !== null && req.lat !== null && req.lng !== null)
+    .map((b) => ({ b, d: distanceKm({ lat: req.lat!, lng: req.lng! }, { lat: b.lat!, lng: b.lng! }) }))
+    .sort((a, z) => a.d - z.d);
+  const chosen = ranked[0]?.b ?? physicalBranches[0] ?? null;
+  return chosen ? { id: chosen.id, name: chosen.name } : null;
+}
+
 export async function riderUpdatePickupStatus(_prev: RiderStatusResult | undefined, formData: FormData): Promise<RiderStatusResult> {
   const user = await getCurrentUser();
   if (!user || user.role !== "rider" || !user.riderId) return { ok: false, error: "Not signed in as a rider." };
@@ -836,20 +849,13 @@ export async function riderUpdatePickupStatus(_prev: RiderStatusResult | undefin
 
       // Destination branch — decided here, the moment the rider has the
       // device, so the card can tell them where to bring it right away
-      // instead of asking at the "On The Way to Branch" step. Nearest
-      // active physical branch (by pin) to the customer's pin; without pins
-      // on both sides, the first active physical branch. The rider can still
-      // redirect (riderUpdateDestinationBranch) and the next step's dropdown
-      // is pre-filled with this, so a wrong guess costs one tap.
+      // instead of asking at the "On The Way to Branch" step. The rider can
+      // still redirect (riderUpdateDestinationBranch), so a wrong guess
+      // costs one tap.
       let destinationBranchId = req.deliveredBranchId;
       let destinationBranchName: string | null = null;
       if (!destinationBranchId) {
-        const physicalBranches = (await getBranches()).filter((b) => b.active && b.address);
-        const withDistance = physicalBranches
-          .filter((b) => b.lat !== null && b.lng !== null && req.lat !== null && req.lng !== null)
-          .map((b) => ({ b, d: distanceKm({ lat: req.lat!, lng: req.lng! }, { lat: b.lat!, lng: b.lng! }) }))
-          .sort((a, z) => a.d - z.d);
-        const chosen = withDistance[0]?.b ?? physicalBranches[0] ?? null;
+        const chosen = await pickDestinationBranch(req);
         destinationBranchId = chosen?.id ?? null;
         destinationBranchName = chosen?.name ?? null;
       }
@@ -876,8 +882,12 @@ export async function riderUpdatePickupStatus(_prev: RiderStatusResult | undefin
     }
     case "heading_to_shop": {
       if (req.headingToShopAt) break;
-      const destinationBranchId = str(formData, "deliveredBranchId");
-      if (!destinationBranchId) return { ok: false, error: "Please select which branch you're heading to." };
+      // The card's "Bring the device to" box is the source of truth; the
+      // form only sends a branch when the rider is picking one explicitly.
+      // Jobs picked up before destinations were auto-assigned have neither,
+      // so pick one here the same way rather than blocking the rider.
+      const destinationBranchId = str(formData, "deliveredBranchId") || req.deliveredBranchId || (await pickDestinationBranch(req))?.id || null;
+      if (!destinationBranchId) return { ok: false, error: "No active branch to bring the device to — please ask the admin to set one up." };
       await query("update home_service_requests set heading_to_shop_at=now(), delivered_branch_id=$1 where id=$2", [
         destinationBranchId,
         requestId,
@@ -894,7 +904,7 @@ export async function riderUpdatePickupStatus(_prev: RiderStatusResult | undefin
     }
     case "delivered_to_branch": {
       if (req.receivedAtShopAt) break;
-      const deliveredBranchId = str(formData, "deliveredBranchId");
+      const deliveredBranchId = str(formData, "deliveredBranchId") || req.deliveredBranchId;
       if (!deliveredBranchId) return { ok: false, error: "Please select which branch you delivered the device to." };
       await query("update home_service_requests set received_at_shop_at=now(), delivered_branch_id=$1 where id=$2", [deliveredBranchId, requestId]);
       await logActivity("home_service_request", requestId, `Device delivered to the shop by rider ${user.name}`, user.name);

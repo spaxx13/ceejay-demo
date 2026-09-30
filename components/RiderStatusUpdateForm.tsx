@@ -68,7 +68,13 @@ export default function RiderStatusUpdateForm({
       </div>
       {selected?.needsConditionCheck && <DeviceConditionFields />}
       {selected?.needsPhoto && <PhotoUpload name="photoDataUrl" label="Photo of the Unit" required />}
-      {selected?.needsBranch && (
+      {/* When the card already shows a destination (the "Bring the device
+          to" box), it's the single source of truth — submit it silently
+          rather than asking for the branch a second time. */}
+      {selected?.needsBranch && defaultBranchId && (branches ?? []).some((b) => b.id === defaultBranchId) && (
+        <input type="hidden" name="deliveredBranchId" value={defaultBranchId} />
+      )}
+      {selected?.needsBranch && !(defaultBranchId && (branches ?? []).some((b) => b.id === defaultBranchId)) && (
         <div className="space-y-1.5">
           <label className="text-xs font-medium text-slate-500">
             Which Branch <span className="text-red-600">*</span>
