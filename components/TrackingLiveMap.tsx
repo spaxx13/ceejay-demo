@@ -22,6 +22,7 @@ type GoogleMapsNamespace = {
     DirectionsService: new () => GDirectionsService;
     DirectionsRenderer: new (opts?: Record<string, unknown>) => GDirectionsRenderer;
     TravelMode: { DRIVING: string };
+    event: { trigger: (instance: unknown, eventName: string) => void };
   };
 };
 
@@ -89,6 +90,10 @@ export default function TrackingLiveMap({
   const markerRef = useRef<GMarker | null>(null);
   const destMarkerRef = useRef<GMarker | null>(null);
   const directionsRendererRef = useRef<GDirectionsRenderer | null>(null);
+  // Re-applies the current view (route bounds or rider-centered) — called
+  // after the map is told to re-measure its container, see below.
+  const refitRef = useRef<() => void>(() => {});
+  const hasPosition = lat !== null && lng !== null;
 
   useEffect(() => {
     const id = setInterval(() => router.refresh(), REFRESH_INTERVAL_MS);
@@ -154,18 +159,22 @@ export default function TrackingLiveMap({
       } else {
         destMarkerRef.current = new g.maps.Marker({ position: destinationCoords, map, title: "Destination" });
       }
-      const bounds = new g.maps.LatLngBounds();
-      bounds.extend(origin);
-      bounds.extend(destinationCoords);
-      map.fitBounds(bounds, 56);
-    } else {
-      if (destMarkerRef.current) {
-        destMarkerRef.current.setMap(null);
-        destMarkerRef.current = null;
-      }
-      map.setCenter(origin);
-      map.setZoom(15);
+    } else if (destMarkerRef.current) {
+      destMarkerRef.current.setMap(null);
+      destMarkerRef.current = null;
     }
+    refitRef.current = () => {
+      if (destinationCoords) {
+        const bounds = new g.maps.LatLngBounds();
+        bounds.extend(origin);
+        bounds.extend(destinationCoords);
+        map.fitBounds(bounds, 56);
+      } else {
+        map.setCenter(origin);
+        map.setZoom(15);
+      }
+    };
+    refitRef.current();
 
     if (destination) {
       if (!directionsRendererRef.current) {
@@ -184,6 +193,33 @@ export default function TrackingLiveMap({
       directionsRendererRef.current.setMap(null);
     }
   }, [ready, lat, lng, destinationAddress, destinationLat, destinationLng]);
+
+  // iOS Safari in particular can hand the map a container that hasn't
+  // reached its final size yet (address bar collapsing, CSS settling, the
+  // page's periodic refresh) — tiles then only paint in the corner the map
+  // thinks it has, the rest stays grey. Tell it to re-measure whenever the
+  // container's size actually changes, on rotation / tab return, and once
+  // shortly after creation, then re-apply the view.
+  useEffect(() => {
+    if (!ready || !hasPosition || !mapContainerRef.current || !mapRef.current) return;
+    const g = (window as unknown as { google: GoogleMapsNamespace }).google;
+    const map = mapRef.current;
+    const remeasure = () => {
+      g.maps.event.trigger(map, "resize");
+      refitRef.current();
+    };
+    const timer = setTimeout(remeasure, 400);
+    const observer = typeof ResizeObserver !== "undefined" ? new ResizeObserver(remeasure) : null;
+    observer?.observe(mapContainerRef.current);
+    window.addEventListener("orientationchange", remeasure);
+    document.addEventListener("visibilitychange", remeasure);
+    return () => {
+      clearTimeout(timer);
+      observer?.disconnect();
+      window.removeEventListener("orientationchange", remeasure);
+      document.removeEventListener("visibilitychange", remeasure);
+    };
+  }, [ready, hasPosition]);
 
   if (lat === null || lng === null) {
     return <p className="text-sm text-slate-400">Waiting for the rider&apos;s location — this updates automatically once they start sharing it.</p>;
