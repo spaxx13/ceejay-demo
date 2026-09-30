@@ -37,10 +37,24 @@ export default function RiderStatusUpdateForm({
 }) {
   const [status, setStatus] = useState(defaultValue);
   const [state, formAction, pending] = useActionState(action, undefined);
+  const [submittedLabel, setSubmittedLabel] = useState("");
   const selected = options.find((o) => o.value === status);
 
+  // After a successful update the server re-renders this card with the
+  // next step as defaultValue — follow it, so the dropdown (and the extra
+  // fields it gates) moves on instead of staying on the step just finished.
+  const [prevDefault, setPrevDefault] = useState(defaultValue);
+  if (prevDefault !== defaultValue) {
+    setPrevDefault(defaultValue);
+    setStatus(defaultValue);
+  }
+
   return (
-    <form action={formAction} className="space-y-3 border-t border-slate-200 pt-3">
+    <form
+      action={formAction}
+      onSubmit={() => setSubmittedLabel(selected?.label ?? "")}
+      className="space-y-3 border-t border-slate-200 pt-3"
+    >
       <input type="hidden" name="requestId" value={requestId} />
       <div className="space-y-1.5">
         <label className="text-xs font-medium text-slate-500">Update status</label>
@@ -73,6 +87,11 @@ export default function RiderStatusUpdateForm({
       )}
       {selected?.needsSignature && <SignaturePad name="signatureDataUrl" label="Customer Signature (optional)" />}
       {state && !state.ok && <p className="text-sm text-red-600">{state.error}</p>}
+      {state?.ok && !pending && (
+        <p className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm font-medium text-green-700">
+          ✅ Updated{submittedLabel ? ` — marked "${submittedLabel}"` : ""}. The admin and customer can see this now.
+        </p>
+      )}
       <button type="submit" disabled={pending} className="btn-primary w-full">
         {pending ? "Updating..." : "Update"}
       </button>
