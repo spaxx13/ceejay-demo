@@ -139,7 +139,7 @@ export default async function RiderPage() {
                             )}
                           </>
                         ) : (
-                          <p className="text-sm text-amber-700">No branch assigned yet — pick one below.</p>
+                          <p className="text-sm text-amber-700">Not set yet — choose below, or we&apos;ll pick the nearest branch when you start the trip.</p>
                         );
                       })()}
                       <RiderBranchRedirectForm

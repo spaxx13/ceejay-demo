@@ -25,7 +25,9 @@ export default function RiderBranchRedirectForm({
   return (
     <form action={formAction} className="space-y-1.5 rounded-lg border border-blue-200 bg-blue-50 p-2.5">
       <input type="hidden" name="requestId" value={requestId} />
-      <label className="text-[11px] font-semibold text-blue-700">Told to bring it somewhere else? Change the branch:</label>
+      <label className="text-[11px] font-semibold text-blue-700">
+        {currentBranchId ? "Told to bring it somewhere else? Change the branch:" : "Choose the branch to bring it to:"}
+      </label>
       <div className="flex gap-1.5">
         <select name="deliveredBranchId" defaultValue={currentBranchId ?? ""} className="input !py-1.5 text-xs">
           {branches.map((b) => (
@@ -35,7 +37,7 @@ export default function RiderBranchRedirectForm({
           ))}
         </select>
         <button type="submit" disabled={pending} className="btn-secondary shrink-0 !px-3 !py-1.5 text-xs">
-          {pending ? "..." : "Change"}
+          {pending ? "..." : currentBranchId ? "Change" : "Set"}
         </button>
       </div>
       {state && !state.ok && <p className="text-xs text-red-600">{state.error}</p>}
