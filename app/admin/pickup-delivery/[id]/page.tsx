@@ -13,7 +13,17 @@ import {
   PICKUP_DELIVERY_STAGE_LABELS,
 } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
-import { assignPickupRider, assignDeliveryRider, reassignRequest, reportRequestException, resolveRequestException } from "@/lib/actions";
+import {
+  assignPickupRider,
+  assignDeliveryRider,
+  reassignRequest,
+  reportRequestException,
+  resolveRequestException,
+  deleteUnboxingVideo,
+} from "@/lib/actions";
+import { getUnboxingVideoUrl } from "@/lib/storage";
+import DeleteButton from "@/components/DeleteButton";
+import UnboxingVideoRecorder from "@/components/UnboxingVideoRecorder";
 import { formatDateTime } from "@/lib/format";
 import StatusBadge from "@/components/StatusBadge";
 import JobQrCode from "@/components/JobQrCode";
@@ -102,6 +112,7 @@ export default async function PickupDeliveryDetailPage({ params }: { params: Pro
     .sort((a, b) => Number(b.canPickupDelivery) - Number(a.canPickupDelivery) || a.name.localeCompare(b.name));
   const openIssues = exceptions.filter((e) => e.requestId === req.id && !e.resolvedAt);
   const resolvedIssues = exceptions.filter((e) => e.requestId === req.id && e.resolvedAt);
+  const unboxingUrl = await getUnboxingVideoUrl(req.unboxingVideoPath);
 
   return (
     <div className="space-y-6">
@@ -261,6 +272,35 @@ export default async function PickupDeliveryDetailPage({ params }: { params: Pro
           <div className="space-y-1">
             <p className="text-xs font-medium text-slate-500">Package Label</p>
             <JobQrCode requestId={req.id} reference={req.reference} />
+          </div>
+        )}
+
+        {req.receivedAtShopAt && (
+          <div className="space-y-2 border-t border-slate-200 pt-3">
+            <p className="text-xs font-medium text-slate-500">Unboxing Video</p>
+            {unboxingUrl ? (
+              <>
+                <video controls playsInline preload="metadata" src={unboxingUrl} className="w-full max-w-md rounded-lg border border-slate-200 bg-black" />
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-[11px] text-slate-400">
+                    Recorded by {req.unboxingVideoRecordedBy ?? "—"}
+                    {req.unboxingVideoRecordedAt ? ` — ${formatDateTime(req.unboxingVideoRecordedAt)}` : ""}. Visible to the customer on their
+                    tracking page.
+                  </p>
+                  <DeleteButton
+                    id={req.id}
+                    action={deleteUnboxingVideo}
+                    confirmMessage={`Delete the unboxing video for ${req.reference}? The customer will no longer be able to watch it.`}
+                    label="Delete video"
+                  />
+                </div>
+              </>
+            ) : req.unboxingVideoPath ? (
+              <p className="text-xs text-amber-700">A video is on file but storage isn&apos;t reachable right now — check SUPABASE_SERVICE_ROLE_KEY.</p>
+            ) : (
+              <p className="text-xs text-slate-400">Not recorded yet — the technician records it from their board (🎥 Record Unboxing Video), or record it here.</p>
+            )}
+            <UnboxingVideoRecorder requestId={req.id} existing={!!req.unboxingVideoPath} />
           </div>
         )}
 

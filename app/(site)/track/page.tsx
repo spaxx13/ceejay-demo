@@ -1,6 +1,7 @@
 import { getRequestByReference, getRiders, getTechnicians, getBranches, getLookups, pickupDeliveryStage, PICKUP_DELIVERY_STAGE_LABELS } from "@/lib/db";
 import type { PickupDeliveryStage } from "@/lib/db";
 import TrackingLiveMap from "@/components/TrackingLiveMap";
+import { getUnboxingVideoUrl } from "@/lib/storage";
 
 function normalizePhone(p: string) {
   return p.replace(/[\s-]/g, "").replace(/^\+63/, "0");
@@ -118,6 +119,7 @@ export default async function TrackPage({ searchParams }: { searchParams: Promis
         ? pickupRider
         : null;
   const stageIndex = STAGE_ORDER.indexOf(stage);
+  const unboxingUrl = await getUnboxingVideoUrl(req.unboxingVideoPath);
 
   return (
     <main className="grid-bg px-4 py-10 sm:px-6">
@@ -163,6 +165,13 @@ export default async function TrackPage({ searchParams }: { searchParams: Promis
                   Technician: <span className="font-medium text-slate-800">{technician.name}</span>
                 </p>
               )}
+            </div>
+          )}
+          {unboxingUrl && (
+            <div className="space-y-1.5 border-t border-slate-100 pt-3">
+              <p className="text-sm font-semibold text-slate-800">🎥 Unboxing video</p>
+              <p className="text-xs text-slate-400">Recorded by our technician as your device was unboxed and inspected at the shop.</p>
+              <video controls playsInline preload="metadata" src={unboxingUrl} className="w-full rounded-xl border border-slate-200 bg-black" />
             </div>
           )}
           {stage === "ready_for_delivery" && (

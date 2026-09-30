@@ -419,6 +419,13 @@ export type HomeServiceRequest = {
   // device at pickup (FINAL FLOW spec item 12) — shown alongside the QR
   // code so shop staff can verify the package wasn't opened in transit.
   pickupSecuritySeal: string | null;
+  // Unboxing video recorded in-app by the technician when the package is
+  // opened at the shop — an object path in Supabase Storage (lib/storage.ts),
+  // never the bytes. Shown to the customer on /track via a signed URL.
+  unboxingVideoPath: string | null;
+  unboxingVideoContentType: string | null;
+  unboxingVideoRecordedAt: string | null;
+  unboxingVideoRecordedBy: string | null;
 };
 
 // Rider's device-condition checklist at "Picked Up" — a deliberate copy of

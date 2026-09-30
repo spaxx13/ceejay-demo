@@ -44,6 +44,9 @@ type Req = {
   hasPreAgreement: boolean;
   hasPostAgreement: boolean;
   customFieldEntries: { label: string; value: string | boolean }[];
+  fulfillmentMode: "on_site" | "pickup_delivery";
+  receivedAtShopAt: string | null;
+  hasUnboxingVideo: boolean;
 };
 
 // One stacked label-over-value row for the Request Details block — bigger
@@ -211,6 +214,15 @@ export default function TechnicianBoard({ requests, statuses }: { requests: Req[
             {r.onTheWay && <TechnicianLocationSharer requestId={r.id} />}
 
             {r.adminNotes && <p className="whitespace-pre-line rounded-md bg-slate-50 p-2 text-xs text-slate-500">{r.adminNotes}</p>}
+
+            {r.fulfillmentMode === "pickup_delivery" && r.receivedAtShopAt && (
+              <Link
+                href={`/technician/requests/${r.id}/unboxing`}
+                className={r.hasUnboxingVideo ? "btn-secondary block w-full text-center text-xs" : "btn-primary block w-full text-center text-xs"}
+              >
+                {r.hasUnboxingVideo ? "🎥 View Unboxing Video" : "🎥 Record Unboxing Video"}
+              </Link>
+            )}
 
             {(r.inProgress || r.hasPostAgreement) && (
               <Link
