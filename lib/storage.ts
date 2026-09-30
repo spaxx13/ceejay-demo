@@ -7,15 +7,18 @@ import "server-only";
 // 20–40MB video never passes through a server action (6MB body cap);
 // playback uses short-lived signed URLs since the bucket is private.
 //
-// Env: SUPABASE_URL (https://<ref>.supabase.co) and SUPABASE_SERVICE_ROLE_KEY
-// — both from Supabase Dashboard > Project Settings > API.
+// Env: SUPABASE_SERVICE_ROLE_KEY (Supabase Dashboard > Project Settings >
+// API Keys > service_role) is required. SUPABASE_URL is optional — it
+// defaults to the shop's project below (the URL isn't a secret, only the
+// key is), so only the key has to be configured.
 
 const BUCKET = "unboxing-videos";
+const DEFAULT_SUPABASE_URL = "https://fpvygxlxewygecdoujca.supabase.co";
 
 function config() {
-  const url = process.env.SUPABASE_URL?.replace(/\/+$/, "");
+  const url = (process.env.SUPABASE_URL || DEFAULT_SUPABASE_URL).replace(/\/+$/, "");
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  return url && key ? { url, key } : null;
+  return key ? { url, key } : null;
 }
 
 export function storageConfigured() {

@@ -1031,7 +1031,7 @@ export async function createUnboxingUploadUrl(requestId: string, contentType: st
   if (!req.receivedAtShopAt) return { ok: false, error: "The device hasn't been received at the shop yet." };
   if (!contentType.startsWith("video/")) return { ok: false, error: "Only video recordings can be uploaded here." };
   if (!storageConfigured()) {
-    return { ok: false, error: "Video storage isn't set up yet — SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY need to be configured." };
+    return { ok: false, error: "Video storage isn't set up yet — SUPABASE_SERVICE_ROLE_KEY needs to be configured." };
   }
   const ext = contentType.includes("mp4") ? "mp4" : contentType.includes("quicktime") ? "mov" : "webm";
   const path = `${requestId}/${Date.now()}.${ext}`;

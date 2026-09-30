@@ -296,7 +296,7 @@ export default async function PickupDeliveryDetailPage({ params }: { params: Pro
                 </div>
               </>
             ) : req.unboxingVideoPath ? (
-              <p className="text-xs text-amber-700">A video is on file but storage isn&apos;t reachable right now — check SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY.</p>
+              <p className="text-xs text-amber-700">A video is on file but storage isn&apos;t reachable right now — check SUPABASE_SERVICE_ROLE_KEY.</p>
             ) : (
               <p className="text-xs text-slate-400">Not recorded yet — the technician records it from their board (🎥 Record Unboxing Video), or record it here.</p>
             )}
