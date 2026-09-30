@@ -88,6 +88,8 @@ export default async function ManualChecklistDetailPage({ params }: { params: Pr
           <dd className="text-slate-800">{record.customerEmail || "—"}</dd>
           <dt className="text-slate-400">Device</dt>
           <dd className="text-slate-800">{record.deviceLabel}</dd>
+          <dt className="text-slate-400">Issue</dt>
+          <dd className="text-slate-800">{record.issueDescription || "—"}</dd>
           <dt className="text-slate-400">Branch</dt>
           <dd className="text-slate-800">{branchName}</dd>
           <dt className="text-slate-400">Attended By</dt>
@@ -179,6 +181,10 @@ export default async function ManualChecklistDetailPage({ params }: { params: Pr
             <div className="space-y-1.5 sm:col-span-2">
               <label className="text-xs font-medium text-slate-500">Device *</label>
               <input name="deviceLabel" required defaultValue={record.deviceLabel} className="input" />
+            </div>
+            <div className="space-y-1.5 sm:col-span-2">
+              <label className="text-xs font-medium text-slate-500">Issue / Nature of Repair</label>
+              <input name="issueDescription" defaultValue={record.issueDescription} className="input" />
             </div>
           </div>
           {post && (

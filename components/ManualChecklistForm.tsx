@@ -97,6 +97,11 @@ export default function ManualChecklistForm({
             <input name="deviceLabel" required className="input" placeholder="iPhone 13 Pro" />
           </div>
         </div>
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium text-slate-500">Issue / Nature of Repair</label>
+          <input name="issueDescription" className="input" placeholder="e.g. Screen Repair — cracked screen" />
+          <p className="text-[11px] text-slate-400">Shown as &quot;Nature of Repair&quot; on the customer&apos;s receipt.</p>
+        </div>
         {branches.length > 0 && (
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-slate-500">Branch</label>

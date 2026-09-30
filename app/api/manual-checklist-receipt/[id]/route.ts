@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { getManualRepairRecordById, getManualChecklists, canViewManualRecord } from "@/lib/db";
-import { generateManualChecklistReceiptPdf } from "@/lib/receiptPdf";
+import { generateRepairReceiptPdf } from "@/lib/receiptPdf";
 
 // Regenerates the Manual Checklist & Receipt PDF on the fly, same "never
 // persisted, rebuilt fresh every view" approach as /api/admin/receipt.
@@ -17,23 +17,23 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   const post = checklists.find((c) => c.phase === "post_repair");
   if (!post) return NextResponse.json({ error: "No completed checklist yet — there's no receipt." }, { status: 404 });
 
-  const pdfBytes = await generateManualChecklistReceiptPdf({
+  const pdfBytes = await generateRepairReceiptPdf({
     reference: record.reference,
-    serviceDate: post.completedAt?.slice(0, 10) ?? record.createdAt.slice(0, 10),
     customerName: record.customerName,
-    customerPhone: record.customerPhone,
+    serviceDate: post.completedAt?.slice(0, 10) ?? record.createdAt.slice(0, 10),
     deviceLabel: record.deviceLabel,
-    createdByName: record.createdByName,
+    natureOfRepair: record.issueDescription,
     warrantyCoverage: post.warrantyCoverage,
+    postNotes: post.summaryNotes,
     repairCost: post.cost,
     serviceFee: post.laborCost, // parts/material cost and other expenses are internal-only, never included here
-    postNotes: post.summaryNotes,
+    technicianName: post.technicianName || record.createdByName,
     preItems: pre?.items ?? [],
     postItems: post.items,
     preCustomerSignature: pre?.customerSignatureDataUrl ?? null,
-    preStaffSignature: pre?.staffSignatureDataUrl ?? null,
+    preTechnicianSignature: pre?.staffSignatureDataUrl ?? null,
     postCustomerSignature: post.customerSignatureDataUrl,
-    postStaffSignature: post.staffSignatureDataUrl,
+    postTechnicianSignature: post.staffSignatureDataUrl,
     receiptPhoto: post.receiptPhotoDataUrl,
   });
 

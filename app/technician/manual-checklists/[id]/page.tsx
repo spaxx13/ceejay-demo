@@ -73,6 +73,8 @@ export default async function TechnicianManualChecklistDetailPage({ params }: { 
           <dd className="text-slate-800">{record.customerPhone || "—"}</dd>
           <dt className="text-slate-400">Device</dt>
           <dd className="text-slate-800">{record.deviceLabel}</dd>
+          <dt className="text-slate-400">Issue</dt>
+          <dd className="text-slate-800">{record.issueDescription || "—"}</dd>
           <dt className="text-slate-400">Date</dt>
           <dd className="text-slate-800">{formatDateTime(record.createdAt)}</dd>
         </dl>
@@ -120,6 +122,10 @@ export default async function TechnicianManualChecklistDetailPage({ params }: { 
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-slate-500">Device *</label>
             <input name="deviceLabel" required defaultValue={record.deviceLabel} className="input" />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-slate-500">Issue / Nature of Repair</label>
+            <input name="issueDescription" defaultValue={record.issueDescription} className="input" />
           </div>
           {post && (
             <>
