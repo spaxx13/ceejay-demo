@@ -102,10 +102,15 @@ export async function sendQuotationEmail(
   const pdfBytes = await generateQuotationPdf(opts);
   const allCostsKnown = opts.devices.every((d) => d.repairCost !== null);
   const totalRepairCost = opts.devices.reduce((sum, d) => sum + (d.repairCost ?? 0), 0);
+  const pickupDelivery = opts.fulfillmentMode === "pickup_delivery";
+  const feePhrase = pickupDelivery ? "the Booking, Diagnostic &amp; Delivery Fee" : "one service fee for the visit";
   const totalLine =
     allCostsKnown && opts.serviceFee !== null
-      ? `an estimated total of <strong>${peso(totalRepairCost + opts.serviceFee)}</strong> (repair cost${opts.devices.length > 1 ? "s" : ""} + one service fee for the visit)`
+      ? `an estimated total of <strong>${peso(totalRepairCost + opts.serviceFee)}</strong> (repair cost${opts.devices.length > 1 ? "s" : ""} + ${feePhrase})`
       : "an estimate — our technician will confirm the exact repair cost upon inspection";
+  const bookingPhrase = pickupDelivery
+    ? "thanks for booking Pickup &amp; Delivery with us — a rider will pick up your device, we'll repair it at the shop, then a rider brings it back to you"
+    : "thanks for booking a home service repair with us";
 
   const deviceLines = opts.devices
     .map(
@@ -169,7 +174,7 @@ export async function sendQuotationEmail(
       <p style="font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8;">Ceejay Cellphone Repair Shop</p>
       <h2 style="margin: 4px 0 16px;">Your repair quotation is ready</h2>
       <p style="font-size: 14px; line-height: 1.5;">
-        Hi ${escapeHtml(opts.customerName)}, thanks for booking a home service repair with us. Your quotation for
+        Hi ${escapeHtml(opts.customerName)}, ${bookingPhrase}. Your quotation for
         <strong>${escapeHtml(opts.referenceList)}</strong> is attached as a PDF — ${totalLine}.
       </p>
       <ul style="font-size: 13px; padding-left: 18px; margin: 12px 0;">${deviceLines}</ul>

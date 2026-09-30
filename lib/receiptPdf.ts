@@ -193,7 +193,7 @@ class Writer {
 
   // Repair Cost / Service Fee breakdown, ending in a highlighted Total row —
   // the one figure the customer actually needs to notice.
-  costBreakdown(repairCost: number, serviceFee: number, total: number) {
+  costBreakdown(repairCost: number, serviceFee: number, total: number, feeLabel = "Service Fee") {
     const peso = (n: number) => `PHP ${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     const lineSize = 10;
     const lineHeight = 14;
@@ -207,7 +207,7 @@ class Writer {
     };
 
     drawLine("Repair Cost", peso(repairCost));
-    drawLine("Service Fee", peso(serviceFee));
+    drawLine(feeLabel, peso(serviceFee));
     this.y -= 2;
     this.page.drawLine({ start: { x: MARGIN, y: this.y }, end: { x: MARGIN + CONTENT_W, y: this.y }, thickness: 0.5, color: RULE });
     this.y -= 10;
@@ -450,18 +450,25 @@ export async function generateQuotationPdf(opts: {
   devices: { reference: string; deviceLabel: string; serviceType: string; issueDescription: string; repairCost: number | null }[];
   preferredDate: string;
   address: string;
+  // For pickup_delivery this is the flat Booking, Diagnostic & Delivery Fee
+  // (lib/homeServiceFees.ts), not the per-province on-site visit fee — the
+  // labels below follow suit.
   serviceFee: number | null;
+  fulfillmentMode?: "on_site" | "pickup_delivery";
 }): Promise<Uint8Array> {
   const w = await Writer.create();
   const peso = (n: number) => `PHP ${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const pickupDelivery = opts.fulfillmentMode === "pickup_delivery";
+  const feeLabel = pickupDelivery ? "Booking, Diagnostic & Delivery Fee" : "Service Fee (one visit)";
 
-  w.header(opts.referenceList, opts.devices.length > 1 ? "Repair Quotation (Multiple Devices)" : "Repair Quotation");
+  const title = pickupDelivery ? "Pickup & Delivery Quotation" : "Repair Quotation";
+  w.header(opts.referenceList, opts.devices.length > 1 ? `${title} (Multiple Devices)` : title);
 
   w.heading("Request Details");
   w.row("Customer Name", opts.customerName, { boldValue: true });
   w.row("Date Requested", opts.requestDate);
-  w.row("Preferred Date", opts.preferredDate);
-  w.row("Service Address", opts.address);
+  w.row(pickupDelivery ? "Preferred Pickup Date" : "Preferred Date", opts.preferredDate);
+  w.row(pickupDelivery ? "Pickup Address" : "Service Address", opts.address);
 
   w.heading(opts.devices.length > 1 ? "Devices" : "Device");
   opts.devices.forEach((d, i) => {
@@ -477,12 +484,17 @@ export async function generateQuotationPdf(opts: {
 
   w.heading("Estimated Cost");
   if (allCostsKnown && opts.serviceFee !== null) {
-    w.costBreakdown(totalRepairCost, opts.serviceFee, totalRepairCost + opts.serviceFee);
+    w.costBreakdown(totalRepairCost, opts.serviceFee, totalRepairCost + opts.serviceFee, pickupDelivery ? "Booking, Diagnostic & Delivery Fee" : "Service Fee");
   } else {
-    if (opts.serviceFee !== null) w.row("Service Fee (one visit)", peso(opts.serviceFee), { boldValue: true });
+    if (opts.serviceFee !== null) w.row(feeLabel, peso(opts.serviceFee), { boldValue: true });
     w.paragraph("Repair cost for any device/service marked above will be confirmed by our technician upon inspection.");
   }
-  w.paragraph("The service fee is a single flat rate for this visit to your address — it does not repeat per device.", 9);
+  w.paragraph(
+    pickupDelivery
+      ? "The Booking, Diagnostic & Delivery Fee is a single flat rate covering the rider's pickup trip, the initial diagnosis, and delivery of your repaired device back to you — it does not repeat per device, and there is nothing more to pay for delivery."
+      : "The service fee is a single flat rate for this visit to your address — it does not repeat per device.",
+    9
+  );
 
   w.paragraph(
     "This is an estimate based on our standard price list and may change depending on the technician's actual assessment upon inspection. Final pricing will be confirmed before any repair work begins.",

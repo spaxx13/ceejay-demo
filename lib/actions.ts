@@ -2179,7 +2179,9 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
   // (and be charged) once, no matter how many devices are in the booking;
   // each device still gets its own line with its own estimated repair cost.
   const address = [street, barangay, city, province].filter(Boolean).join(", ") || "Not specified";
-  const serviceFee = serviceFeeAmount(province, city);
+  // Pickup & Delivery has its own flat fee, not the per-province on-site
+  // visit fee — the quotation email/PDF label it accordingly.
+  const serviceFee = fulfillmentMode === "pickup_delivery" ? PICKUP_DELIVERY_FEE_PESOS : serviceFeeAmount(province, city);
   const [deviceModels, servicePrices] = await Promise.all([getDeviceModels(), getServicePrices()]);
   const quotationDevices = createdRequests.map((cr) => {
     const brand = allLookups.find((l) => l.id === cr.device.validDeviceBrandId);
