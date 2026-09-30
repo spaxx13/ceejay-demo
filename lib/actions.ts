@@ -86,7 +86,8 @@ import {
   emailConfigured,
 } from "./email";
 import { isOnTheWayStatus, distanceKm } from "./technicianTracking";
-import { storageConfigured, createSignedUploadUrl, deleteStorageObject } from "./storage";
+import { storageConfigured, createSignedUploadUrl, deleteStorageObject, UPDATES_BUCKET } from "./storage";
+import { getRequestUpdateById } from "./db";
 import { sendSms, sendOtpSms, smsConfigured, normalizePhone, isValidPhone, getAccountStatus, type SmsAccountStatus } from "./sms";
 import { SUNDAY_ONLY_PROVINCES, DOWNPAYMENT_PROVINCES, serviceFeeAmount, requestServiceFee, PICKUP_DELIVERY_FEE_PESOS } from "./homeServiceFees";
 import { getRepairQuote } from "./servicePricing";
@@ -110,6 +111,7 @@ import {
   type HomeServiceRequest,
   type DeviceConditionChecklist,
   type PickupPhoto,
+  type RequestUpdateMedia,
   type RequestExceptionKind,
   type User,
   type ManualRepairRecord,
@@ -1126,6 +1128,110 @@ export async function deleteUnboxingVideo(formData: FormData) {
   );
   await logActivity("home_service_request", requestId, `Unboxing video deleted by ${user!.name}`, user!.name);
   revalidateUnboxingPaths(requestId);
+}
+
+// Repair updates — a description plus any number of photos/videos the
+// technician/admin posts to the customer while the repair is in progress
+// (components/RequestUpdateComposer.tsx). Same browser → Storage upload
+// shape as the unboxing video, in the request-updates bucket.
+
+export async function createRequestUpdateUploadUrl(requestId: string, contentType: string): Promise<UnboxingUploadTarget> {
+  const user = await getCurrentUser();
+  if (!canRecordUnboxing(user)) return { ok: false, error: "Please sign in as a technician or admin to post updates." };
+  const req = await getRequestById(requestId);
+  if (!req || req.fulfillmentMode !== "pickup_delivery") return { ok: false, error: "Request not found." };
+  if (!req.receivedAtShopAt) return { ok: false, error: "Updates can be posted once the device is at the shop." };
+  const isImage = contentType.startsWith("image/");
+  const isVideo = contentType.startsWith("video/");
+  if (!isImage && !isVideo) return { ok: false, error: "Only photos and videos can be attached." };
+  if (!storageConfigured()) return { ok: false, error: "Media storage isn't set up yet — SUPABASE_SERVICE_ROLE_KEY needs to be configured." };
+  const ext = isImage
+    ? contentType.includes("png") ? "png" : contentType.includes("webp") ? "webp" : "jpg"
+    : contentType.includes("mp4") ? "mp4" : contentType.includes("quicktime") ? "mov" : "webm";
+  const path = `${requestId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+  try {
+    return { ok: true, uploadUrl: await createSignedUploadUrl(path, UPDATES_BUCKET), path };
+  } catch {
+    return { ok: false, error: "Couldn't prepare the upload — please try again in a moment." };
+  }
+}
+
+export type PostRequestUpdateResult = { ok: true } | { ok: false; error: string };
+
+export async function postRequestUpdate(requestId: string, bodyInput: string, media: RequestUpdateMedia[]): Promise<PostRequestUpdateResult> {
+  const user = await getCurrentUser();
+  if (!canRecordUnboxing(user)) return { ok: false, error: "Please sign in as a technician or admin to post updates." };
+  const req = await getRequestById(requestId);
+  if (!req || req.fulfillmentMode !== "pickup_delivery") return { ok: false, error: "Request not found." };
+  const body = bodyInput.trim();
+  if (!body && media.length === 0) return { ok: false, error: "Add a description, a photo, or a video first." };
+  // Only paths createRequestUpdateUploadUrl could have minted for this request.
+  const pathRe = new RegExp(`^${requestId}/\\d+-[a-z0-9]+\\.(jpg|png|webp|mp4|mov|webm)$`, "i");
+  const clean: RequestUpdateMedia[] = [];
+  for (const m of media) {
+    if ((m.kind !== "photo" && m.kind !== "video") || typeof m.path !== "string" || !pathRe.test(m.path) || typeof m.contentType !== "string") {
+      return { ok: false, error: "Invalid attachment." };
+    }
+    clean.push({ kind: m.kind, path: m.path, contentType: m.contentType });
+  }
+
+  await query(
+    "insert into request_updates (request_id, body, media, posted_by, posted_by_user_id, posted_by_role) values ($1,$2,$3,$4,$5,$6)",
+    [requestId, body, JSON.stringify(clean), user!.name, user!.id, user!.role]
+  );
+  const photos = clean.filter((m) => m.kind === "photo").length;
+  const videos = clean.filter((m) => m.kind === "video").length;
+  await logActivity(
+    "home_service_request",
+    requestId,
+    `Repair update posted by ${user!.name} — ${photos} photo(s), ${videos} video(s)${body ? `: "${body.slice(0, 80)}${body.length > 80 ? "…" : ""}"` : ""}`,
+    user!.name
+  );
+
+  const trackUrl = `/track?reference=${encodeURIComponent(req.reference)}&phone=${encodeURIComponent(req.phone)}`;
+  if (req.customerId) {
+    sendCustomerPush(req.customerId, "New update on your repair", body ? body.slice(0, 120) : `New photos/videos of your device for ${req.reference}.`, trackUrl).catch(
+      () => {}
+    );
+  }
+  if (req.email && emailConfigured()) {
+    try {
+      await sendTrackingLinkEmail(req.email, { customerName: req.customerName, reference: req.reference, phone: req.phone, stage: "repair_update" });
+    } catch {
+      // Best-effort — the update is posted either way.
+    }
+  }
+  revalidateRequestUpdatePaths(requestId);
+  return { ok: true };
+}
+
+// Admins can delete any update; a technician only their own.
+export async function deleteRequestUpdate(formData: FormData) {
+  const user = await getCurrentUser();
+  const update = await getRequestUpdateById(str(formData, "id"));
+  if (!update) return;
+  const isAdmin = canManageHomeServiceRequests(user);
+  const isOwnPost = !!user && user.role === "technician" && update.postedByUserId === user.id;
+  if (!isAdmin && !isOwnPost) return;
+  for (const m of update.media) {
+    try {
+      await deleteStorageObject(m.path, UPDATES_BUCKET);
+    } catch {
+      // Best-effort — an orphaned file is a storage cost, not a correctness problem.
+    }
+  }
+  await query("delete from request_updates where id=$1", [update.id]);
+  await logActivity("home_service_request", update.requestId, `Repair update deleted by ${user!.name}`, user!.name);
+  revalidateRequestUpdatePaths(update.requestId);
+}
+
+function revalidateRequestUpdatePaths(requestId: string) {
+  revalidatePath("/technician");
+  revalidatePath(`/technician/requests/${requestId}/updates`);
+  revalidatePath("/admin/pickup-delivery");
+  revalidatePath(`/admin/pickup-delivery/${requestId}`);
+  revalidatePath("/track");
+  revalidatePath("/my");
 }
 
 export type ReportExceptionResult = { ok: true } | { ok: false; error: string };

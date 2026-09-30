@@ -1,4 +1,14 @@
-import { getRequestByReference, getRiders, getTechnicians, getBranches, getLookups, pickupDeliveryStage, PICKUP_DELIVERY_STAGE_LABELS } from "@/lib/db";
+import {
+  getRequestByReference,
+  getRequestUpdates,
+  getRiders,
+  getTechnicians,
+  getBranches,
+  getLookups,
+  pickupDeliveryStage,
+  PICKUP_DELIVERY_STAGE_LABELS,
+} from "@/lib/db";
+import RequestUpdatesList from "@/components/RequestUpdatesList";
 import type { PickupDeliveryStage } from "@/lib/db";
 import TrackingLiveMap from "@/components/TrackingLiveMap";
 import { getUnboxingVideoUrl } from "@/lib/storage";
@@ -121,6 +131,7 @@ export default async function TrackPage({ searchParams }: { searchParams: Promis
   const stageIndex = STAGE_ORDER.indexOf(stage);
   // Drafts stay staff-only until "Send to Customer".
   const unboxingUrl = req.unboxingVideoPublishedAt ? await getUnboxingVideoUrl(req.unboxingVideoPath) : null;
+  const updates = req.receivedAtShopAt ? await getRequestUpdates(req.id) : [];
 
   return (
     <main className="grid-bg px-4 py-10 sm:px-6">
@@ -173,6 +184,13 @@ export default async function TrackPage({ searchParams }: { searchParams: Promis
               <p className="text-sm font-semibold text-slate-800">🎥 Unboxing video</p>
               <p className="text-xs text-slate-400">Recorded by our technician as your device was unboxed and inspected at the shop.</p>
               <video controls playsInline preload="metadata" src={unboxingUrl} className="w-full rounded-xl border border-slate-200 bg-black" />
+            </div>
+          )}
+          {updates.length > 0 && (
+            <div className="space-y-2 border-t border-slate-100 pt-3">
+              <p className="text-sm font-semibold text-slate-800">🛠 Repair updates</p>
+              <p className="text-xs text-slate-400">Notes, photos and videos from our technician as your repair progresses — newest first.</p>
+              <RequestUpdatesList updates={updates} emptyText="" />
             </div>
           )}
           {stage === "ready_for_delivery" && (

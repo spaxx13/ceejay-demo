@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { requireCustomer, logoutCustomer } from "@/lib/customerActions";
-import { getRequestsForCustomer, getLookups, getDeviceModels, pickupDeliveryStage, PICKUP_DELIVERY_STAGE_LABELS } from "@/lib/db";
+import { getRequestsForCustomer, getRequestUpdateCounts, getLookups, getDeviceModels, pickupDeliveryStage, PICKUP_DELIVERY_STAGE_LABELS } from "@/lib/db";
 import { formatDate } from "@/lib/format";
 import PushNotificationRegistrar from "@/components/PushNotificationRegistrar";
 
@@ -12,6 +12,7 @@ const TRACKABLE_PD_STAGES = new Set(["pickup_started", "heading_to_shop", "out_f
 export default async function MyBookingsPage() {
   const customer = await requireCustomer();
   const [requests, lookups, deviceModels] = await Promise.all([getRequestsForCustomer(customer), getLookups(), getDeviceModels()]);
+  const updateCounts = await getRequestUpdateCounts(requests.map((r) => r.id));
 
   return (
     <main className="grid-bg min-h-screen px-4 pb-10 sm:px-6" style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 2.5rem)" }}>
@@ -91,6 +92,14 @@ export default async function MyBookingsPage() {
                       className="btn-secondary block text-center !py-1.5 text-sm"
                     >
                       🎥 Watch Unboxing Video
+                    </Link>
+                  )}
+                  {(updateCounts.get(r.id) ?? 0) > 0 && (
+                    <Link
+                      href={`/track?reference=${encodeURIComponent(r.reference)}&phone=${encodeURIComponent(r.phone)}`}
+                      className="btn-secondary block text-center !py-1.5 text-sm"
+                    >
+                      🛠 {updateCounts.get(r.id)} repair update{updateCounts.get(r.id) === 1 ? "" : "s"}
                     </Link>
                   )}
                 </div>
