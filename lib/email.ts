@@ -356,7 +356,7 @@ export async function sendWalkInOtpEmail(to: string, code: string) {
         <p style="font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8;">Ceejay Cellphone Repair Shop</p>
         <h2 style="margin: 4px 0 16px;">Your verification code</h2>
         <p style="font-size: 28px; font-weight: 700; letter-spacing: 4px; margin: 0 0 16px;">${code}</p>
-        <p style="font-size: 14px; line-height: 1.5;">Enter this code to confirm your walk-in pre-registration. This code expires in 10 minutes.</p>
+        <p style="font-size: 14px; line-height: 1.5;">Enter this code to continue. This code expires in 10 minutes.</p>
         <p style="font-size: 13px; color: #64748b;">If you didn&apos;t request this, you can safely ignore this email.</p>
       </div>
     `,

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { requireCustomer, logoutCustomer } from "@/lib/customerActions";
-import { getRequestsByCustomerId, getLookups, getDeviceModels, pickupDeliveryStage, PICKUP_DELIVERY_STAGE_LABELS } from "@/lib/db";
+import { getRequestsForCustomer, getLookups, getDeviceModels, pickupDeliveryStage, PICKUP_DELIVERY_STAGE_LABELS } from "@/lib/db";
 import { formatDate } from "@/lib/format";
 import PushNotificationRegistrar from "@/components/PushNotificationRegistrar";
 
@@ -11,7 +11,7 @@ const TRACKABLE_PD_STAGES = new Set(["pickup_started", "heading_to_shop", "out_f
 
 export default async function MyBookingsPage() {
   const customer = await requireCustomer();
-  const [requests, lookups, deviceModels] = await Promise.all([getRequestsByCustomerId(customer.id), getLookups(), getDeviceModels()]);
+  const [requests, lookups, deviceModels] = await Promise.all([getRequestsForCustomer(customer), getLookups(), getDeviceModels()]);
 
   return (
     <main className="grid-bg min-h-screen px-4 pb-10 sm:px-6" style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 2.5rem)" }}>
@@ -58,7 +58,9 @@ export default async function MyBookingsPage() {
                 if (stage) {
                   displayStatus = PICKUP_DELIVERY_STAGE_LABELS[stage];
                   if (TRACKABLE_PD_STAGES.has(stage)) {
-                    trackHref = `/track?reference=${encodeURIComponent(r.reference)}&phone=${encodeURIComponent(customer.phone)}`;
+                    // /track checks the reference against the phone on the booking
+                    // itself — an email-registered account may have no phone on file.
+                    trackHref = `/track?reference=${encodeURIComponent(r.reference)}&phone=${encodeURIComponent(r.phone)}`;
                   }
                 }
               } else if (r.trackingToken) {
