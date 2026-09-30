@@ -15,6 +15,7 @@ export type User = {
   canManageWalkIns: boolean; // whether this account can access/manage Walk-In Registrations (branch_admin scoping) — independent of canManageRequests, defaults to false for new/existing branch admins
   canWaiveServiceFee: boolean; // whether this account can waive a Home Service request's visit fee (branch_admin scoping) — independent of canManageRequests, defaults to false
   canManageRepairPricing: boolean; // whether this account can access Repair Pricing (branch_admin scoping) — independent of every other flag, defaults to false
+  canEditRepairPrice: boolean; // whether this account can edit the Repair Price/Parts Cost on a completed job's Revenue Split card (branch_admin scoping) — independent of every other flag, defaults to false; technicians always use their own separately capped edit flow regardless
   canManageManualChecklists: boolean; // whether this account can access Manual Checklist & Receipt (technician scoping only — owner_admin/branch_admin always can), defaults to false
   phone: string; // optional — set by the account holder to opt into SMS alerts (new requests, technician status updates); blank means not opted in
   active: boolean;
