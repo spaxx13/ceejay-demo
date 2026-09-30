@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { getBranches, getTechnicians, getRiders, getLookups, getUsers, getLoginLogs } from "@/lib/db";
+import { getBranches, getTechnicians, getRiders, getLookups, getUsers, getLoginLogs, getActivity } from "@/lib/db";
 import { requireRole } from "@/lib/auth";
 import SmsStatusCheck from "@/components/SmsStatusCheck";
 
@@ -20,6 +20,7 @@ const GROUPS = [
     cards: [
       { href: "/admin/users", title: "Staff Accounts", description: "Create logins for owner admins, branch admins, and technicians." },
       { href: "/admin/login-logs", title: "Login Logs", description: "Every successful staff login, with date and time." },
+      { href: "/admin/activity-log", title: "Activity Log", description: "Everything admin/staff accounts have done across the site." },
     ],
   },
   {
@@ -44,13 +45,14 @@ const GROUPS = [
 export default async function SettingsHubPage() {
   if (!(await requireRole("owner_admin"))) redirect("/admin");
 
-  const [branches, technicians, riders, lookups, users, loginLogs] = await Promise.all([
+  const [branches, technicians, riders, lookups, users, loginLogs, activity] = await Promise.all([
     getBranches(),
     getTechnicians(),
     getRiders(),
     getLookups(),
     getUsers(),
     getLoginLogs(),
+    getActivity(),
   ]);
   const today = new Date().toISOString().slice(0, 10);
   const counts: Record<string, number> = {
@@ -62,6 +64,7 @@ export default async function SettingsHubPage() {
     "/admin/statuses": lookups.filter((l) => (l.kind === "lead_status" || l.kind === "request_status") && l.active).length,
     "/admin/users": users.filter((u) => u.active).length,
     "/admin/login-logs": loginLogs.filter((l) => l.at.slice(0, 10) === today).length,
+    "/admin/activity-log": activity.filter((l) => l.at.slice(0, 10) === today).length,
   };
   const countFor = (href: string) => counts[href] ?? null;
 
