@@ -1799,12 +1799,17 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
   // be accepted as pickup_delivery too.
   const requestedFulfillmentMode = str(formData, "fulfillmentMode");
   const fromMobileApp = str(formData, "channel") === "mobile";
-  const pickupDeliveryAllowed =
-    PICKUP_DELIVERY_PUBLIC_ENABLED ||
-    (fromMobileApp && PICKUP_DELIVERY_MOBILE_ENABLED) ||
-    canManageHomeServiceRequests(await getCurrentUser());
+  const staffAdmin = canManageHomeServiceRequests(await getCurrentUser());
+  const pickupDeliveryAllowed = PICKUP_DELIVERY_PUBLIC_ENABLED || (fromMobileApp && PICKUP_DELIVERY_MOBILE_ENABLED) || staffAdmin;
   const fulfillmentMode: "on_site" | "pickup_delivery" =
     requestedFulfillmentMode === "pickup_delivery" && pickupDeliveryAllowed ? "pickup_delivery" : "on_site";
+  // Staff preview = an admin testing Pickup & Delivery on a site where it's
+  // still publicly off. Their test bookings skip SMS OTP and the PayMongo
+  // fee (same effect as the PICKUP_DELIVERY_SKIP_* toggles, but keyed on
+  // the admin session rather than an env var, so it works on Production
+  // without ever being reachable by a visitor). Once the public gate is on,
+  // admins book — and pay — like everyone else.
+  const staffPreview = fulfillmentMode === "pickup_delivery" && !PICKUP_DELIVERY_PUBLIC_ENABLED && staffAdmin;
 
   // Don't take a paid Pickup & Delivery booking nobody can fulfill — the
   // public page already hides the form when this is true, this is just the
@@ -1853,7 +1858,7 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
   // HomeServiceForm.tsx's matching client-side gate. TEMPORARY:
   // PICKUP_DELIVERY_SKIP_OTP bypasses it entirely for pickup_delivery — see
   // lib/config.ts.
-  const pickupDeliverySkipOtp = fulfillmentMode === "pickup_delivery" && PICKUP_DELIVERY_SKIP_OTP;
+  const pickupDeliverySkipOtp = (fulfillmentMode === "pickup_delivery" && PICKUP_DELIVERY_SKIP_OTP) || staffPreview;
   if (!pickupDeliverySkipOtp && OTP_GATE_ENABLED && smsConfigured() && isActive("phone") && phone) {
     const otpRow = await queryOne<{ verified: boolean }>("select verified from otp_codes where phone=$1", [normalizePhone(phone)]);
     if (!otpRow?.verified) return { ok: false, error: "Please verify your phone number before submitting." };
@@ -1922,7 +1927,7 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
   // TEMPORARY: PICKUP_DELIVERY_SKIP_PAYMENT bypasses this (and the email-
   // confirmation gate below) entirely, straight to "Pending" — see
   // lib/config.ts for why.
-  const pickupDeliverySkipPayment = fulfillmentMode === "pickup_delivery" && PICKUP_DELIVERY_SKIP_PAYMENT;
+  const pickupDeliverySkipPayment = (fulfillmentMode === "pickup_delivery" && PICKUP_DELIVERY_SKIP_PAYMENT) || staffPreview;
   const requiresDownpayment = !pickupDeliverySkipPayment && (DOWNPAYMENT_PROVINCES.has(province) || fulfillmentMode === "pickup_delivery");
   const initialStatus =
     !pickupDeliverySkipPayment && (email || requiresDownpayment) && pendingConfirmationStatus ? pendingConfirmationStatus : pendingStatus;

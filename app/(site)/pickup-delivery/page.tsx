@@ -90,7 +90,7 @@ export default async function PickupDeliveryPage() {
         {staffPreview && (
           <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-center text-xs text-amber-800">
             Staff preview — you can see this because you&apos;re logged in as an admin. Visitors still see &quot;Coming Soon&quot; until
-            NEXT_PUBLIC_PICKUP_DELIVERY_ENABLED is turned on.
+            NEXT_PUBLIC_PICKUP_DELIVERY_ENABLED is turned on. Test bookings from here skip SMS verification and the QR Ph fee.
           </p>
         )}
         <div className="text-center">
@@ -114,7 +114,9 @@ export default async function PickupDeliveryPage() {
             // TEMPORARY: PICKUP_DELIVERY_SKIP_OTP lets the form degrade the
             // same way it already does when no SMS provider is configured —
             // no OTP step shown, no real SMS sent — see lib/config.ts.
-            smsAvailable={smsConfigured() && !PICKUP_DELIVERY_SKIP_OTP}
+            // Staff preview also skips OTP (and payment, server-side) — see
+            // submitHomeServiceRequest's matching staffPreview gate.
+            smsAvailable={smsConfigured() && !PICKUP_DELIVERY_SKIP_OTP && !staffPreview}
             mode="pickup_delivery"
           />
         )}
