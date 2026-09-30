@@ -1737,10 +1737,14 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
   // The public form only ever renders "Pickup & Delivery" as selectable once
   // PICKUP_DELIVERY_PUBLIC_ENABLED is on (see HomeServiceForm.tsx's "Soon"
   // gate) — re-checked here too, so a hand-crafted submission can't get a
-  // pickup_delivery row past a production site that still has it off.
+  // pickup_delivery row past a production site that still has it off. The
+  // one exception is a logged-in admin: app/(site)/pickup-delivery/page.tsx
+  // shows them the real form as a staff preview, so their submission has to
+  // be accepted as pickup_delivery too.
   const requestedFulfillmentMode = str(formData, "fulfillmentMode");
+  const pickupDeliveryAllowed = PICKUP_DELIVERY_PUBLIC_ENABLED || canManageHomeServiceRequests(await getCurrentUser());
   const fulfillmentMode: "on_site" | "pickup_delivery" =
-    requestedFulfillmentMode === "pickup_delivery" && PICKUP_DELIVERY_PUBLIC_ENABLED ? "pickup_delivery" : "on_site";
+    requestedFulfillmentMode === "pickup_delivery" && pickupDeliveryAllowed ? "pickup_delivery" : "on_site";
 
   // Don't take a paid Pickup & Delivery booking nobody can fulfill — the
   // public page already hides the form when this is true, this is just the
