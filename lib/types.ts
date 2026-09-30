@@ -421,22 +421,34 @@ export type HomeServiceRequest = {
   pickupSecuritySeal: string | null;
 };
 
-export const DEVICE_CONDITION_ITEMS = [
-  "front",
-  "back",
-  "leftSide",
-  "rightSide",
-  "top",
-  "bottom",
-  "lcd",
-  "touch",
-  "camera",
-  "housing",
-  "buttons",
-  "chargingPort",
+// Rider's device-condition checklist at "Picked Up" — a deliberate copy of
+// the Home Service pre-repair checklist rows (lib/checklist.ts
+// CHECKLIST_TEMPLATE) so both intake inspections read the same to staff.
+// Kept as its own template with its own storage
+// (home_service_requests.pickup_condition_checklist JSON), never a
+// ServiceAgreement row, so Pickup & Delivery and Home Service never share
+// records. The "(if repaired)" qualifiers are dropped: nothing has been
+// repaired yet at pickup.
+export const PICKUP_CONDITION_TEMPLATE = [
+  { key: "lcd_function", label: "LCD Function", helpText: "Check for responsiveness, dead pixels, abnormal colors, touch issues" },
+  { key: "battery_function", label: "Battery Function", helpText: "Check charging, discharge, and reported health" },
+  { key: "charging_function", label: "Charging Function", helpText: "Test charging with charger" },
+  { key: "front_camera", label: "Front Camera", helpText: "Test photo and video functionality" },
+  { key: "back_camera", label: "Back Camera", helpText: "Test photo and video functionality, flash" },
+  { key: "wifi_network", label: "Wi-Fi Network", helpText: "Test connection to a known Wi-Fi network" },
+  { key: "power_volume", label: "Power/Volume Trigger", helpText: "Test all buttons for responsiveness" },
+  { key: "microphone", label: "Microphone (Call/Voice Memo)", helpText: "Test during a call or voice recording" },
+  { key: "face_id", label: "Face ID Test", helpText: "Confirm Face ID unlocks the device and enrolls/re-enrolls correctly" },
+  { key: "physical_condition", label: "Overall Physical Condition", helpText: "Check for existing damage — scratches, dents, cracks, bends" },
+  { key: "system_errors", label: "Parts-Fit / Liquid Damage / Other System Errors", helpText: "System error showing up on the device" },
 ] as const;
-export type DeviceConditionItem = (typeof DEVICE_CONDITION_ITEMS)[number];
-export type DeviceConditionChecklist = Partial<Record<DeviceConditionItem, "ok" | "damaged">> & { existingDamageNotes?: string };
+export type PickupConditionKey = (typeof PICKUP_CONDITION_TEMPLATE)[number]["key"];
+export type PickupConditionResult = "pass" | "fail" | "na";
+export const PICKUP_CONDITION_RESULTS: readonly PickupConditionResult[] = ["pass", "fail", "na"];
+export type DeviceConditionChecklist = {
+  items: Partial<Record<PickupConditionKey, { result: PickupConditionResult; notes: string }>>;
+  existingDamageNotes?: string; // rider's overall notes/summary at pickup
+};
 export type PickupPhoto = { label: string; dataUrl: string };
 
 // Pickup & Delivery "Phase 5" — Exception Handling (FINAL FLOW spec item
