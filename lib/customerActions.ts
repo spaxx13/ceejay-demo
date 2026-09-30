@@ -1,55 +1,57 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { query, queryOne, getCustomerByPhone, saveCustomerPushToken } from "./db";
+import { query, queryOne, getCustomerByEmail, saveCustomerPushToken } from "./db";
 import { setCustomerSession, clearCustomerSession, getCurrentCustomer } from "./customerAuth";
-import { normalizePhone, isValidPhone } from "./sms";
-import { verifyHomeServiceOtp } from "./actions";
+import { verifyWalkInOtp } from "./actions";
 
-// The phone-OTP send/verify pair is the exact same one the Home Service
-// and Pickup & Delivery booking forms already use (lib/actions.ts) — it's
-// generic phone verification, not booking-specific, so the customer app's
-// login screen calls verifyHomeServiceOtp directly rather than duplicating
-// the SMS/otp_codes logic. Sending the code is done from the client via
-// that same existing sendHomeServiceOtp action.
+// Customers sign in with an emailed one-time code — no password. The
+// send/verify pair is the same email OTP the Walk-In pre-registration form
+// already uses (sendWalkInOtp/verifyWalkInOtp in lib/actions.ts, keyed by
+// email in email_otp_codes) — generic email verification, not
+// walk-in-specific — so the login screen calls it directly rather than
+// duplicating the code/hash/expiry logic.
 
-// Checked right after the phone number is entered (before sending the
-// OTP) purely so the login form knows whether to ask for a name — an
-// existing customer's name is already on file, a new one needs to give it
-// once to create their account.
-export async function customerExistsByPhone(phoneInput: string): Promise<boolean> {
-  if (!isValidPhone(phoneInput)) return false;
-  const customer = await getCustomerByPhone(normalizePhone(phoneInput));
-  return customer !== null;
+function isValidEmail(email: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+// Checked right after the email is entered (before sending the code)
+// purely so the login form knows whether to ask for a name — an existing
+// customer's name is already on file, a new one needs to give it once to
+// create their account.
+export async function customerExistsByEmail(emailInput: string): Promise<boolean> {
+  const email = emailInput.trim().toLowerCase();
+  if (!isValidEmail(email)) return false;
+  return (await getCustomerByEmail(email)) !== null;
 }
 
 export type CompleteLoginResult = { ok: true } | { ok: false; error: string };
 
-// Called once the OTP has already been verified (verifyHomeServiceOtp
-// returned ok) — finds the customer by phone (reusing whatever CRM record
-// their past bookings created) or creates a new one, then signs them in.
-// A brand-new customer needs a name; a returning one doesn't (already on
-// file), so name is optional and only used when creating.
-export async function completeCustomerLogin(phoneInput: string, codeInput: string, name: string): Promise<CompleteLoginResult> {
-  if (!isValidPhone(phoneInput)) return { ok: false, error: "Enter a valid PH mobile number." };
-  const verified = await verifyHomeServiceOtp(phoneInput, codeInput);
+// Verifies the emailed code, then finds the customer by email (reusing
+// whatever CRM record their past bookings created) or creates a new one,
+// and signs them in. A brand-new customer needs a name; a returning one
+// doesn't (already on file), so name is optional and only used when creating.
+export async function completeCustomerLogin(emailInput: string, codeInput: string, name: string): Promise<CompleteLoginResult> {
+  const email = emailInput.trim().toLowerCase();
+  if (!isValidEmail(email)) return { ok: false, error: "Enter a valid email address." };
+  const verified = await verifyWalkInOtp(email, codeInput);
   if (!verified.ok) return { ok: false, error: verified.error };
 
-  const phone = normalizePhone(phoneInput);
-  const existing = await getCustomerByPhone(phone);
+  const existing = await getCustomerByEmail(email);
   let customerId = existing?.id;
   if (!customerId) {
     const trimmedName = name.trim();
     if (!trimmedName) return { ok: false, error: "Please enter your name to finish creating your account." };
     const created = await queryOne<{ id: string }>(
-      "insert into customers (name, phone, email, street, province, landmark, source) values ($1,$2,'','','','','App Registration') returning id",
-      [trimmedName, phone]
+      "insert into customers (name, phone, email, street, province, landmark, source) values ($1,'',$2,'','','','App Registration') returning id",
+      [trimmedName, email]
     );
     customerId = created!.id;
   }
 
   await setCustomerSession(customerId);
-  await query("delete from otp_codes where phone=$1", [phone]);
+  await query("delete from email_otp_codes where email=$1", [email]);
   return { ok: true };
 }
 

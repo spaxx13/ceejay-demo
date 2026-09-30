@@ -10,10 +10,10 @@ import type { Customer } from "./types";
 // session token can never be replayed as a staff session, even though both
 // ultimately derive from the same server secret).
 const COOKIE = "ceejay_customer_session";
-// Customers log in with a phone OTP, not a password — there's no
+// Customers log in with an emailed OTP, not a password — there's no
 // "remember me" checkbox to weigh, so every login just gets a long-lived
-// session; re-verifying by SMS every few hours would be poor UX for an app
-// people open to check on a repair.
+// session; re-verifying by email every few hours would be poor UX for an
+// app people open to check on a repair.
 const SESSION_MS = 90 * 24 * 60 * 60 * 1000;
 
 function sessionKey() {

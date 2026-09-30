@@ -2,21 +2,21 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { sendHomeServiceOtp } from "@/lib/actions";
-import { completeCustomerLogin, customerExistsByPhone } from "@/lib/customerActions";
+import { sendWalkInOtp } from "@/lib/actions";
+import { completeCustomerLogin, customerExistsByEmail } from "@/lib/customerActions";
 
-type Stage = "phone" | "otp";
+type Stage = "email" | "otp";
 
-// Phone-OTP login/registration for the customer app — no password. A
-// returning customer just verifies their phone; a first-time one also
+// Email-OTP login/registration for the customer app — no password. A
+// returning customer just verifies their email; a first-time one also
 // gives their name so completeCustomerLogin can create their account.
-// initialPhone pre-fills the number from the "Save My Account" prompt on a
-// booking's success screen, so the customer doesn't retype what they just
-// gave a moment ago.
-export default function CustomerLoginForm({ initialPhone }: { initialPhone?: string }) {
+// initialEmail pre-fills the address from the "Save My Account" prompt on
+// a booking's success screen, so the customer doesn't retype what they
+// just gave a moment ago.
+export default function CustomerLoginForm({ initialEmail }: { initialEmail?: string }) {
   const router = useRouter();
-  const [stage, setStage] = useState<Stage>("phone");
-  const [phone, setPhone] = useState(initialPhone ?? "");
+  const [stage, setStage] = useState<Stage>("email");
+  const [email, setEmail] = useState(initialEmail ?? "");
   const [code, setCode] = useState("");
   const [name, setName] = useState("");
   const [isNewCustomer, setIsNewCustomer] = useState(false);
@@ -28,9 +28,9 @@ export default function CustomerLoginForm({ initialPhone }: { initialPhone?: str
     setError("");
     setSending(true);
     try {
-      const exists = await customerExistsByPhone(phone);
+      const exists = await customerExistsByEmail(email);
       setIsNewCustomer(!exists);
-      const res = await sendHomeServiceOtp(phone);
+      const res = await sendWalkInOtp(email);
       if (res.ok) {
         setCode("");
         setStage("otp");
@@ -48,7 +48,7 @@ export default function CustomerLoginForm({ initialPhone }: { initialPhone?: str
     setError("");
     setVerifying(true);
     try {
-      const res = await completeCustomerLogin(phone, code, name);
+      const res = await completeCustomerLogin(email, code, name);
       if (res.ok) {
         router.push("/my");
         router.refresh();
@@ -62,22 +62,23 @@ export default function CustomerLoginForm({ initialPhone }: { initialPhone?: str
     }
   }
 
-  if (stage === "phone") {
+  if (stage === "email") {
     return (
       <div className="card space-y-4">
         <div className="space-y-1.5">
-          <label className="text-xs font-medium text-slate-500">Mobile Number</label>
+          <label className="text-xs font-medium text-slate-500">Email Address</label>
           <input
-            type="text"
-            inputMode="tel"
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            placeholder="0917 123 4567"
+            type="email"
+            inputMode="email"
+            autoComplete="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="you@example.com"
             className="input"
           />
         </div>
         {error && <p className="text-sm text-red-600">{error}</p>}
-        <button type="button" onClick={handleSendCode} disabled={sending || !phone} className="btn-primary w-full">
+        <button type="button" onClick={handleSendCode} disabled={sending || !email} className="btn-primary w-full">
           {sending ? "Sending code…" : "Send Verification Code"}
         </button>
       </div>
@@ -87,7 +88,8 @@ export default function CustomerLoginForm({ initialPhone }: { initialPhone?: str
   return (
     <div className="card space-y-4">
       <p className="text-sm text-slate-600">
-        Enter the 6-digit code we sent to <span className="font-semibold">{phone}</span>.
+        Enter the 6-digit code we emailed to <span className="font-semibold">{email}</span>. Check your spam folder if it doesn&apos;t
+        arrive within a minute.
       </p>
       <div className="space-y-1.5">
         <label className="text-xs font-medium text-slate-500">Verification Code</label>
@@ -113,8 +115,8 @@ export default function CustomerLoginForm({ initialPhone }: { initialPhone?: str
       <button type="button" onClick={handleVerify} disabled={verifying || code.length !== 6} className="btn-primary w-full">
         {verifying ? "Verifying…" : "Verify & Sign In"}
       </button>
-      <button type="button" onClick={() => setStage("phone")} className="w-full text-center text-xs text-slate-400 hover:underline">
-        ← Use a different number
+      <button type="button" onClick={() => setStage("email")} className="w-full text-center text-xs text-slate-400 hover:underline">
+        ← Use a different email
       </button>
     </div>
   );

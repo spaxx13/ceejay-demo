@@ -638,12 +638,12 @@ export async function getCustomerById(id: string) {
   const row = await queryOne<CustomerRow>("select * from customers where id = $1", [id]);
   return row ? mapCustomer(row) : null;
 }
-// Customer app login — phone is the only identifier a customer logs in
-// with (no password), same normalized-digits comparison the booking forms
-// already use to dedupe customers by phone.
-export async function getCustomerByPhone(phone: string) {
-  const rows = await query<CustomerRow>("select * from customers where replace(replace(phone, ' ', ''), '-', '') = $1", [
-    phone.replace(/[\s-]/g, ""),
+// Customer app login — email is the only identifier a customer logs in
+// with (no password). Case-insensitive match; the oldest record wins if
+// past bookings ever created duplicates for one address.
+export async function getCustomerByEmail(email: string) {
+  const rows = await query<CustomerRow>("select * from customers where email <> '' and lower(email) = lower($1) order by created_at asc limit 1", [
+    email.trim(),
   ]);
   return rows[0] ? mapCustomer(rows[0]) : null;
 }
@@ -769,14 +769,25 @@ export async function getRequestsByBookingGroup(groupId: string) {
   return (await query<RequestRow>("select * from home_service_requests where booking_group_id = $1", [groupId])).map(mapRequest);
 }
 // The customer app's "My Bookings" dashboard — every request (any
-// fulfillment mode, any status) linked to this customer, newest first.
-// Excludes trashed rows the same way getRequests() does; a deleted
-// booking isn't something the customer should keep seeing.
-export async function getRequestsByCustomerId(customerId: string) {
+// fulfillment mode, any status) that belongs to this customer, newest
+// first. Excludes trashed rows the same way getRequests() does; a deleted
+// booking isn't something the customer should keep seeing. Accounts sign
+// in by email while bookings are deduped into customer records by phone at
+// submission time, so a booking made with this email (and some phone) may
+// hang off a different customer row — match on the email and phone too,
+// not just customer_id.
+export async function getRequestsForCustomer(customer: { id: string; email: string; phone: string }) {
+  const phoneDigits = customer.phone.replace(/[\s-]/g, "");
   return (
-    await query<RequestRow>("select * from home_service_requests where customer_id = $1 and deleted_at is null order by created_at desc", [
-      customerId,
-    ])
+    await query<RequestRow>(
+      `select * from home_service_requests
+       where deleted_at is null
+         and (customer_id = $1
+           or ($2 <> '' and lower(email) = lower($2))
+           or ($3 <> '' and replace(replace(phone, ' ', ''), '-', '') = $3))
+       order by created_at desc`,
+      [customer.id, customer.email.trim(), phoneDigits]
+    )
   ).map(mapRequest);
 }
 
