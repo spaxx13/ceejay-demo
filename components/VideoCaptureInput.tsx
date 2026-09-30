@@ -29,6 +29,10 @@ export default function VideoCaptureInput({
   const [seconds, setSeconds] = useState(0);
   const [error, setError] = useState("");
   const [canRecordInApp, setCanRecordInApp] = useState(true);
+  // Back camera by default (the device being filmed is in front of the
+  // phone); switchable to the front camera before recording starts — a
+  // MediaRecorder can't swap tracks mid-clip, so not while recording.
+  const [facingMode, setFacingMode] = useState<"environment" | "user">("environment");
 
   const previewRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -65,7 +69,7 @@ export default function VideoCaptureInput({
     setError("");
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 }, facingMode: "environment" },
+        video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 }, facingMode },
         audio: true,
       });
       streamRef.current = stream;
@@ -141,9 +145,20 @@ export default function VideoCaptureInput({
               </button>
             </div>
           ) : (
-            <button type="button" onClick={start} disabled={disabled} className="btn-primary w-full">
-              {startLabel}
-            </button>
+            <div className="flex gap-2">
+              <button type="button" onClick={start} disabled={disabled} className="btn-primary flex-1">
+                {startLabel}
+              </button>
+              <button
+                type="button"
+                onClick={() => setFacingMode((m) => (m === "environment" ? "user" : "environment"))}
+                disabled={disabled}
+                className="btn-secondary shrink-0 !px-3 text-xs"
+                title="Switch between the back and front camera"
+              >
+                🔄 {facingMode === "environment" ? "Back cam" : "Front cam"}
+              </button>
+            </div>
           )}
         </>
       )}
@@ -153,7 +168,7 @@ export default function VideoCaptureInput({
           <input
             type="file"
             accept="video/*"
-            capture="environment"
+            capture={facingMode}
             disabled={disabled}
             onChange={(e) => {
               pickFile(e.target.files?.[0]);
