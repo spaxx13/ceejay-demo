@@ -229,6 +229,12 @@ export default function TechnicianBoard({ requests, statuses }: { requests: Req[
               </Link>
             )}
 
+            {r.fulfillmentMode === "pickup_delivery" && r.receivedAtShopAt && (
+              <Link href={`/technician/requests/${r.id}/updates`} className="btn-secondary block w-full text-center text-xs">
+                🛠 Post Repair Update for Customer
+              </Link>
+            )}
+
             {(r.inProgress || r.hasPostAgreement) && (
               <Link
                 href={`/technician/requests/${r.id}/checklist`}

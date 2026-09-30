@@ -392,22 +392,30 @@ export async function sendCancellationEmail(to: string, opts: { customerName: st
 // now rather than needing two different URLs.
 export async function sendTrackingLinkEmail(
   to: string,
-  opts: { customerName: string; reference: string; phone: string; stage: "heading_to_pickup" | "heading_to_shop" | "unboxing_ready" }
+  opts: { customerName: string; reference: string; phone: string; stage: "heading_to_pickup" | "heading_to_shop" | "unboxing_ready" | "repair_update" }
 ) {
   const client = getClient();
   const trackingUrl = `${SITE_URL}/track?reference=${encodeURIComponent(opts.reference)}&phone=${encodeURIComponent(opts.phone)}`;
-  const heading =
-    opts.stage === "heading_to_pickup"
-      ? "Your rider is on the way!"
-      : opts.stage === "heading_to_shop"
-        ? "Your device is on its way to the shop!"
-        : "Your device has arrived at the shop!";
-  const body =
-    opts.stage === "heading_to_pickup"
-      ? "A rider is heading to your address now to pick up your device. You can follow their live location on the tracking page below."
-      : opts.stage === "heading_to_shop"
-        ? "Your rider has your device and is on the way to the shop. You can follow their live location on the tracking page below."
-        : "Our technician recorded a short video of your device being unboxed and inspected at the shop, so you can see exactly how it arrived. Watch it on the tracking page below.";
+  const copy = {
+    heading_to_pickup: {
+      heading: "Your rider is on the way!",
+      body: "A rider is heading to your address now to pick up your device. You can follow their live location on the tracking page below.",
+    },
+    heading_to_shop: {
+      heading: "Your device is on its way to the shop!",
+      body: "Your rider has your device and is on the way to the shop. You can follow their live location on the tracking page below.",
+    },
+    unboxing_ready: {
+      heading: "Your device has arrived at the shop!",
+      body: "Our technician recorded a short video of your device being unboxed and inspected at the shop, so you can see exactly how it arrived. Watch it on the tracking page below.",
+    },
+    repair_update: {
+      heading: "New update on your repair",
+      body: "Our technician posted an update on your repair — notes and photos/videos of your device as the work progresses. See it on the tracking page below.",
+    },
+  }[opts.stage];
+  const heading = copy.heading;
+  const body = copy.body;
 
   const { error } = await client.emails.send({
     from: FROM,

@@ -36,6 +36,7 @@ import type {
   IcloudCheckStatus,
   RequestException,
   RequestExceptionKind,
+  RequestUpdate,
 } from "./types";
 import { sendPushToUsers } from "./push";
 import { sendPushToTokens } from "./pushNotifications";
@@ -382,6 +383,36 @@ function mapRequest(r: RequestRow): HomeServiceRequest {
     unboxingVideoRecordedAt: toIsoOrNull(r.unboxing_video_recorded_at ?? null), unboxingVideoRecordedBy: r.unboxing_video_recorded_by ?? null,
     unboxingVideoPublishedAt: toIsoOrNull(r.unboxing_video_published_at ?? null),
   };
+}
+
+type RequestUpdateRow = {
+  id: string; request_id: string; body: string; media: RequestUpdate["media"] | null; posted_by: string; posted_by_user_id: string | null;
+  posted_by_role: string; created_at: Date;
+};
+function mapRequestUpdate(r: RequestUpdateRow): RequestUpdate {
+  return {
+    id: r.id, requestId: r.request_id, body: r.body, media: r.media ?? [], postedBy: r.posted_by, postedByUserId: r.posted_by_user_id,
+    postedByRole: r.posted_by_role, createdAt: toIso(r.created_at),
+  };
+}
+export async function getRequestUpdates(requestId: string) {
+  return (await query<RequestUpdateRow>("select * from request_updates where request_id = $1 order by created_at desc", [requestId])).map(mapRequestUpdate);
+}
+export async function getRequestUpdateById(id: string) {
+  const row = await queryOne<RequestUpdateRow>("select * from request_updates where id = $1", [id]);
+  return row ? mapRequestUpdate(row) : null;
+}
+// How many updates each of these requests has — for the customer's My
+// Bookings list, one query instead of one per card.
+export async function getRequestUpdateCounts(requestIds: string[]) {
+  const counts = new Map<string, number>();
+  if (requestIds.length === 0) return counts;
+  const rows = await query<{ request_id: string; count: string | number }>(
+    "select request_id, count(*) as count from request_updates where request_id = any($1::uuid[]) group by request_id",
+    [requestIds]
+  );
+  for (const r of rows) counts.set(r.request_id, Number(r.count));
+  return counts;
 }
 
 // Pinged by the rider's own browser (components/RiderLocationReporter.tsx,

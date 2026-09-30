@@ -461,6 +461,22 @@ export type DeviceConditionChecklist = {
 };
 export type PickupPhoto = { label: string; dataUrl: string };
 
+// A progress update posted to the customer while a Pickup & Delivery
+// repair is in progress (Admin/technician "Repair Updates"): a description
+// plus any number of photos/videos in Supabase Storage (request-updates
+// bucket — only the object paths live here). Shown on /track newest first.
+export type RequestUpdateMedia = { kind: "photo" | "video"; path: string; contentType: string };
+export type RequestUpdate = {
+  id: string;
+  requestId: string;
+  body: string;
+  media: RequestUpdateMedia[];
+  postedBy: string;
+  postedByUserId: string | null;
+  postedByRole: string;
+  createdAt: string;
+};
+
 // Pickup & Delivery "Phase 5" — Exception Handling (FINAL FLOW spec item
 // 31). One generic kind of record covers every exception the spec lists —
 // see REQUEST_EXCEPTION_LABELS for what each means and who can report it

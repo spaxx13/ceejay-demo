@@ -7,6 +7,7 @@ import {
   getBranches,
   getLookups,
   getRequestExceptions,
+  getRequestUpdates,
   canManageHomeServiceRequests,
   isBranchHidden,
   pickupDeliveryStage,
@@ -17,6 +18,8 @@ import { assignPickupRider, assignDeliveryRider, reassignRequest, reportRequestE
 import { getUnboxingVideoUrl } from "@/lib/storage";
 import UnboxingVideoRecorder from "@/components/UnboxingVideoRecorder";
 import UnboxingVideoReview from "@/components/UnboxingVideoReview";
+import RequestUpdateComposer from "@/components/RequestUpdateComposer";
+import RequestUpdatesList from "@/components/RequestUpdatesList";
 import { formatDateTime } from "@/lib/format";
 import StatusBadge from "@/components/StatusBadge";
 import JobQrCode from "@/components/JobQrCode";
@@ -106,6 +109,7 @@ export default async function PickupDeliveryDetailPage({ params }: { params: Pro
   const openIssues = exceptions.filter((e) => e.requestId === req.id && !e.resolvedAt);
   const resolvedIssues = exceptions.filter((e) => e.requestId === req.id && e.resolvedAt);
   const unboxingUrl = await getUnboxingVideoUrl(req.unboxingVideoPath);
+  const updates = req.receivedAtShopAt ? await getRequestUpdates(req.id) : [];
 
   return (
     <div className="space-y-6">
@@ -289,6 +293,16 @@ export default async function PickupDeliveryDetailPage({ params }: { params: Pro
               <p className="text-xs text-slate-400">Not recorded yet — the technician records it from their board (🎥 Record Unboxing Video), or record it here.</p>
             )}
             <UnboxingVideoRecorder requestId={req.id} existing={!!req.unboxingVideoPath} />
+          </div>
+        )}
+
+        {req.receivedAtShopAt && (
+          <div className="space-y-3 border-t border-slate-200 pt-3">
+            <p className="text-xs font-medium text-slate-500">Repair Updates for the customer ({updates.length})</p>
+            <div className="max-w-md">
+              <RequestUpdateComposer requestId={req.id} />
+            </div>
+            <RequestUpdatesList updates={updates} deletableIds={updates.map((u) => u.id)} />
           </div>
         )}
 
