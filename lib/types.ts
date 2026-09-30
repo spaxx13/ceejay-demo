@@ -546,7 +546,21 @@ export type RepairRecord = {
 
 export type ActivityLog = {
   id: string;
-  entityType: "customer" | "lead" | "home_service_request" | "walkin_request" | "manual_checklist";
+  entityType:
+    | "customer"
+    | "lead"
+    | "home_service_request"
+    | "walkin_request"
+    | "manual_checklist"
+    | "branch"
+    | "technician"
+    | "rider"
+    | "user"
+    | "catalog"
+    | "site_content"
+    | "repair_record"
+    | "expense"
+    | "icloud_check";
   entityId: string;
   message: string;
   actor: string; // user name or "System"

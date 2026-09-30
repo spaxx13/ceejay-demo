@@ -227,8 +227,8 @@ export async function createUser(formData: FormData) {
   }
 
   const passwordHash = await bcrypt.hash(password, 10);
-  await query(
-    "insert into users (name, email, password_hash, role, technician_id, rider_id, assigned_branch_ids, can_manage_requests, can_delete_requests, can_view_all_branches, can_access_crm, can_manage_walkins, can_waive_service_fee, can_manage_repair_pricing, can_manage_manual_checklists, phone) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)",
+  const created = await queryOne<{ id: string }>(
+    "insert into users (name, email, password_hash, role, technician_id, rider_id, assigned_branch_ids, can_manage_requests, can_delete_requests, can_view_all_branches, can_access_crm, can_manage_walkins, can_waive_service_fee, can_manage_repair_pricing, can_manage_manual_checklists, phone) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) returning id",
     [
       name,
       email,
@@ -248,6 +248,7 @@ export async function createUser(formData: FormData) {
       phone,
     ]
   );
+  await logActivity("user", created!.id, `${actor.name} created staff account "${name}" (${email}, ${role})`, actor.name);
   revalidatePath("/admin/users");
   revalidatePath("/admin/technicians");
   revalidatePath("/admin/riders");
@@ -354,6 +355,7 @@ export async function updateUser(formData: FormData) {
       ]
     );
   }
+  await logActivity("user", userId, `${actor.name} updated staff account "${name}" (${email || user.email})`, actor.name);
   revalidatePath("/admin/users");
   revalidatePath("/admin/technicians");
   revalidatePath("/admin/riders");
@@ -365,7 +367,13 @@ export async function toggleUserActive(formData: FormData) {
 
   const userId = str(formData, "id");
   if (userId === actor.id) return; // can't lock yourself out
-  await query("update users set active = not active where id=$1", [userId]);
+  const updated = await queryOne<{ name: string; active: boolean }>(
+    "update users set active = not active where id=$1 returning name, active",
+    [userId]
+  );
+  if (updated) {
+    await logActivity("user", userId, `${actor.name} ${updated.active ? "activated" : "deactivated"} staff account "${updated.name}"`, actor.name);
+  }
   revalidatePath("/admin/users");
 }
 
@@ -384,6 +392,7 @@ export async function deleteUser(formData: FormData) {
   if (target.role === "owner_admin" && users.filter((u) => u.role === "owner_admin" && u.active).length <= 1) return;
 
   await query("delete from users where id=$1", [userId]);
+  await logActivity("user", userId, `${actor.name} deleted staff account "${target.name}" (${target.email})`, actor.name);
   revalidatePath("/admin/users");
 }
 
@@ -400,16 +409,15 @@ function floatOrNull(fd: FormData, key: string): number | null {
 
 export async function createBranch(formData: FormData) {
   // Owner-only, same as the admin page that renders this form.
-  if (!(await requireRole("owner_admin"))) return;
+  const actor = await requireRole("owner_admin");
+  if (!actor) return;
   const name = str(formData, "name");
   if (!name) return;
-  await query("insert into branches (name, address, contact_number, lat, lng) values ($1,$2,$3,$4,$5)", [
-    name,
-    str(formData, "address"),
-    str(formData, "contactNumber"),
-    floatOrNull(formData, "lat"),
-    floatOrNull(formData, "lng"),
-  ]);
+  const created = await queryOne<{ id: string }>(
+    "insert into branches (name, address, contact_number, lat, lng) values ($1,$2,$3,$4,$5) returning id",
+    [name, str(formData, "address"), str(formData, "contactNumber"), floatOrNull(formData, "lat"), floatOrNull(formData, "lng")]
+  );
+  await logActivity("branch", created!.id, `${actor.name} added branch "${name}"`, actor.name);
   revalidatePath("/admin/branches");
   // Branch name/address/contact number is shown across the public site — the
   // footer (every page, via the (site) layout), the Branches page, Contact
@@ -420,7 +428,8 @@ export async function createBranch(formData: FormData) {
 
 export async function updateBranch(formData: FormData) {
   // Owner-only, same as the admin page that renders this form.
-  if (!(await requireRole("owner_admin"))) return;
+  const actor = await requireRole("owner_admin");
+  if (!actor) return;
   const branchId = str(formData, "id");
   const name = str(formData, "name");
   if (!name) return;
@@ -432,15 +441,23 @@ export async function updateBranch(formData: FormData) {
     floatOrNull(formData, "lng"),
     branchId,
   ]);
+  await logActivity("branch", branchId, `${actor.name} updated branch "${name}"`, actor.name);
   revalidatePath("/admin/branches");
   revalidatePath("/", "layout");
 }
 
 export async function toggleBranchActive(formData: FormData) {
   // Owner-only, same as the admin page that renders this form.
-  if (!(await requireRole("owner_admin"))) return;
+  const actor = await requireRole("owner_admin");
+  if (!actor) return;
   const branchId = str(formData, "id");
-  await query("update branches set active = not active where id=$1", [branchId]);
+  const updated = await queryOne<{ name: string; active: boolean }>(
+    "update branches set active = not active where id=$1 returning name, active",
+    [branchId]
+  );
+  if (updated) {
+    await logActivity("branch", branchId, `${actor.name} ${updated.active ? "activated" : "deactivated"} branch "${updated.name}"`, actor.name);
+  }
   revalidatePath("/admin/branches");
   revalidatePath("/", "layout");
 }
@@ -454,11 +471,12 @@ function earningsSharePercentFromForm(formData: FormData) {
 
 export async function createTechnician(formData: FormData) {
   // Owner-only, same as the admin page that renders this form.
-  if (!(await requireRole("owner_admin"))) return;
+  const actor = await requireRole("owner_admin");
+  if (!actor) return;
   const name = str(formData, "name");
   if (!name) return;
-  await query(
-    "insert into technicians (name, contact_number, email, employment_status, branch_ids, earnings_share_percent, can_pickup_delivery) values ($1,$2,$3,$4,$5,$6,$7)",
+  const created = await queryOne<{ id: string }>(
+    "insert into technicians (name, contact_number, email, employment_status, branch_ids, earnings_share_percent, can_pickup_delivery) values ($1,$2,$3,$4,$5,$6,$7) returning id",
     [
       name,
       str(formData, "contactNumber"),
@@ -469,12 +487,14 @@ export async function createTechnician(formData: FormData) {
       formData.has("canPickupDelivery"),
     ]
   );
+  await logActivity("technician", created!.id, `${actor.name} added technician "${name}"`, actor.name);
   revalidatePath("/admin/technicians");
 }
 
 export async function updateTechnician(formData: FormData) {
   // Owner-only, same as the admin page that renders this form.
-  if (!(await requireRole("owner_admin"))) return;
+  const actor = await requireRole("owner_admin");
+  if (!actor) return;
   const techId = str(formData, "id");
   const name = str(formData, "name");
   if (!name) return;
@@ -491,14 +511,22 @@ export async function updateTechnician(formData: FormData) {
       techId,
     ]
   );
+  await logActivity("technician", techId, `${actor.name} updated technician "${name}"`, actor.name);
   revalidatePath("/admin/technicians");
 }
 
 export async function toggleTechnicianActive(formData: FormData) {
   // Owner-only, same as the admin page that renders this form.
-  if (!(await requireRole("owner_admin"))) return;
+  const actor = await requireRole("owner_admin");
+  if (!actor) return;
   const techId = str(formData, "id");
-  await query("update technicians set active = not active where id=$1", [techId]);
+  const updated = await queryOne<{ name: string; active: boolean }>(
+    "update technicians set active = not active where id=$1 returning name, active",
+    [techId]
+  );
+  if (updated) {
+    await logActivity("technician", techId, `${actor.name} ${updated.active ? "activated" : "deactivated"} technician "${updated.name}"`, actor.name);
+  }
   revalidatePath("/admin/technicians");
 }
 
@@ -511,17 +539,19 @@ export async function deleteTechnician(formData: FormData) {
   // Block deleting a technician who still has an open (not yet completed or
   // cancelled) job assigned — reassign or resolve those first, so a job
   // never silently ends up assigned-but-technician-less.
-  const [requests, lookups] = await Promise.all([getRequests(), getLookups()]);
+  const [requests, lookups, technicians] = await Promise.all([getRequests(), getLookups(), getTechnicians()]);
   const openStatusIds = new Set(
     lookups.filter((l) => l.kind === "request_status" && l.label !== "Completed" && l.label !== "Cancelled").map((l) => l.id)
   );
   const hasOpenJob = requests.some((r) => r.assignedTechnicianId === techId && openStatusIds.has(r.statusId));
   if (hasOpenJob) return;
 
+  const target = technicians.find((t) => t.id === techId);
   // Any login linked to this technician stays (technician_id just becomes
   // null, per the FK's on delete set null) — past job history keeps its
   // technician_name snapshot regardless, so nothing here erases records.
   await query("delete from technicians where id=$1", [techId]);
+  await logActivity("technician", techId, `${actor.name} deleted technician "${target?.name ?? techId}"`, actor.name);
   revalidatePath("/admin/technicians");
   revalidatePath("/admin/users");
 }
@@ -530,21 +560,21 @@ export async function deleteTechnician(formData: FormData) {
 
 export async function createRider(formData: FormData) {
   // Owner-only, same as the Admin > Riders page that renders this form.
-  if (!(await requireRole("owner_admin"))) return;
+  const actor = await requireRole("owner_admin");
+  if (!actor) return;
   const name = str(formData, "name");
   if (!name) return;
-  await query("insert into riders (name, contact_number, email, branch_id, vehicle) values ($1,$2,$3,$4,$5)", [
-    name,
-    str(formData, "contactNumber"),
-    str(formData, "email"),
-    str(formData, "branchId") || null,
-    str(formData, "vehicle") || "motorcycle",
-  ]);
+  const created = await queryOne<{ id: string }>(
+    "insert into riders (name, contact_number, email, branch_id, vehicle) values ($1,$2,$3,$4,$5) returning id",
+    [name, str(formData, "contactNumber"), str(formData, "email"), str(formData, "branchId") || null, str(formData, "vehicle") || "motorcycle"]
+  );
+  await logActivity("rider", created!.id, `${actor.name} added rider "${name}"`, actor.name);
   revalidatePath("/admin/riders");
 }
 
 export async function updateRider(formData: FormData) {
-  if (!(await requireRole("owner_admin"))) return;
+  const actor = await requireRole("owner_admin");
+  if (!actor) return;
   const riderId = str(formData, "id");
   const name = str(formData, "name");
   if (!name) return;
@@ -556,13 +586,21 @@ export async function updateRider(formData: FormData) {
     str(formData, "vehicle") || "motorcycle",
     riderId,
   ]);
+  await logActivity("rider", riderId, `${actor.name} updated rider "${name}"`, actor.name);
   revalidatePath("/admin/riders");
 }
 
 export async function toggleRiderActive(formData: FormData) {
-  if (!(await requireRole("owner_admin"))) return;
+  const actor = await requireRole("owner_admin");
+  if (!actor) return;
   const riderId = str(formData, "id");
-  await query("update riders set active = not active where id=$1", [riderId]);
+  const updated = await queryOne<{ name: string; active: boolean }>(
+    "update riders set active = not active where id=$1 returning name, active",
+    [riderId]
+  );
+  if (updated) {
+    await logActivity("rider", riderId, `${actor.name} ${updated.active ? "activated" : "deactivated"} rider "${updated.name}"`, actor.name);
+  }
   revalidatePath("/admin/riders");
 }
 
@@ -571,9 +609,21 @@ export async function toggleRiderActive(formData: FormData) {
 // public booking check and the Pickup & Delivery board stop counting them
 // as available.
 export async function adminSetRiderOnDuty(formData: FormData) {
-  if (!(await requireRole("owner_admin"))) return;
+  const actor = await requireRole("owner_admin");
+  if (!actor) return;
   const riderId = str(formData, "id");
-  await query("update riders set on_duty = not on_duty where id=$1", [riderId]);
+  const updated = await queryOne<{ name: string; on_duty: boolean }>(
+    "update riders set on_duty = not on_duty where id=$1 returning name, on_duty",
+    [riderId]
+  );
+  if (updated) {
+    await logActivity(
+      "rider",
+      riderId,
+      `${actor.name} set rider "${updated.name}" ${updated.on_duty ? "on duty" : "off duty"}`,
+      actor.name
+    );
+  }
   revalidatePath("/admin/riders");
   revalidatePath("/admin/pickup-delivery");
 }
@@ -620,7 +670,9 @@ export async function deleteRider(formData: FormData): Promise<{ ok: true } | { 
     };
   }
 
+  const target = (await getRiders()).find((r) => r.id === riderId);
   await query("delete from riders where id=$1", [riderId]);
+  await logActivity("rider", riderId, `${actor.name} deleted rider "${target?.name ?? riderId}"`, actor.name);
   revalidatePath("/admin/riders");
   revalidatePath("/admin/users");
   return { ok: true };
@@ -1049,10 +1101,18 @@ export async function resolveRequestException(formData: FormData) {
   const user = await getCurrentUser();
   if (!canManageHomeServiceRequests(user)) return;
   const exceptionId = str(formData, "exceptionId");
-  await query("update request_exceptions set resolved_at=now(), resolved_by=$1 where id=$2 and resolved_at is null", [
-    user?.name ?? "Admin",
-    exceptionId,
-  ]);
+  const resolved = await queryOne<{ request_id: string; kind: string }>(
+    "update request_exceptions set resolved_at=now(), resolved_by=$1 where id=$2 and resolved_at is null returning request_id, kind",
+    [user?.name ?? "Admin", exceptionId]
+  );
+  if (resolved) {
+    await logActivity(
+      "home_service_request",
+      resolved.request_id,
+      `${user?.name ?? "Admin"} resolved a "${resolved.kind}" exception`,
+      user?.name ?? "Admin"
+    );
+  }
   revalidatePath("/admin/pickup-delivery");
 }
 
@@ -1060,19 +1120,27 @@ export async function resolveRequestException(formData: FormData) {
 
 export async function createDeviceBrand(formData: FormData) {
   // Owner-only, same as the admin page that renders this form.
-  if (!(await requireRole("owner_admin"))) return;
+  const actor = await requireRole("owner_admin");
+  if (!actor) return;
   const label = str(formData, "label");
   if (!label) return;
   const lookups = await getLookups();
   const order = lookups.filter((l) => l.kind === "device_brand").length;
-  await query("insert into lookups (kind, label, order_num) values ('device_brand',$1,$2)", [label, order]);
+  const created = await queryOne<{ id: string }>("insert into lookups (kind, label, order_num) values ('device_brand',$1,$2) returning id", [
+    label,
+    order,
+  ]);
+  await logActivity("catalog", created!.id, `${actor.name} added device brand "${label}"`, actor.name);
   revalidatePath("/admin/device-catalog");
 }
 
 export async function deleteLookup(formData: FormData) {
   // Owner-only, same as the admin page that renders this form.
-  if (!(await requireRole("owner_admin"))) return;
+  const actor = await requireRole("owner_admin");
+  if (!actor) return;
   const itemId = str(formData, "id");
+  const item = (await getLookups()).find((l) => l.id === itemId);
+  let deactivated = false;
   try {
     await query("delete from lookups where id=$1", [itemId]);
   } catch (e) {
@@ -1081,10 +1149,17 @@ export async function deleteLookup(formData: FormData) {
     const code = e && typeof e === "object" && "code" in e ? (e as { code: string }).code : "";
     if (code === "23503") {
       await query("update lookups set active=false where id=$1", [itemId]);
+      deactivated = true;
     } else {
       throw e;
     }
   }
+  await logActivity(
+    "catalog",
+    itemId,
+    `${actor.name} ${deactivated ? "deactivated (still in use)" : "deleted"} ${item?.kind ?? "lookup"} "${item?.label ?? itemId}"`,
+    actor.name
+  );
   revalidatePath("/admin/device-catalog");
   revalidatePath("/admin/service-types");
   revalidatePath("/admin/statuses");
@@ -1093,11 +1168,19 @@ export async function deleteLookup(formData: FormData) {
 
 export async function updateLookupLabel(formData: FormData) {
   // Owner-only, same as the admin page that renders this form.
-  if (!(await requireRole("owner_admin"))) return;
+  const actor = await requireRole("owner_admin");
+  if (!actor) return;
   const itemId = str(formData, "id");
   const label = str(formData, "label");
   if (!label) return;
+  const previous = (await getLookups()).find((l) => l.id === itemId);
   await query("update lookups set label=$1 where id=$2", [label, itemId]);
+  await logActivity(
+    "catalog",
+    itemId,
+    `${actor.name} renamed ${previous?.kind ?? "lookup"} "${previous?.label ?? itemId}" to "${label}"`,
+    actor.name
+  );
   revalidatePath("/admin/device-catalog");
   revalidatePath("/admin/service-types");
   revalidatePath("/admin/statuses");
@@ -1110,25 +1193,40 @@ export async function createDeviceModel(formData: FormData) {
   const brandId = str(formData, "brandId");
   if (!name || !brandId) return;
   const count = await queryOne<{ n: number }>("select count(*)::int as n from device_models where brand_id=$1", [brandId]);
-  await query("insert into device_models (brand_id, name, order_num) values ($1,$2,$3)", [brandId, name, count?.n ?? 0]);
+  const created = await queryOne<{ id: string }>("insert into device_models (brand_id, name, order_num) values ($1,$2,$3) returning id", [
+    brandId,
+    name,
+    count?.n ?? 0,
+  ]);
+  await logActivity("catalog", created!.id, `${user!.name} added device model "${name}"`, user!.name);
   revalidatePath("/admin/device-catalog");
   revalidatePath("/admin/service-prices");
 }
 
 export async function deleteDeviceModel(formData: FormData) {
   // Owner-only, same as the admin page that renders this form.
-  if (!(await requireRole("owner_admin"))) return;
+  const actor = await requireRole("owner_admin");
+  if (!actor) return;
   const modelId = str(formData, "id");
+  const model = (await getDeviceModels()).find((m) => m.id === modelId);
+  let deactivated = false;
   try {
     await query("delete from device_models where id=$1", [modelId]);
   } catch (e) {
     const code = e && typeof e === "object" && "code" in e ? (e as { code: string }).code : "";
     if (code === "23503") {
       await query("update device_models set active=false where id=$1", [modelId]);
+      deactivated = true;
     } else {
       throw e;
     }
   }
+  await logActivity(
+    "catalog",
+    modelId,
+    `${actor.name} ${deactivated ? "deactivated (still in use)" : "deleted"} device model "${model?.name ?? modelId}"`,
+    actor.name
+  );
   revalidatePath("/admin/device-catalog");
 }
 
@@ -1156,25 +1254,35 @@ export async function saveServicePrices(formData: FormData) {
 
   const [models, existing] = await Promise.all([getDeviceModels(), getServicePrices()]);
   const existingKey = (category: string, deviceModelId: string, quality: string) => `${category}|${deviceModelId}|${quality}`;
-  const existingSet = new Set(existing.map((p) => existingKey(p.category, p.deviceModelId, p.quality)));
+  const existingByKey = new Map(existing.map((p) => [existingKey(p.category, p.deviceModelId, p.quality), p.price]));
 
+  // One summary log entry for the whole bulk save (this page can have
+  // 150+ price cells) rather than one per cell, counting only cells whose
+  // price actually changed — a save that touches nothing meaningful stays
+  // silent.
+  let changedCount = 0;
   for (const m of models) {
     for (const cell of PRICE_CELLS) {
       const raw = str(formData, `price_${cell.field}_${m.id}`);
       const key = existingKey(cell.category, m.id, cell.quality);
       if (!raw) {
-        if (existingSet.has(key)) {
+        if (existingByKey.has(key)) {
           await query("delete from service_prices where category=$1 and device_model_id=$2 and quality=$3", [cell.category, m.id, cell.quality]);
+          changedCount++;
         }
         continue;
       }
       const price = Math.max(0, Number(raw) || 0);
+      if (existingByKey.get(key) !== price) changedCount++;
       await query(
         `insert into service_prices (category, device_model_id, quality, price, updated_at) values ($1,$2,$3,$4,now())
          on conflict (category, device_model_id, quality) do update set price=$4, updated_at=now()`,
         [cell.category, m.id, cell.quality, price]
       );
     }
+  }
+  if (changedCount > 0) {
+    await logActivity("catalog", "service_prices", `${user!.name} updated Repair Pricing (${changedCount} price${changedCount === 1 ? "" : "s"} changed)`, user!.name);
   }
   revalidatePath("/admin/service-prices");
 }
@@ -1183,13 +1291,19 @@ export async function saveServicePrices(formData: FormData) {
 
 export async function createLookup(formData: FormData) {
   // Owner-only, same as the admin page that renders this form.
-  if (!(await requireRole("owner_admin"))) return;
+  const actor = await requireRole("owner_admin");
+  if (!actor) return;
   const kind = str(formData, "kind") as LookupKind;
   const label = str(formData, "label");
   if (!label || !kind) return;
   const lookups = await getLookups();
   const order = lookups.filter((l) => l.kind === kind).length;
-  await query("insert into lookups (kind, label, order_num) values ($1,$2,$3)", [kind, label, order]);
+  const created = await queryOne<{ id: string }>("insert into lookups (kind, label, order_num) values ($1,$2,$3) returning id", [
+    kind,
+    label,
+    order,
+  ]);
+  await logActivity("catalog", created!.id, `${actor.name} added ${kind} "${label}"`, actor.name);
   revalidatePath("/admin/service-types");
   revalidatePath("/admin/statuses");
 }
@@ -1216,7 +1330,8 @@ export async function reorderLookup(formData: FormData) {
 
 export async function updateSiteContent(formData: FormData) {
   // Owner-only, same as the admin page that renders this form.
-  if (!(await requireRole("owner_admin"))) return;
+  const actor = await requireRole("owner_admin");
+  if (!actor) return;
   await query(
     `update site_content set
       hero_kicker = coalesce(nullif($1,''), hero_kicker),
@@ -1245,6 +1360,7 @@ export async function updateSiteContent(formData: FormData) {
       str(formData, "facebookUrl"),
     ]
   );
+  await logActivity("site_content", "1", `${actor.name} updated the public landing page content`, actor.name);
   // facebookUrl backs a button in the (site) layout, shown on every public
   // page, not just "/" — revalidate the whole public route group so a
   // changed link takes effect everywhere immediately.
@@ -1256,7 +1372,8 @@ export async function updateSiteContent(formData: FormData) {
 
 export async function updateRequestFormContent(formData: FormData) {
   // Owner-only, same as the admin page that renders this form.
-  if (!(await requireRole("owner_admin"))) return;
+  const actor = await requireRole("owner_admin");
+  if (!actor) return;
   await query(
     `update request_form_content set
       page_kicker = coalesce(nullif($1,''), page_kicker),
@@ -1281,6 +1398,7 @@ export async function updateRequestFormContent(formData: FormData) {
       str(formData, "farAreaContactNumber"),
     ]
   );
+  await logActivity("site_content", "request_form", `${actor.name} updated the public request form content`, actor.name);
   revalidatePath("/request");
   revalidatePath("/admin/request-form");
 }
@@ -1299,17 +1417,19 @@ function slugify(label: string) {
 
 export async function createCustomField(formData: FormData) {
   // Owner-only, same as the admin page that renders this form.
-  if (!(await requireRole("owner_admin"))) return;
+  const actor = await requireRole("owner_admin");
+  if (!actor) return;
   const label = str(formData, "label");
   const type = str(formData, "type") as CustomFieldType;
   if (!label || !type) return;
   const key = slugify(label);
   const options = str(formData, "options").split(",").map((o) => o.trim()).filter(Boolean);
   const fields = await getCustomFormFields();
-  await query(
-    "insert into custom_form_fields (key, system_key, label, placeholder, type, required, options, order_num) values ($1,null,$2,$3,$4,$5,$6,$7)",
+  const created = await queryOne<{ id: string }>(
+    "insert into custom_form_fields (key, system_key, label, placeholder, type, required, options, order_num) values ($1,null,$2,$3,$4,$5,$6,$7) returning id",
     [key, label, str(formData, "placeholder"), type, formData.has("required"), type === "select" ? options : [], fields.length]
   );
+  await logActivity("catalog", created!.id, `${actor.name} added request form field "${label}"`, actor.name);
   revalidatePath("/request");
   revalidatePath("/admin/request-form");
 }
@@ -1320,7 +1440,8 @@ export async function createCustomField(formData: FormData) {
 // their natural type.
 export async function updateCustomField(formData: FormData) {
   // Owner-only, same as the admin page that renders this form.
-  if (!(await requireRole("owner_admin"))) return;
+  const actor = await requireRole("owner_admin");
+  if (!actor) return;
   const fieldId = str(formData, "id");
   const label = str(formData, "label");
   const type = str(formData, "type") as CustomFieldType;
@@ -1334,6 +1455,7 @@ export async function updateCustomField(formData: FormData) {
     type === "select" ? options : [],
     fieldId,
   ]);
+  await logActivity("catalog", fieldId, `${actor.name} updated request form field "${label}"`, actor.name);
   revalidatePath("/request");
   revalidatePath("/admin/request-form");
 }
@@ -1344,9 +1466,21 @@ export async function updateCustomField(formData: FormData) {
 // form and stops being enforced.
 export async function toggleCustomFieldActive(formData: FormData) {
   // Owner-only, same as the admin page that renders this form.
-  if (!(await requireRole("owner_admin"))) return;
+  const actor = await requireRole("owner_admin");
+  if (!actor) return;
   const fieldId = str(formData, "id");
-  await query("update custom_form_fields set active = not active where id=$1", [fieldId]);
+  const updated = await queryOne<{ label: string; active: boolean }>(
+    "update custom_form_fields set active = not active where id=$1 returning label, active",
+    [fieldId]
+  );
+  if (updated) {
+    await logActivity(
+      "catalog",
+      fieldId,
+      `${actor.name} ${updated.active ? "enabled" : "disabled"} request form field "${updated.label}"`,
+      actor.name
+    );
+  }
   revalidatePath("/request");
   revalidatePath("/admin/request-form");
 }
@@ -1595,7 +1729,9 @@ export async function deleteRepairRecord(formData: FormData) {
   if (!actor) return;
 
   const recordId = str(formData, "id");
+  const record = await getRepairRecordById(recordId);
   await query("update repair_records set deleted_at=now() where id=$1", [recordId]);
+  await logActivity("repair_record", recordId, `${actor.name} moved POS ticket ${record?.reference ?? recordId} to Trash`, actor.name);
   revalidatePath("/admin/pos");
   revalidatePath("/admin/sales");
   revalidatePath("/admin/sales/daily");
@@ -1609,7 +1745,9 @@ export async function restoreRepairRecord(formData: FormData) {
   if (!actor) return;
 
   const recordId = str(formData, "id");
+  const record = await getRepairRecordById(recordId);
   await query("update repair_records set deleted_at=null where id=$1", [recordId]);
+  await logActivity("repair_record", recordId, `${actor.name} restored POS ticket ${record?.reference ?? recordId} from Trash`, actor.name);
   revalidatePath("/admin/pos");
   revalidatePath("/admin/sales");
   revalidatePath("/admin/sales/daily");
@@ -1626,7 +1764,9 @@ export async function permanentlyDeleteRepairRecord(formData: FormData) {
   if (!actor) return;
 
   const recordId = str(formData, "id");
+  const record = await getRepairRecordById(recordId);
   await query("delete from repair_records where id=$1 and deleted_at is not null", [recordId]);
+  await logActivity("repair_record", recordId, `${actor.name} permanently deleted POS ticket ${record?.reference ?? recordId}`, actor.name);
   revalidatePath("/admin/trash");
 }
 
@@ -2716,7 +2856,9 @@ export async function permanentlyDeleteWalkInRequest(formData: FormData) {
   const user = await getCurrentUser();
   if (!canManageWalkIns(user) || !canDeleteHomeServiceRequests(user)) return;
   const id = str(formData, "id");
+  const walkIn = await queryOne<{ reference: string }>("select reference from walkin_requests where id=$1", [id]);
   await query("delete from walkin_requests where id=$1 and deleted_at is not null", [id]);
+  await logActivity("walkin_request", id, `${user!.name} permanently deleted ${walkIn?.reference ?? id}`, user!.name);
   revalidatePath("/admin/trash");
 }
 
@@ -2800,6 +2942,7 @@ export async function markIcloudRefundNeeded(formData: FormData) {
   const id = str(formData, "id");
   const adminNote = str(formData, "adminNote");
   await markIcloudCheckRefundNeeded(id, adminNote);
+  await logActivity("icloud_check", id, `${user.name} marked an iCloud check as needing a refund`, user.name);
   revalidatePath("/admin/tools/icloud-checks");
 }
 
@@ -2963,7 +3106,9 @@ export async function deleteHomeServiceRequest(formData: FormData) {
   if (!canDeleteHomeServiceRequests(actor)) return;
 
   const requestId = str(formData, "id");
+  const req = await getRequestById(requestId);
   await query("update home_service_requests set deleted_at=now() where id=$1", [requestId]);
+  await logActivity("home_service_request", requestId, `${actor!.name} moved ${req?.reference ?? requestId} to Trash`, actor!.name);
   revalidatePath("/admin/requests");
   revalidatePath("/admin/pos");
   revalidatePath("/admin/sales/home-service");
@@ -2978,7 +3123,9 @@ export async function restoreHomeServiceRequest(formData: FormData) {
   if (!canDeleteHomeServiceRequests(actor)) return;
 
   const requestId = str(formData, "id");
+  const req = await getRequestById(requestId);
   await query("update home_service_requests set deleted_at=null where id=$1", [requestId]);
+  await logActivity("home_service_request", requestId, `${actor!.name} restored ${req?.reference ?? requestId} from Trash`, actor!.name);
   revalidatePath("/admin/requests");
   revalidatePath("/admin/pos");
   revalidatePath("/admin/sales/home-service");
@@ -2998,7 +3145,9 @@ export async function permanentlyDeleteHomeServiceRequest(formData: FormData) {
   if (!canDeleteHomeServiceRequests(actor)) return;
 
   const requestId = str(formData, "id");
+  const req = await getRequestById(requestId);
   await query("delete from home_service_requests where id=$1 and deleted_at is not null", [requestId]);
+  await logActivity("home_service_request", requestId, `${actor!.name} permanently deleted ${req?.reference ?? requestId}`, actor!.name);
   revalidatePath("/admin/trash");
 }
 
@@ -3008,6 +3157,7 @@ export async function updateRequestNotes(formData: FormData) {
   const requestId = str(formData, "id");
   const notes = str(formData, "adminNotes");
   await query("update home_service_requests set admin_notes=$1 where id=$2", [notes, requestId]);
+  await logActivity("home_service_request", requestId, `${user!.name} updated the admin notes`, user!.name);
   revalidatePath(`/admin/requests/${requestId}`);
 }
 
@@ -3083,9 +3233,15 @@ export async function createExpense(formData: FormData) {
   if (!description || amount <= 0 || !target || !branchId) return;
   if (target === "technician_final_total_sales" && !technicianName) return;
 
-  await query(
-    "insert into expenses (description, amount, target, technician_name, branch_id, expense_date, created_by) values ($1,$2,$3,$4,$5,$6,$7)",
+  const created = await queryOne<{ id: string }>(
+    "insert into expenses (description, amount, target, technician_name, branch_id, expense_date, created_by) values ($1,$2,$3,$4,$5,$6,$7) returning id",
     [description, amount, target, technicianName, branchId, expenseDate, actor.name]
+  );
+  await logActivity(
+    "expense",
+    created!.id,
+    `${actor.name} logged expense "${description}" (₱${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`,
+    actor.name
   );
   revalidatePath("/admin/sales");
   revalidatePath("/admin/sales/technicians");
@@ -3097,7 +3253,16 @@ export async function deleteExpense(formData: FormData) {
   if (!actor) return;
 
   const id = str(formData, "id");
+  const expense = await queryOne<{ description: string; amount: string }>("select description, amount from expenses where id=$1", [id]);
   await query("delete from expenses where id = $1", [id]);
+  if (expense) {
+    await logActivity(
+      "expense",
+      id,
+      `${actor.name} deleted expense "${expense.description}" (₱${Number(expense.amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`,
+      actor.name
+    );
+  }
   revalidatePath("/admin/sales");
   revalidatePath("/admin/sales/technicians");
   revalidatePath("/admin/sales/expenses");
