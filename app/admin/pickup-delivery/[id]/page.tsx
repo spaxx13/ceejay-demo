@@ -91,12 +91,15 @@ export default async function PickupDeliveryDetailPage({ params }: { params: Pro
   // page, scoped to wherever this job's device actually ends up (once the
   // rider marks it received at a branch) rather than the original queue —
   // the repair happens at the branch the device is physically at.
+  // The branch is the gate: every active technician assigned to the branch
+  // the device is at (Admin > Technicians > Branches) is offered. The
+  // per-technician "Pickup & Delivery" flag only orders them first — it's
+  // a preference, not a requirement, so a branch with none flagged still
+  // has someone to assign.
   const repairBranch = deliveredBranch ?? branches.find((b) => b.id === req.queueBranchId) ?? branches.find((b) => !b.address);
-  const assignableTechnicians = technicians.filter(
-    (t) =>
-      (t.active && t.canPickupDelivery && (repairBranch ? t.branchIds.includes(repairBranch.id) : true)) ||
-      t.id === req.assignedTechnicianId
-  );
+  const assignableTechnicians = technicians
+    .filter((t) => (t.active && (repairBranch ? t.branchIds.includes(repairBranch.id) : true)) || t.id === req.assignedTechnicianId)
+    .sort((a, b) => Number(b.canPickupDelivery) - Number(a.canPickupDelivery) || a.name.localeCompare(b.name));
   const openIssues = exceptions.filter((e) => e.requestId === req.id && !e.resolvedAt);
   const resolvedIssues = exceptions.filter((e) => e.requestId === req.id && e.resolvedAt);
 
@@ -220,13 +223,16 @@ export default async function PickupDeliveryDetailPage({ params }: { params: Pro
         {req.receivedAtShopAt && (
           <form action={reassignRequest} className="space-y-1.5">
             <input type="hidden" name="id" value={req.id} />
-            <label className="text-xs font-semibold text-slate-500">Technician (for the repair)</label>
+            <label className="text-xs font-semibold text-slate-500">
+              Technician (for the repair{repairBranch ? ` at ${repairBranch.name}` : ""})
+            </label>
             <div className="flex gap-1.5">
               <select name="technicianId" defaultValue={req.assignedTechnicianId ?? ""} className="input">
                 <option value="">Unassigned</option>
                 {assignableTechnicians.map((t) => (
                   <option key={t.id} value={t.id}>
                     {t.name}
+                    {t.canPickupDelivery ? " · Pickup & Delivery" : ""}
                   </option>
                 ))}
               </select>
@@ -234,6 +240,12 @@ export default async function PickupDeliveryDetailPage({ params }: { params: Pro
                 {technician ? "Reassign" : "Assign"}
               </button>
             </div>
+            {assignableTechnicians.length === 0 && (
+              <p className="text-[11px] text-amber-700">
+                No active technicians are assigned to {repairBranch?.name ?? "this branch"} yet — add the branch to a technician in Admin &gt;
+                Technicians.
+              </p>
+            )}
           </form>
         )}
 
