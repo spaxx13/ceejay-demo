@@ -7,7 +7,8 @@ import { jsonToFormData, parseJsonBody } from "@/lib/mobileFormData";
 // requirements. JSON keys mirror RiderStatusUpdateForm: requestId, status
 // (on_the_way | picked_up | heading_to_shop | delivered_to_branch),
 // deliveredBranchId, signatureDataUrl, securitySeal, existingDamageNotes,
-// condition_<item> ("ok" | "damaged"), photo_<front|back|left|right|topBottom|damage>.
+// condition_<key> ("pass" | "fail" | "na") + condition_notes_<key> for each
+// PICKUP_CONDITION_TEMPLATE key, photo_<front|back|left|right|top|bottom|damage>.
 // Several base64 photos ride in one body — Vercel's ~4.5MB cap applies, so
 // the app compresses each photo client-side first.
 export async function POST(req: NextRequest) {

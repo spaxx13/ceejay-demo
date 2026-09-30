@@ -2,23 +2,27 @@ import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { SITE_URL } from "@/lib/config";
 import { getBranches, getLookups, getRequests, getRiderById, pickupDeliveryStage } from "@/lib/db";
-import { DEVICE_CONDITION_ITEMS, type HomeServiceRequest } from "@/lib/types";
+import { PICKUP_CONDITION_TEMPLATE, type HomeServiceRequest } from "@/lib/types";
 
 // The rider's My Jobs board as JSON — a mirror of app/rider/page.tsx: the
 // on-duty flag, active branches, and the two legs scoped exactly as the
 // page scopes them (a pickup isn't done until the device is at the shop; a
 // delivery until it's delivered). Per-job flags/labels are precomputed here
 // so the app renders the same badges and default status the web card does.
-const CONDITION_LABELS: Record<(typeof DEVICE_CONDITION_ITEMS)[number], string> = {
-  front: "Front", back: "Back", leftSide: "Left Side", rightSide: "Right Side", top: "Top", bottom: "Bottom",
-  lcd: "LCD", touch: "Touch", camera: "Camera", housing: "Housing", buttons: "Buttons", chargingPort: "Charging Port",
-};
+// Condition checklist rows/results and photo slots mirror
+// components/DeviceConditionFields.tsx.
+const CONDITION_RESULT_OPTIONS = [
+  { value: "pass", label: "Pass" },
+  { value: "fail", label: "Fail" },
+  { value: "na", label: "N/A" },
+];
 const PHOTO_SLOTS = [
   { key: "front", label: "Front", required: true },
   { key: "back", label: "Back", required: true },
   { key: "left", label: "Left Side", required: true },
   { key: "right", label: "Right Side", required: true },
-  { key: "topBottom", label: "Top / Bottom", required: true },
+  { key: "top", label: "Top", required: true },
+  { key: "bottom", label: "Bottom", required: true },
   { key: "damage", label: "Damaged Area(s) (if any)", required: false },
 ];
 const RIDER_EXCEPTION_KINDS = [
@@ -123,7 +127,8 @@ export async function GET() {
       deliveries,
       pickupStatusOptions: PICKUP_STATUS_OPTIONS,
       deliveryStatusOptions: DELIVERY_STATUS_OPTIONS,
-      conditionItems: DEVICE_CONDITION_ITEMS.map((key) => ({ key, label: CONDITION_LABELS[key] })),
+      conditionItems: PICKUP_CONDITION_TEMPLATE.map((i) => ({ key: i.key, label: i.label, helpText: i.helpText })),
+      conditionResultOptions: CONDITION_RESULT_OPTIONS,
       photoSlots: PHOTO_SLOTS,
       exceptionKinds: RIDER_EXCEPTION_KINDS,
     },

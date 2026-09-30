@@ -94,7 +94,9 @@ import { createCheckoutSession as createPaymongoCheckoutSession, paymongoConfigu
 import { confirmBookingRows, type ConfirmBookingResult } from "./paymentProcessing";
 import { checkIcloudStatus } from "./sickw";
 import {
-  DEVICE_CONDITION_ITEMS,
+  PICKUP_CONDITION_TEMPLATE,
+  PICKUP_CONDITION_RESULTS,
+  type PickupConditionResult,
   REQUEST_EXCEPTION_KINDS,
   REQUEST_EXCEPTION_LABELS,
   type Role,
@@ -795,26 +797,31 @@ export async function riderUpdatePickupStatus(_prev: RiderStatusResult | undefin
     case "picked_up": {
       if (req.pickedUpAt) break;
 
-      // Full device-condition checklist — every item required, so a rider
-      // can't rush past a step they forgot to check.
-      const checklist: DeviceConditionChecklist = {};
-      for (const item of DEVICE_CONDITION_ITEMS) {
-        const v = str(formData, `condition_${item}`);
-        if (v === "ok" || v === "damaged") checklist[item] = v;
+      // Full device-condition checklist (same rows as the Home Service
+      // pre-repair checklist, see PICKUP_CONDITION_TEMPLATE) — every item
+      // needs a Pass/Fail/N/A, so a rider can't rush past a step they forgot
+      // to check. Field names: condition_<key>, condition_notes_<key>.
+      const checklist: DeviceConditionChecklist = { items: {} };
+      for (const item of PICKUP_CONDITION_TEMPLATE) {
+        const result = str(formData, `condition_${item.key}`);
+        if ((PICKUP_CONDITION_RESULTS as readonly string[]).includes(result)) {
+          checklist.items[item.key] = { result: result as PickupConditionResult, notes: str(formData, `condition_notes_${item.key}`) };
+        }
       }
-      const missingItem = DEVICE_CONDITION_ITEMS.find((item) => !checklist[item]);
-      if (missingItem) return { ok: false, error: "Please complete the full device condition checklist before marking it picked up." };
+      const missingItem = PICKUP_CONDITION_TEMPLATE.find((item) => !checklist.items[item.key]);
+      if (missingItem) return { ok: false, error: `Please mark "${missingItem.label}" (and every other checklist item) before marking it picked up.` };
       const existingDamageNotes = str(formData, "existingDamageNotes");
       if (existingDamageNotes) checklist.existingDamageNotes = existingDamageNotes;
 
-      // Labeled photos — front/back/sides/top-bottom required, a damage
-      // close-up only if there's actually damage to show.
+      // Labeled photos — front/back/left/right/top/bottom each required, a
+      // damage close-up only if there's actually damage to show.
       const photoSlots: { key: string; label: string; required: boolean }[] = [
         { key: "front", label: "the front", required: true },
         { key: "back", label: "the back", required: true },
         { key: "left", label: "the left side", required: true },
         { key: "right", label: "the right side", required: true },
-        { key: "topBottom", label: "the top and bottom", required: true },
+        { key: "top", label: "the top", required: true },
+        { key: "bottom", label: "the bottom", required: true },
         { key: "damage", label: "the damaged area(s)", required: false },
       ];
       const photos: PickupPhoto[] = [];
@@ -2179,7 +2186,9 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
   // (and be charged) once, no matter how many devices are in the booking;
   // each device still gets its own line with its own estimated repair cost.
   const address = [street, barangay, city, province].filter(Boolean).join(", ") || "Not specified";
-  const serviceFee = serviceFeeAmount(province, city);
+  // Pickup & Delivery has its own flat fee, not the per-province on-site
+  // visit fee — the quotation email/PDF label it accordingly.
+  const serviceFee = fulfillmentMode === "pickup_delivery" ? PICKUP_DELIVERY_FEE_PESOS : serviceFeeAmount(province, city);
   const [deviceModels, servicePrices] = await Promise.all([getDeviceModels(), getServicePrices()]);
   const quotationDevices = createdRequests.map((cr) => {
     const brand = allLookups.find((l) => l.id === cr.device.validDeviceBrandId);
