@@ -287,13 +287,13 @@ class Writer {
 
   // Customer + technician signatures, side by side, right after the
   // checklist they belong to — not collected at the bottom of the receipt.
-  async signatureRow(customerDataUrl: string | null, technicianDataUrl: string | null) {
+  async signatureRow(customerDataUrl: string | null, secondDataUrl: string | null, secondLabel = "Technician Signature") {
     const ROW_HEIGHT = SIG_H + 30; // box + label line + clearance before whatever comes next
     this.ensureSpace(ROW_HEIGHT);
     const topY = this.y;
     await this.signatureBox(MARGIN, "Customer Signature", customerDataUrl);
     this.y = topY;
-    await this.signatureBox(MARGIN + SIG_W + 24, "Technician Signature", technicianDataUrl);
+    await this.signatureBox(MARGIN + SIG_W + 24, secondLabel, secondDataUrl);
     this.y = topY - ROW_HEIGHT;
   }
 
@@ -436,6 +436,12 @@ export async function generateRepairReceiptPdf(opts: {
 
   return w.save();
 }
+
+// Manual (walk-in) repair tickets deliberately reuse generateRepairReceiptPdf
+// above rather than a separate template — the shop wants the exact same
+// invoice a normal Home Service/POS booking produces, not a lookalike, so
+// there's exactly one receipt layout to keep correct. See
+// lib/actions.ts submitManualChecklist/resendManualChecklistReceiptEmail.
 
 export async function generateQuotationPdf(opts: {
   referenceList: string;

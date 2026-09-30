@@ -32,6 +32,15 @@ function encodeSession(userId: string, expiresAt: number) {
   return `${payload}.${sign(payload)}`;
 }
 
+// Same signed value setSession puts in the cookie, exposed for the native
+// staff apps' login route (app/api/mobile/staff/login): they store it in
+// the Keychain and send it back as a Cookie header, so getCurrentUser()
+// works for them unchanged.
+export function createSessionValue(userId: string, remember: boolean): { value: string; expiresAt: number } {
+  const expiresAt = Date.now() + (remember ? REMEMBER_MS : SESSION_MS);
+  return { value: encodeSession(userId, expiresAt), expiresAt };
+}
+
 function decodeSession(value: string): string | null {
   const parts = value.split(".");
   if (parts.length !== 3) return null;

@@ -15,6 +15,7 @@ export type User = {
   canManageWalkIns: boolean; // whether this account can access/manage Walk-In Registrations (branch_admin scoping) — independent of canManageRequests, defaults to false for new/existing branch admins
   canWaiveServiceFee: boolean; // whether this account can waive a Home Service request's visit fee (branch_admin scoping) — independent of canManageRequests, defaults to false
   canManageRepairPricing: boolean; // whether this account can access Repair Pricing (branch_admin scoping) — independent of every other flag, defaults to false
+  canManageManualChecklists: boolean; // whether this account can access Manual Checklist & Receipt (technician scoping only — owner_admin/branch_admin always can), defaults to false
   phone: string; // optional — set by the account holder to opt into SMS alerts (new requests, technician status updates); blank means not opted in
   active: boolean;
 };
@@ -171,6 +172,12 @@ export type Technician = {
   // Falls back to 50 for a technician name with no matching record (e.g. a
   // typo, or a name no longer in the system).
   earningsSharePercent: number;
+  // Whether this technician can be assigned a Pickup & Delivery repair (once
+  // the rider brings the device to a branch) — set per technician on
+  // Settings > Technicians. Not every home-service technician is meant to
+  // also take Pickup & Delivery jobs, so the assignment dropdown on Admin >
+  // Pickup & Delivery only offers technicians with this on.
+  canPickupDelivery: boolean;
 };
 
 // A courier who handles the pickup/delivery legs of a Pickup & Delivery
@@ -353,7 +360,7 @@ export type HomeServiceRequest = {
   backHousingColor: string; // only meaningful/required when the chosen service type is "Back Housing (whole shell)"
   reminderSentAt: string | null; // set once the daily appointment-reminder cron has texted this customer
   confirmationToken: string | null; // null when no email was captured to send the confirm link to
-  confirmationExpiresAt: string | null; // 2 hours after submission — the void-unconfirmed-requests cron cancels the request once this passes with confirmedAt still null
+  confirmationExpiresAt: string | null; // BOOKING_CONFIRMATION_WINDOW_MINUTES after submission — the void-unconfirmed-requests cron cancels the request once this passes with confirmedAt still null
   confirmedAt: string | null; // set when the customer clicks the confirm link in their quotation email
   bookingGroupId: string | null; // shared by every device from the same "+ Add Another Device" submission — one technician assignment cascades to the whole group, since it's one visit to one address
   downpaymentRequired: boolean; // true for DOWNPAYMENT_PROVINCES (lib/homeServiceFees.ts) — the booking can't be confirmed until downpaymentStatus is "paid"
@@ -539,7 +546,7 @@ export type RepairRecord = {
 
 export type ActivityLog = {
   id: string;
-  entityType: "customer" | "lead" | "home_service_request" | "walkin_request";
+  entityType: "customer" | "lead" | "home_service_request" | "walkin_request" | "manual_checklist";
   entityId: string;
   message: string;
   actor: string; // user name or "System"
@@ -634,6 +641,50 @@ export type ServiceAgreement = {
   priceEditCount: number; // how many times the technician has self-corrected cost/laborCost after completion — capped at 3
   completedAt: string;
   sentToCustomerAt: string | null; // set once the receipt email actually sends successfully
+  createdAt: string;
+};
+
+// A standalone repair ticket for a customer who isn't otherwise in the
+// system (no online booking, no POS sale) — e.g. a walk-in drop-off. Mirrors
+// RepairRecord: the parent "ticket" (this type) plus one or two
+// ManualChecklist phases (pre/post-repair) below. Deliberately lighter than
+// RepairRecord — no pricing/parts-cost fields, no CRM customer linking —
+// see RepairRecord + ServiceAgreement for the full priced POS flow instead.
+export type ManualRepairRecord = {
+  id: string;
+  reference: string; // e.g. MC-2026-0001
+  branchId: string | null;
+  createdByUserId: string | null;
+  createdByName: string;
+  customerName: string;
+  customerPhone: string;
+  customerEmail: string;
+  deviceLabel: string;
+  issueDescription: string; // the reported problem — shown as "Nature of Repair" on the invoice, same as a normal booking's issueDescription
+  createdAt: string;
+  deletedAt: string | null;
+};
+
+// One phase (pre or post-repair) of a ManualRepairRecord — same shape and
+// purpose as ServiceAgreement.
+export type ManualChecklist = {
+  id: string;
+  manualRecordId: string;
+  phase: ChecklistPhase;
+  items: ChecklistItem[];
+  summaryNotes: string;
+  agreedToTerms: boolean; // only collected/required for phase === "post_repair"
+  warrantyCoverage: string; // only collected/required for phase === "post_repair"
+  cost: number; // repair price — only collected for phase === "post_repair"; 0/unused for pre-repair
+  partsCost: number; // internal-only, deducted on Sales for net profit — never shown to the customer or on the receipt
+  laborCost: number; // service fee — added to cost for the customer-facing Total Amount
+  otherExpenses: number; // internal-only, same scope as partsCost
+  technicianName: string; // whoever actually completed THIS phase — the parent record's createdByName is only who opened the ticket
+  receiptPhotoDataUrl: string | null; // optional, phase === "post_repair" only
+  customerSignatureDataUrl: string | null;
+  staffSignatureDataUrl: string | null;
+  completedAt: string | null;
+  sentToCustomerAt: string | null; // set once the receipt email actually sends successfully (phase === "post_repair" only)
   createdAt: string;
 };
 

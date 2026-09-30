@@ -22,6 +22,7 @@ type UserRow = {
   canManageWalkIns: boolean;
   canWaiveServiceFee: boolean;
   canManageRepairPricing: boolean;
+  canManageManualChecklists: boolean;
   phone: string;
   active: boolean;
 };
@@ -242,6 +243,21 @@ export default function UserManager({
                   <p className="text-[11px] text-slate-400">Creates a new linked Technician record with these branch(es).</p>
                 </div>
               )}
+              <div className="space-y-1.5">
+                <label className="flex items-center gap-1.5 text-sm text-slate-700">
+                  <input
+                    type="checkbox"
+                    name="canManageManualChecklists"
+                    defaultChecked={editing?.canManageManualChecklists ?? false}
+                    className="h-4 w-4 rounded border-slate-300"
+                  />
+                  Can access Manual Checklist &amp; Receipt
+                </label>
+                <p className="text-[11px] text-slate-400">
+                  Off by default. Owner/branch admins always have access to this — check this to let this specific technician account
+                  create manual device checklists and receipts too.
+                </p>
+              </div>
             </div>
           )}
           {role === "rider" && (

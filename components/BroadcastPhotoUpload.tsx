@@ -2,16 +2,19 @@
 
 import { useRef, useState } from "react";
 import { compressImage } from "@/lib/imageCompress";
+import { captureNativePhoto } from "@/lib/nativePhotoCapture";
+import { useIsNativePlatform } from "@/lib/useLiveLocationSharing";
 
 const MAX_PHOTOS = 4;
 
 export default function BroadcastPhotoUpload({ name = "photos" }: { name?: string }) {
+  const isNative = useIsNativePlatform();
   const inputRef = useRef<HTMLInputElement>(null);
   const [photos, setPhotos] = useState<string[]>([]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
-  async function handleFiles(files: FileList | null) {
+  async function handleFiles(files: FileList | File[] | null) {
     setError("");
     if (!files || files.length === 0) return;
     const room = MAX_PHOTOS - photos.length;
@@ -40,6 +43,23 @@ export default function BroadcastPhotoUpload({ name = "photos" }: { name?: strin
     } finally {
       setBusy(false);
       if (inputRef.current) inputRef.current.value = "";
+    }
+  }
+
+  // On the native app, use the OS camera/photo-library picker instead of the
+  // <input type="file"> below — see lib/nativePhotoCapture.ts for why that
+  // input can make the app appear to close when the camera opens.
+  async function handleNativeCapture() {
+    setError("");
+    if (photos.length >= MAX_PHOTOS) {
+      setError(`You can attach at most ${MAX_PHOTOS} photos.`);
+      return;
+    }
+    try {
+      const file = await captureNativePhoto();
+      if (file) await handleFiles([file]);
+    } catch {
+      setError("Couldn't get that photo — please try again.");
     }
   }
 
@@ -73,17 +93,27 @@ export default function BroadcastPhotoUpload({ name = "photos" }: { name?: strin
         </div>
       )}
 
-      {photos.length < MAX_PHOTOS && (
-        <input
-          ref={inputRef}
-          type="file"
-          accept="image/*"
-          multiple
-          disabled={busy}
-          onChange={(e) => handleFiles(e.target.files)}
-          className="input cursor-pointer file:mr-3 file:cursor-pointer file:rounded-full file:border-0 file:bg-slate-200 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-slate-700"
-        />
-      )}
+      {photos.length < MAX_PHOTOS &&
+        (isNative ? (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={handleNativeCapture}
+            className="rounded-full border-0 bg-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 disabled:opacity-50"
+          >
+            Add Photo
+          </button>
+        ) : (
+          <input
+            ref={inputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            disabled={busy}
+            onChange={(e) => handleFiles(e.target.files)}
+            className="input cursor-pointer file:mr-3 file:cursor-pointer file:rounded-full file:border-0 file:bg-slate-200 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-slate-700"
+          />
+        ))}
       {busy && <p className="text-[11px] text-slate-400">Processing photo...</p>}
       {error && <p className="text-xs text-red-600">{error}</p>}
     </div>

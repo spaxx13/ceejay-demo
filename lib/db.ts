@@ -21,6 +21,8 @@ import type {
   RequestFormContent,
   CustomFormField,
   ServiceAgreement,
+  ManualRepairRecord,
+  ManualChecklist,
   RepairProgress,
   Notification,
   Expense,
@@ -36,8 +38,9 @@ import type {
   RequestExceptionKind,
 } from "./types";
 import { sendPushToUsers } from "./push";
+import { sendPushToTokens } from "./pushNotifications";
 import { sendSms, smsConfigured } from "./sms";
-import { serviceFeeAmount } from "./homeServiceFees";
+import { quotedServiceFee } from "./homeServiceFees";
 
 // Single pooled connection, reused across invocations within the same
 // serverless instance (and across all of local dev). Uses the pooled
@@ -95,6 +98,7 @@ type UserRow = {
   can_manage_walkins: boolean;
   can_waive_service_fee: boolean;
   can_manage_repair_pricing: boolean;
+  can_manage_manual_checklists: boolean;
   phone: string;
   active: boolean;
 };
@@ -114,6 +118,7 @@ function mapUser(r: UserRow): User {
     canManageWalkIns: r.can_manage_walkins,
     canWaiveServiceFee: r.can_waive_service_fee,
     canManageRepairPricing: r.can_manage_repair_pricing,
+    canManageManualChecklists: r.can_manage_manual_checklists,
     phone: r.phone,
     active: r.active,
   };
@@ -238,6 +243,27 @@ export function canManageRepairPricing(user: Pick<User, "role" | "canManageRepai
   return user.role === "owner_admin" || (user.role === "branch_admin" && user.canManageRepairPricing);
 }
 
+// True when this account is allowed to use Manual Checklist & Receipt.
+// Unlike the flags above, this one gates *technicians* (owner_admin and
+// branch_admin always have it, same as they always have POS) — the owner
+// picks which specific technician accounts get it.
+export function canManageManualChecklists(user: Pick<User, "role" | "canManageManualChecklists"> | null) {
+  if (!user) return false;
+  if (user.role === "owner_admin" || user.role === "branch_admin") return true;
+  return user.role === "technician" && user.canManageManualChecklists;
+}
+
+// A technician can only open their own manual repair tickets (not every
+// technician's); an admin is scoped by branch like every other list here.
+export function canViewManualRecord(
+  user: (Pick<User, "role" | "canManageManualChecklists" | "assignedBranchIds"> & { id: string }) | null,
+  record: Pick<ManualRepairRecord, "branchId" | "createdByUserId">
+) {
+  if (!canManageManualChecklists(user)) return false;
+  if (user!.role === "technician") return record.createdByUserId === user!.id;
+  return !isBranchHidden(user, record.branchId);
+}
+
 type BranchRow = {
   id: string; name: string; address: string; contact_number: string; home_service_queue: Branch["homeServiceQueue"]; active: boolean;
   lat: number | string | null; lng: number | string | null;
@@ -251,12 +277,13 @@ function mapBranch(r: BranchRow): Branch {
 
 type TechnicianRow = {
   id: string; name: string; contact_number: string; email: string; employment_status: Technician["employmentStatus"];
-  branch_ids: string[]; active: boolean; earnings_share_percent: string | number;
+  branch_ids: string[]; active: boolean; earnings_share_percent: string | number; can_pickup_delivery: boolean;
 };
 function mapTechnician(r: TechnicianRow): Technician {
   return {
     id: r.id, name: r.name, contactNumber: r.contact_number, email: r.email, employmentStatus: r.employment_status,
     branchIds: r.branch_ids ?? [], active: r.active, earningsSharePercent: Number(r.earnings_share_percent ?? 50),
+    canPickupDelivery: r.can_pickup_delivery,
   };
 }
 
@@ -611,6 +638,15 @@ export async function getCustomerById(id: string) {
   const row = await queryOne<CustomerRow>("select * from customers where id = $1", [id]);
   return row ? mapCustomer(row) : null;
 }
+// Customer app login — phone is the only identifier a customer logs in
+// with (no password), same normalized-digits comparison the booking forms
+// already use to dedupe customers by phone.
+export async function getCustomerByPhone(phone: string) {
+  const rows = await query<CustomerRow>("select * from customers where replace(replace(phone, ' ', ''), '-', '') = $1", [
+    phone.replace(/[\s-]/g, ""),
+  ]);
+  return rows[0] ? mapCustomer(rows[0]) : null;
+}
 export async function getLookups() {
   return (await query<LookupRow>("select * from lookups order by kind, order_num")).map(mapLookup);
 }
@@ -732,6 +768,35 @@ export async function claimHomeServiceDownpaymentAsPaid(token: string, paymongoP
 export async function getRequestsByBookingGroup(groupId: string) {
   return (await query<RequestRow>("select * from home_service_requests where booking_group_id = $1", [groupId])).map(mapRequest);
 }
+// The customer app's "My Bookings" dashboard — every request (any
+// fulfillment mode, any status) linked to this customer, newest first.
+// Excludes trashed rows the same way getRequests() does; a deleted
+// booking isn't something the customer should keep seeing.
+export async function getRequestsByCustomerId(customerId: string) {
+  return (
+    await query<RequestRow>("select * from home_service_requests where customer_id = $1 and deleted_at is null order by created_at desc", [
+      customerId,
+    ])
+  ).map(mapRequest);
+}
+
+// A customer's registered push-notification device(s) — a phone can be
+// re-registered (token rotates on reinstall) so this upserts on the token
+// itself, keyed to whichever customer is currently signed in.
+export async function saveCustomerPushToken(customerId: string, token: string) {
+  await query(
+    "insert into customer_push_tokens (customer_id, token) values ($1, $2) on conflict (token) do update set customer_id = excluded.customer_id",
+    [customerId, token],
+  );
+}
+
+export async function getCustomerPushTokens(customerId: string) {
+  return (await query<{ token: string }>("select token from customer_push_tokens where customer_id = $1", [customerId])).map((r) => r.token);
+}
+
+export async function deleteCustomerPushToken(token: string) {
+  await query("delete from customer_push_tokens where token = $1", [token]);
+}
 
 type RequestExceptionRow = {
   id: string;
@@ -849,8 +914,88 @@ export async function getRequestFormContent(): Promise<RequestFormContent> {
 export async function getCustomFormFields() {
   return (await query<CustomFieldRow>("select * from custom_form_fields order by order_num")).map(mapCustomField);
 }
+// Every agreement, WITHOUT the three base64 columns (signatures, receipt
+// photo) — those come back as null. `select *` over this table pulls every
+// job's signature/photo blobs into memory, and as completed jobs pile up
+// that's enough to blow a serverless function's time/memory budget and 5xx
+// the POS list, dashboard, and Sales pages. Nothing that lists or totals
+// agreements ever renders those blobs; the per-job screens that do use the
+// ...ForRequest / ...ForRepairRecord loaders below, which fetch full rows
+// for one job only.
+type ServiceAgreementLightRow = Omit<ServiceAgreementRow, "customer_signature_data_url" | "technician_signature_data_url" | "receipt_photo_data_url">;
+const SERVICE_AGREEMENT_LIGHT_COLUMNS =
+  "id, request_id, repair_record_id, phase, reference, customer_name, device_label, branch_id, technician_id, technician_name, " +
+  "items, summary_notes, agreed_to_terms, warranty_coverage, cost, parts_cost, labor_cost, other_expenses, price_edit_count, " +
+  "completed_at, sent_to_customer_at, created_at";
 export async function getServiceAgreements() {
-  return (await query<ServiceAgreementRow>("select * from service_agreements order by created_at desc")).map(mapServiceAgreement);
+  const rows = await query<ServiceAgreementLightRow>(`select ${SERVICE_AGREEMENT_LIGHT_COLUMNS} from service_agreements order by created_at desc`);
+  return rows.map((r) =>
+    mapServiceAgreement({ ...r, customer_signature_data_url: null, technician_signature_data_url: null, receipt_photo_data_url: null })
+  );
+}
+// Full rows (blobs included) for one job's pre/post pair — the only shape
+// the checklist/receipt screens and receipt emails need.
+export async function getServiceAgreementsForRequest(requestId: string) {
+  return (await query<ServiceAgreementRow>("select * from service_agreements where request_id=$1 order by created_at desc", [requestId])).map(mapServiceAgreement);
+}
+export async function getServiceAgreementsForRepairRecord(repairRecordId: string) {
+  return (
+    await query<ServiceAgreementRow>("select * from service_agreements where repair_record_id=$1 order by created_at desc", [repairRecordId])
+  ).map(mapServiceAgreement);
+}
+
+type ManualRepairRecordRow = {
+  id: string; reference: string; branch_id: string | null; created_by_user_id: string | null; created_by_name: string;
+  customer_name: string; customer_phone: string; customer_email: string; device_label: string; issue_description: string;
+  created_at: Date; deleted_at: Date | null;
+};
+function mapManualRepairRecord(r: ManualRepairRecordRow): ManualRepairRecord {
+  return {
+    id: r.id, reference: r.reference, branchId: r.branch_id, createdByUserId: r.created_by_user_id, createdByName: r.created_by_name,
+    customerName: r.customer_name, customerPhone: r.customer_phone, customerEmail: r.customer_email, deviceLabel: r.device_label,
+    issueDescription: r.issue_description ?? "",
+    createdAt: toIso(r.created_at), deletedAt: toIsoOrNull(r.deleted_at),
+  };
+}
+export async function getManualRepairRecords() {
+  return (await query<ManualRepairRecordRow>("select * from manual_repair_records where deleted_at is null order by created_at desc")).map(
+    mapManualRepairRecord
+  );
+}
+export async function getManualRepairRecordById(id: string) {
+  const row = await queryOne<ManualRepairRecordRow>("select * from manual_repair_records where id=$1", [id]);
+  return row ? mapManualRepairRecord(row) : null;
+}
+
+type ManualChecklistRow = {
+  id: string; manual_record_id: string; phase: ManualChecklist["phase"]; items: ManualChecklist["items"]; summary_notes: string;
+  agreed_to_terms: boolean; warranty_coverage: string; cost: string; parts_cost: string; labor_cost: string; other_expenses: string;
+  technician_name: string;
+  receipt_photo_data_url: string | null;
+  customer_signature_data_url: string | null; staff_signature_data_url: string | null;
+  completed_at: Date | null; sent_to_customer_at: Date | null; created_at: Date;
+};
+function mapManualChecklist(r: ManualChecklistRow): ManualChecklist {
+  return {
+    id: r.id, manualRecordId: r.manual_record_id, phase: r.phase, items: r.items ?? [], summaryNotes: r.summary_notes,
+    agreedToTerms: r.agreed_to_terms, warrantyCoverage: r.warranty_coverage ?? "",
+    cost: Number(r.cost ?? 0), partsCost: Number(r.parts_cost ?? 0), laborCost: Number(r.labor_cost ?? 0), otherExpenses: Number(r.other_expenses ?? 0),
+    technicianName: r.technician_name ?? "",
+    receiptPhotoDataUrl: r.receipt_photo_data_url,
+    customerSignatureDataUrl: r.customer_signature_data_url, staffSignatureDataUrl: r.staff_signature_data_url,
+    completedAt: toIsoOrNull(r.completed_at), sentToCustomerAt: toIsoOrNull(r.sent_to_customer_at), createdAt: toIso(r.created_at),
+  };
+}
+export async function getManualChecklists() {
+  return (await query<ManualChecklistRow>("select * from manual_checklists order by created_at desc")).map(mapManualChecklist);
+}
+
+// Derives a manual repair ticket's workflow status the same way
+// getRepairRecordStatus does for RepairRecord — no separate status column,
+// just whether a post-repair phase exists yet for this ticket.
+export type ManualRecordStatus = "pending" | "completed";
+export function getManualRecordStatus(record: ManualRepairRecord, checklists: ManualChecklist[]): ManualRecordStatus {
+  return checklists.some((c) => c.manualRecordId === record.id && c.phase === "post_repair") ? "completed" : "pending";
 }
 
 export const HOME_SERVICE_COMPANY_SHARE = 0.3;
@@ -883,13 +1028,21 @@ export type HomeServiceSalesRow = {
 // canonicalTechnicianName, so a name typed in a different case doesn't split
 // one technician into multiple rows; omit only where the caller has no
 // technicians list handy and grouping precision doesn't matter.
-export function homeServiceSalesByTechnician(
+type SalesRequestPick = Pick<HomeServiceRequest, "id" | "serviceFeeWaived" | "province" | "city" | "fulfillmentMode">;
+
+// Shared backing for homeServiceSalesByTechnician (on-site visits) and
+// pickupDeliverySalesByTechnician (Pickup & Delivery) below — a job from one
+// fulfillment mode is never counted in the other's totals, so on-site home
+// service revenue and Pickup & Delivery revenue stay fully separate
+// everywhere this is used (Sales, Dashboard, Requests page).
+function salesByTechnicianForMode(
   agreements: ServiceAgreement[],
   inRange: (date: string) => boolean,
-  requests: Pick<HomeServiceRequest, "id" | "serviceFeeWaived" | "province" | "city">[] = [],
-  technicians: Pick<Technician, "name">[] = []
+  requests: SalesRequestPick[],
+  technicians: Pick<Technician, "name">[],
+  mode: "on_site" | "pickup_delivery"
 ): HomeServiceSalesRow[] {
-  const requestById = new Map(requests.map((r) => [r.id, r]));
+  const requestById = new Map(requests.filter((r) => r.fulfillmentMode === mode).map((r) => [r.id, r]));
   const homeServiceJobs = agreements.filter((a) => a.phase === "post_repair" && a.requestId && inRange(a.completedAt.slice(0, 10)));
 
   type TechTotals = { name: string; count: number; totalAmount: number; partsCost: number; jobs: { deviceLabel: string; amount: number }[] };
@@ -902,10 +1055,14 @@ export function homeServiceSalesByTechnician(
 
   for (const a of homeServiceJobs) {
     const request = a.requestId ? requestById.get(a.requestId) : undefined;
-    if (a.requestId && !request) continue; // request moved to Trash — excluded from Sales until restored
+    if (a.requestId && !request) continue; // trashed, or belongs to the other fulfillment mode — excluded either way
     const bucket = ensure(a.technicianName);
-    const waivedFee = request?.serviceFeeWaived ? serviceFeeAmount(request.province, request.city) ?? 0 : 0;
-    const amount = Math.max(0, a.cost + a.laborCost - waivedFee);
+    // labor_cost holds the service fee the customer was charged. Checklists
+    // completed after the fee was waived already store ₱0 there (lib/actions
+    // submitChecklist), so only subtract the waived fee from what was
+    // actually stored — never below zero — to avoid double-counting it.
+    const waivedFee = request?.serviceFeeWaived ? quotedServiceFee(request) : 0;
+    const amount = Math.max(0, a.cost + Math.max(0, a.laborCost - waivedFee));
     bucket.count += 1;
     bucket.totalAmount += amount;
     bucket.partsCost += a.partsCost;
@@ -922,6 +1079,34 @@ export function homeServiceSalesByTechnician(
       if (b.name === "Unassigned") return -1;
       return b.totalAmount - a.totalAmount;
     });
+}
+
+// requests (optional — defaults to none; every call site passes
+// getRequests()'s non-deleted list): only its on_site rows are matched, so
+// a job tied to a Pickup & Delivery request is silently excluded here, same
+// as one that's been moved to Trash. technicians (optional) resolves each
+// job's raw typed name to its configured Settings > Technicians casing.
+export function homeServiceSalesByTechnician(
+  agreements: ServiceAgreement[],
+  inRange: (date: string) => boolean,
+  requests: SalesRequestPick[] = [],
+  technicians: Pick<Technician, "name">[] = []
+): HomeServiceSalesRow[] {
+  return salesByTechnicianForMode(agreements, inRange, requests, technicians, "on_site");
+}
+
+// Same shape as homeServiceSalesByTechnician, but only its pickup_delivery
+// rows are matched — powers the dedicated Sales > Pickup & Delivery page,
+// kept fully separate from Sales > Home Service (and everywhere else
+// homeServiceSalesByTechnician is used) so the two revenue streams never
+// mix in a total.
+export function pickupDeliverySalesByTechnician(
+  agreements: ServiceAgreement[],
+  inRange: (date: string) => boolean,
+  requests: SalesRequestPick[] = [],
+  technicians: Pick<Technician, "name">[] = []
+): HomeServiceSalesRow[] {
+  return salesByTechnicianForMode(agreements, inRange, requests, technicians, "pickup_delivery");
 }
 
 export function sumHomeServiceSales(rows: HomeServiceSalesRow[]) {
@@ -1227,6 +1412,25 @@ export async function getPushSubscriptions() {
   return (await query<PushSubscriptionRow>("select * from push_subscriptions")).map(mapPushSubscription);
 }
 
+// FCM device tokens for the staff apps (Admin, and later
+// Technician/Rider) — Web Push doesn't work inside the Capacitor WKWebView
+// shell, so staff notifications also fan out here alongside push_subscriptions.
+export async function saveStaffPushToken(userId: string, token: string) {
+  await query(
+    "insert into staff_push_tokens (user_id, token) values ($1, $2) on conflict (token) do update set user_id = excluded.user_id",
+    [userId, token],
+  );
+}
+
+export async function getStaffPushTokens(userIds: string[]) {
+  if (userIds.length === 0) return [];
+  return (await query<{ token: string }>("select token from staff_push_tokens where user_id = any($1)", [userIds])).map((r) => r.token);
+}
+
+export async function deleteStaffPushToken(token: string) {
+  await query("delete from staff_push_tokens where token = $1", [token]);
+}
+
 // Shared by notifyAdmins/notifyAdminsAboutWalkIn — writes the in-app
 // notification row (the caller already built the right INSERT for whichever
 // target column it points at) and best-effort fans it out to web push + SMS.
@@ -1239,17 +1443,28 @@ async function notifyAdminsCore(insertSql: string, insertParams: unknown[], url:
   try {
     const admins = (await getUsers()).filter((u) => u.active && (u.role === "owner_admin" || u.role === "branch_admin"));
 
-    const subs = await getPushSubscriptions();
     const adminIds = new Set(admins.map((a) => a.id));
+    // Included on every push so the home-screen icon badge updates from the
+    // service worker/native app even while it's closed — same unread count
+    // getNotifications()'s caller already shows in the sidebar.
+    const unread = await queryOne<{ n: number }>("select count(*)::int as n from notifications where read_at is null");
+
+    const subs = await getPushSubscriptions();
     const recipientSubs = subs.filter((s) => adminIds.has(s.userId));
     if (recipientSubs.length > 0) {
-      // Included on every push so the home-screen icon badge updates from
-      // the service worker even while the app is closed — same unread
-      // count getNotifications()'s caller already shows in the sidebar.
-      const unread = await queryOne<{ n: number }>("select count(*)::int as n from notifications where read_at is null");
       const { expiredEndpoints } = await sendPushToUsers(recipientSubs, { title: "Ceejay Admin", body: message, url, badgeCount: unread?.n ?? undefined });
       if (expiredEndpoints.length > 0) {
         await query("delete from push_subscriptions where endpoint = any($1)", [expiredEndpoints]);
+      }
+    }
+
+    // FCM, for the native Ceejay Admin app — Web Push above doesn't reach
+    // it, since Capacitor's WKWebView shell has no Service Worker/Push API.
+    const staffTokens = await getStaffPushTokens([...adminIds]);
+    if (staffTokens.length > 0) {
+      const { expiredTokens } = await sendPushToTokens(staffTokens, "Ceejay Admin", message, url);
+      if (expiredTokens.length > 0) {
+        await Promise.all(expiredTokens.map((token) => deleteStaffPushToken(token)));
       }
     }
 
@@ -1314,18 +1529,28 @@ export async function notifyTechnician(technicianId: string, message: string, ur
     const techUser = await queryOne<{ id: string }>("select id from users where technician_id = $1 and active", [technicianId]);
     if (!techUser) return;
 
-    const subs = (await getPushSubscriptions()).filter((s) => s.userId === techUser.id);
-    if (subs.length === 0) return;
-
     // Badge count = jobs assigned to this technician that they haven't
     // started yet ("Assigned" status, not yet moved to En Route/In
     // Progress) — the same "new job" count the technician layout badges
     // with on open, kept in sync here so it also updates while the app is
     // closed. See getUnstartedJobCount below.
     const badgeCount = await getUnstartedJobCount(technicianId);
-    const { expiredEndpoints } = await sendPushToUsers(subs, { title: "Ceejay", body: message, url, badgeCount });
-    if (expiredEndpoints.length > 0) {
-      await query("delete from push_subscriptions where endpoint = any($1)", [expiredEndpoints]);
+
+    const subs = (await getPushSubscriptions()).filter((s) => s.userId === techUser.id);
+    if (subs.length > 0) {
+      const { expiredEndpoints } = await sendPushToUsers(subs, { title: "Ceejay", body: message, url, badgeCount });
+      if (expiredEndpoints.length > 0) {
+        await query("delete from push_subscriptions where endpoint = any($1)", [expiredEndpoints]);
+      }
+    }
+
+    // FCM, for the native Technician app — Web Push above doesn't reach it.
+    const staffTokens = await getStaffPushTokens([techUser.id]);
+    if (staffTokens.length > 0) {
+      const { expiredTokens } = await sendPushToTokens(staffTokens, "Ceejay", message, url);
+      if (expiredTokens.length > 0) {
+        await Promise.all(expiredTokens.map((token) => deleteStaffPushToken(token)));
+      }
     }
   } catch {
     // Best-effort — see notifyAdmins above.
@@ -1343,11 +1568,20 @@ export async function notifyRider(riderId: string, message: string, url: string)
     if (!riderUser) return;
 
     const subs = (await getPushSubscriptions()).filter((s) => s.userId === riderUser.id);
-    if (subs.length === 0) return;
+    if (subs.length > 0) {
+      const { expiredEndpoints } = await sendPushToUsers(subs, { title: "Ceejay", body: message, url });
+      if (expiredEndpoints.length > 0) {
+        await query("delete from push_subscriptions where endpoint = any($1)", [expiredEndpoints]);
+      }
+    }
 
-    const { expiredEndpoints } = await sendPushToUsers(subs, { title: "Ceejay", body: message, url });
-    if (expiredEndpoints.length > 0) {
-      await query("delete from push_subscriptions where endpoint = any($1)", [expiredEndpoints]);
+    // FCM, for the native Rider app — Web Push above doesn't reach it.
+    const staffTokens = await getStaffPushTokens([riderUser.id]);
+    if (staffTokens.length > 0) {
+      const { expiredTokens } = await sendPushToTokens(staffTokens, "Ceejay", message, url);
+      if (expiredTokens.length > 0) {
+        await Promise.all(expiredTokens.map((token) => deleteStaffPushToken(token)));
+      }
     }
   } catch {
     // Best-effort — see notifyAdmins above.

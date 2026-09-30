@@ -24,6 +24,7 @@ export default async function UsersPage() {
     canManageWalkIns: u.canManageWalkIns,
     canWaiveServiceFee: u.canWaiveServiceFee,
     canManageRepairPricing: u.canManageRepairPricing,
+    canManageManualChecklists: u.canManageManualChecklists,
     phone: u.phone,
     active: u.active,
   }));

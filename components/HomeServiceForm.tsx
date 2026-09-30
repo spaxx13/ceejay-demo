@@ -2,7 +2,7 @@
 
 import { Fragment, useActionState, useEffect, useRef, useState } from "react";
 import { submitHomeServiceRequest, sendHomeServiceOtp, verifyHomeServiceOtp, confirmBookingFromForm } from "@/lib/actions";
-import { OTP_GATE_ENABLED, BOOKING_CONFIRMATION_WINDOW_HOURS } from "@/lib/config";
+import { OTP_GATE_ENABLED, BOOKING_CONFIRMATION_WINDOW_MINUTES } from "@/lib/config";
 import {
   PROVINCE_FEES,
   SUNDAY_ONLY_PROVINCES,
@@ -183,11 +183,36 @@ export default function HomeServiceForm({
   // Captured on submit purely to display "we sent your quotation to X" on
   // the success screen — independent of the phone-based OTP gate above.
   const [sentEmail, setSentEmail] = useState("");
+  // Same idea, for the "Save your account to track this?" prompt on the
+  // success screen — captured generically here (not from sentPhone above)
+  // since that one is only ever set when the OTP gate actually ran, and a
+  // guest can submit successfully with the gate off.
+  const [bookedPhone, setBookedPhone] = useState("");
+
+  // Same admin toggle as the Street field's own "required" setting (they're
+  // rendered together, the pin being the more exact of the two) — checked
+  // at every submit path below since the lat/lng hidden inputs can't carry
+  // native HTML5 "required" validation (hidden inputs are excluded from
+  // constraint validation entirely).
+  const streetField = fields.find((f) => f.systemKey === "street");
+  const pinRequired = streetField?.active === true && streetField.required;
+  const [pinError, setPinError] = useState("");
+  const pinSectionRef = useRef<HTMLDivElement>(null);
+  function validatePin(required: boolean): boolean {
+    if (required && (lat === null || lng === null)) {
+      setPinError("Please pin your exact location on the map.");
+      pinSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      return false;
+    }
+    setPinError("");
+    return true;
+  }
 
   async function handleProceedToOtp() {
     const form = formRef.current;
     if (!form) return;
     if (!form.reportValidity()) return; // surfaces the browser's native "please fill this in" on any missing required field
+    if (!validatePin(pinRequired)) return;
     const phone = String(new FormData(form).get("phone") ?? "").trim();
     setOtpError("");
     setSendingOtp(true);
@@ -244,6 +269,10 @@ export default function HomeServiceForm({
         setOtpError("Some details above are missing or invalid — please scroll up, fix the highlighted field, and try again.");
         return;
       }
+      if (!validatePin(pinRequired)) {
+        setOtpError("Please pin your exact location on the map, then try again.");
+        return;
+      }
       form.requestSubmit();
     } catch {
       setOtpError("Something went wrong submitting your request — please try again.");
@@ -288,7 +317,7 @@ export default function HomeServiceForm({
               {mode === "pickup_delivery"
                 ? `Pickup & Delivery bookings require a ₱${(state.downpaymentAmount ?? 0).toLocaleString()}.00 Booking, Diagnostic & Delivery Fee via QR Ph before we can confirm your booking and assign a rider — this covers pickup, diagnosis, and delivery back to you, so there's nothing more to pay when your device comes back.`
                 : `Home Service bookings in your area require a ₱${(state.downpaymentAmount ?? 0).toLocaleString()}.00 down payment via QR Ph before we can confirm your booking.`}{" "}
-              Please pay within {BOOKING_CONFIRMATION_WINDOW_HOURS} hours, or your request will be automatically cancelled.
+              Please pay within {BOOKING_CONFIRMATION_WINDOW_MINUTES} minutes, or your request will be automatically cancelled.
             </p>
             <a href={state.confirmationUrl} className="btn-primary mt-3 inline-block">
               {mode === "pickup_delivery" ? "Pay Booking, Diagnostic & Delivery Fee Now" : "Pay Down Payment Now"}
@@ -348,7 +377,7 @@ export default function HomeServiceForm({
                   </button>
                 </form>
                 <p className="text-center text-[11px] text-slate-400">
-                  Please confirm within {BOOKING_CONFIRMATION_WINDOW_HOURS} hours, or your request will be automatically cancelled.
+                  Please confirm within {BOOKING_CONFIRMATION_WINDOW_MINUTES} minutes, or your request will be automatically cancelled.
                   {sentEmail && <> We also emailed a copy of this quotation to {sentEmail} for your records.</>}
                 </p>
               </div>
@@ -359,6 +388,18 @@ export default function HomeServiceForm({
           <a href={`/track?reference=${encodeURIComponent(state.references[0])}`} className="btn-secondary inline-block">
             Track this request
           </a>
+        )}
+        {bookedPhone && (
+          <FormNotice tone="blue" icon="👤">
+            <p className="font-semibold">Want to track this without digging up a link later?</p>
+            <p className="mt-1">
+              Save an account with the number you just gave us — no password, just your phone. Your bookings (this one and any future
+              ones) show up automatically, with a live map whenever someone&apos;s on the way.
+            </p>
+            <a href={`/my/login?phone=${encodeURIComponent(bookedPhone)}`} className="btn-primary mt-3 inline-block">
+              Save My Account
+            </a>
+          </FormNotice>
         )}
         <a href={`/${mode === "pickup_delivery" ? "pickup-delivery" : "request"}?area=${area}`} className="btn-secondary inline-block">
           Submit another request
@@ -619,9 +660,10 @@ export default function HomeServiceForm({
             )}
             <input type="hidden" name="lat" value={lat ?? ""} />
             <input type="hidden" name="lng" value={lng ?? ""} />
-            <div className="space-y-1.5 pt-2">
+            <div ref={pinSectionRef} className="space-y-1.5 pt-2">
               <p className="text-xs font-medium text-slate-500">
-                {mode === "pickup_delivery" ? "Pin your exact pickup location — this is what the rider follows" : "Pin your exact location on the map"}
+                {mode === "pickup_delivery" ? "Pin your exact pickup location — this is what the rider follows" : "Pin your exact location on the map"}{" "}
+                {pinRequired && <span className="text-red-600">*</span>}
               </p>
               <p className="text-xs text-slate-400">
                 Search your area, then drag the pin to your gate/door so our {mode === "pickup_delivery" ? "rider" : "technician"} finds
@@ -632,6 +674,7 @@ export default function HomeServiceForm({
                 onChange={(pos) => {
                   setLat(pos.lat);
                   setLng(pos.lng);
+                  setPinError("");
                 }}
               />
               {lat !== null && lng !== null && (
@@ -639,6 +682,7 @@ export default function HomeServiceForm({
                   ✓ Location pinned ({lat.toFixed(5)}, {lng.toFixed(5)})
                 </p>
               )}
+              {pinError && <p className="text-xs font-medium text-red-600">{pinError}</p>}
             </div>
           </div>
         );
@@ -817,7 +861,15 @@ export default function HomeServiceForm({
     <form
       ref={formRef}
       action={formAction}
-      onSubmit={(e) => setSentEmail(String(new FormData(e.currentTarget).get("email") ?? "").trim())}
+      onSubmit={(e) => {
+        if (!validatePin(pinRequired)) {
+          e.preventDefault();
+          return;
+        }
+        const fd = new FormData(e.currentTarget);
+        setSentEmail(String(fd.get("email") ?? "").trim());
+        setBookedPhone(String(fd.get("phone") ?? "").trim());
+      }}
       className="card space-y-5"
     >
       <input type="hidden" name="serviceArea" value={area} />

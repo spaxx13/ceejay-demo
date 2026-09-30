@@ -2,6 +2,8 @@
 
 import { useRef, useState } from "react";
 import { compressImage } from "@/lib/imageCompress";
+import { captureNativePhoto } from "@/lib/nativePhotoCapture";
+import { useIsNativePlatform } from "@/lib/useLiveLocationSharing";
 
 export default function PhotoUpload({
   name = "photoDataUrl",
@@ -12,13 +14,14 @@ export default function PhotoUpload({
   label?: string;
   required?: boolean;
 }) {
+  const isNative = useIsNativePlatform();
   const inputRef = useRef<HTMLInputElement>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [dataUrl, setDataUrl] = useState<string>("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
-  async function handleFile(file: File | undefined) {
+  async function handleFile(file: File | undefined | null) {
     setError("");
     if (!file) return;
     if (!file.type.startsWith("image/")) {
@@ -38,6 +41,22 @@ export default function PhotoUpload({
       setError("Couldn't process that image — please try another.");
     } finally {
       setBusy(false);
+    }
+  }
+
+  // On the native app, use the OS camera/photo-library picker instead of the
+  // <input type="file"> below — see lib/nativePhotoCapture.ts for why that
+  // input can make the app appear to close when the camera opens.
+  async function handleNativeCapture() {
+    setError("");
+    setBusy(true);
+    try {
+      const file = await captureNativePhoto();
+      if (file) await handleFile(file);
+      else setBusy(false);
+    } catch {
+      setBusy(false);
+      setError("Couldn't get that photo — please try again.");
     }
   }
 
@@ -66,6 +85,15 @@ export default function PhotoUpload({
             </button>
           </div>
         </div>
+      ) : isNative ? (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={handleNativeCapture}
+          className="rounded-full border-0 bg-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 disabled:opacity-50"
+        >
+          Add Photo
+        </button>
       ) : (
         <input
           ref={inputRef}

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getRepairRecordById, getServiceAgreements, getRepairRecordStatus, getBranches, isBranchHidden } from "@/lib/db";
+import { getRepairRecordById, getServiceAgreementsForRepairRecord, getRepairRecordStatus, getBranches, isBranchHidden } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { formatDateTime, formatDate } from "@/lib/format";
 import PrintReceiptButton from "@/components/PrintReceiptButton";
@@ -37,7 +37,7 @@ export default async function RepairRecordDetailPage({ params }: { params: Promi
     }
   }
 
-  const [user, agreements, allBranches] = await Promise.all([getCurrentUser(), getServiceAgreements(), getBranches()]);
+  const [user, agreements, allBranches] = await Promise.all([getCurrentUser(), getServiceAgreementsForRepairRecord(record.id), getBranches()]);
   if (isBranchHidden(user, record.branchId)) notFound();
   const branches = allBranches.filter((b) => b.active && !isBranchHidden(user, b.id));
   const branch = allBranches.find((b) => b.id === record.branchId);

@@ -8,16 +8,21 @@ import {
   OTP_GATE_ENABLED,
   MAX_PRICE_EDITS,
   SITE_URL,
-  BOOKING_CONFIRMATION_WINDOW_HOURS,
+  BOOKING_CONFIRMATION_WINDOW_MINUTES,
   ICLOUD_CHECK_PRICE_PESOS,
   PICKUP_DELIVERY_PUBLIC_ENABLED,
+  PICKUP_DELIVERY_MOBILE_ENABLED,
   PICKUP_DELIVERY_SKIP_PAYMENT,
   PICKUP_DELIVERY_SKIP_OTP,
 } from "@/lib/config";
 import { CHECKLIST_TEMPLATE } from "./checklist";
+import { sendPushToTokens } from "./pushNotifications";
 import {
   query,
   queryOne,
+  getCustomerPushTokens,
+  deleteCustomerPushToken,
+  saveStaffPushToken,
   getUserAuthByEmail,
   getUsers,
   getTechnicians,
@@ -33,6 +38,8 @@ import {
   getRequestsByBookingGroup,
   getRepairRecordById,
   getServiceAgreements,
+  getServiceAgreementsForRequest,
+  getServiceAgreementsForRepairRecord,
   getRepairRecordStatus,
   getCustomFormFields,
   getCrmBroadcastRecipients,
@@ -49,6 +56,10 @@ import {
   canManageWalkIns,
   canWaiveServiceFee,
   canManageRepairPricing,
+  canManageManualChecklists,
+  getManualRepairRecordById,
+  getManualChecklists,
+  isBranchHidden,
   getIcloudCheckById,
   createIcloudCheck,
   markIcloudCheckPaymentPending,
@@ -75,8 +86,8 @@ import {
   emailConfigured,
 } from "./email";
 import { isOnTheWayStatus } from "./technicianTracking";
-import { sendSms, sendOtpSms, smsConfigured, normalizePhone, getAccountStatus, type SmsAccountStatus } from "./sms";
-import { SUNDAY_ONLY_PROVINCES, DOWNPAYMENT_PROVINCES, serviceFeeAmount, PICKUP_DELIVERY_FEE_PESOS } from "./homeServiceFees";
+import { sendSms, sendOtpSms, smsConfigured, normalizePhone, isValidPhone, getAccountStatus, type SmsAccountStatus } from "./sms";
+import { SUNDAY_ONLY_PROVINCES, DOWNPAYMENT_PROVINCES, serviceFeeAmount, requestServiceFee, PICKUP_DELIVERY_FEE_PESOS } from "./homeServiceFees";
 import { getRepairQuote } from "./servicePricing";
 import { formatDate, isCheckInOpen } from "./format";
 import { createCheckoutSession as createPaymongoCheckoutSession, paymongoConfigured } from "./paymongo";
@@ -97,17 +108,25 @@ import {
   type DeviceConditionChecklist,
   type PickupPhoto,
   type RequestExceptionKind,
+  type User,
+  type ManualRepairRecord,
 } from "./types";
+
+// Sends an FCM push to every device the customer has registered, pruning
+// whatever comes back as no-longer-registered (app uninstalled, etc.). `url`
+// is an in-app path (e.g. "/track-technician/<token>") — PushNotificationRegistrar.tsx
+// listens for the tap and navigates there.
+async function sendCustomerPush(customerId: string, title: string, body: string, url?: string) {
+  const tokens = await getCustomerPushTokens(customerId);
+  const { expiredTokens } = await sendPushToTokens(tokens, title, body, url);
+  await Promise.all(expiredTokens.map((token) => deleteCustomerPushToken(token)));
+}
 
 function str(fd: FormData, key: string) {
   return String(fd.get(key) ?? "").trim();
 }
 function listStr(fd: FormData, key: string) {
   return fd.getAll(key).map(String).filter(Boolean);
-}
-function isValidPhone(phone: string) {
-  const cleaned = phone.replace(/[\s-]/g, "");
-  return /^(\+63|0)9\d{9}$/.test(cleaned);
 }
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -185,6 +204,7 @@ export async function createUser(formData: FormData) {
   const canManageWalkInsFlag = role === "branch_admin" ? formData.get("canManageWalkIns") === "on" : true;
   const canWaiveServiceFeeFlag = role === "branch_admin" ? formData.get("canWaiveServiceFee") === "on" : true;
   const canManageRepairPricingFlag = role === "branch_admin" ? formData.get("canManageRepairPricing") === "on" : true;
+  const canManageManualChecklistsFlag = role === "technician" ? formData.get("canManageManualChecklists") === "on" : true;
   const phone = str(formData, "phone");
   if (!name || !email || !password || !role) return;
   if (role === "rider" && !riderId) return; // must link to an existing Rider record (Settings > Riders)
@@ -208,7 +228,7 @@ export async function createUser(formData: FormData) {
 
   const passwordHash = await bcrypt.hash(password, 10);
   await query(
-    "insert into users (name, email, password_hash, role, technician_id, rider_id, assigned_branch_ids, can_manage_requests, can_delete_requests, can_view_all_branches, can_access_crm, can_manage_walkins, can_waive_service_fee, can_manage_repair_pricing, phone) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)",
+    "insert into users (name, email, password_hash, role, technician_id, rider_id, assigned_branch_ids, can_manage_requests, can_delete_requests, can_view_all_branches, can_access_crm, can_manage_walkins, can_waive_service_fee, can_manage_repair_pricing, can_manage_manual_checklists, phone) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)",
     [
       name,
       email,
@@ -224,6 +244,7 @@ export async function createUser(formData: FormData) {
       canManageWalkInsFlag,
       canWaiveServiceFeeFlag,
       canManageRepairPricingFlag,
+      canManageManualChecklistsFlag,
       phone,
     ]
   );
@@ -260,6 +281,7 @@ export async function updateUser(formData: FormData) {
   const canManageWalkInsFlag = role === "branch_admin" ? formData.get("canManageWalkIns") === "on" : true;
   const canWaiveServiceFeeFlag = role === "branch_admin" ? formData.get("canWaiveServiceFee") === "on" : true;
   const canManageRepairPricingFlag = role === "branch_admin" ? formData.get("canManageRepairPricing") === "on" : true;
+  const canManageManualChecklistsFlag = role === "technician" ? formData.get("canManageManualChecklists") === "on" : true;
   const phone = formData.has("phone") ? str(formData, "phone") : user.phone;
 
   if (role === "technician") {
@@ -288,7 +310,7 @@ export async function updateUser(formData: FormData) {
   if (password) {
     const passwordHash = await bcrypt.hash(password, 10);
     await query(
-      "update users set name=$1, email=$2, password_hash=$3, role=$4, technician_id=$5, rider_id=$6, assigned_branch_ids=$7, can_manage_requests=$8, can_delete_requests=$9, can_view_all_branches=$10, can_access_crm=$11, can_manage_walkins=$12, can_waive_service_fee=$13, can_manage_repair_pricing=$14, phone=$15 where id=$16",
+      "update users set name=$1, email=$2, password_hash=$3, role=$4, technician_id=$5, rider_id=$6, assigned_branch_ids=$7, can_manage_requests=$8, can_delete_requests=$9, can_view_all_branches=$10, can_access_crm=$11, can_manage_walkins=$12, can_waive_service_fee=$13, can_manage_repair_pricing=$14, can_manage_manual_checklists=$15, phone=$16 where id=$17",
       [
         name,
         email || user.email,
@@ -304,13 +326,14 @@ export async function updateUser(formData: FormData) {
         canManageWalkInsFlag,
         canWaiveServiceFeeFlag,
         canManageRepairPricingFlag,
+        canManageManualChecklistsFlag,
         phone,
         userId,
       ]
     );
   } else {
     await query(
-      "update users set name=$1, email=$2, role=$3, technician_id=$4, rider_id=$5, assigned_branch_ids=$6, can_manage_requests=$7, can_delete_requests=$8, can_view_all_branches=$9, can_access_crm=$10, can_manage_walkins=$11, can_waive_service_fee=$12, can_manage_repair_pricing=$13, phone=$14 where id=$15",
+      "update users set name=$1, email=$2, role=$3, technician_id=$4, rider_id=$5, assigned_branch_ids=$6, can_manage_requests=$7, can_delete_requests=$8, can_view_all_branches=$9, can_access_crm=$10, can_manage_walkins=$11, can_waive_service_fee=$12, can_manage_repair_pricing=$13, can_manage_manual_checklists=$14, phone=$15 where id=$16",
       [
         name,
         email || user.email,
@@ -325,6 +348,7 @@ export async function updateUser(formData: FormData) {
         canManageWalkInsFlag,
         canWaiveServiceFeeFlag,
         canManageRepairPricingFlag,
+        canManageManualChecklistsFlag,
         phone,
         userId,
       ]
@@ -434,7 +458,7 @@ export async function createTechnician(formData: FormData) {
   const name = str(formData, "name");
   if (!name) return;
   await query(
-    "insert into technicians (name, contact_number, email, employment_status, branch_ids, earnings_share_percent) values ($1,$2,$3,$4,$5,$6)",
+    "insert into technicians (name, contact_number, email, employment_status, branch_ids, earnings_share_percent, can_pickup_delivery) values ($1,$2,$3,$4,$5,$6,$7)",
     [
       name,
       str(formData, "contactNumber"),
@@ -442,6 +466,7 @@ export async function createTechnician(formData: FormData) {
       str(formData, "employmentStatus") || "full_time",
       listStr(formData, "branchIds"),
       earningsSharePercentFromForm(formData),
+      formData.has("canPickupDelivery"),
     ]
   );
   revalidatePath("/admin/technicians");
@@ -454,7 +479,7 @@ export async function updateTechnician(formData: FormData) {
   const name = str(formData, "name");
   if (!name) return;
   await query(
-    "update technicians set name=$1, contact_number=$2, email=$3, employment_status=$4, branch_ids=$5, earnings_share_percent=$6 where id=$7",
+    "update technicians set name=$1, contact_number=$2, email=$3, employment_status=$4, branch_ids=$5, earnings_share_percent=$6, can_pickup_delivery=$7 where id=$8",
     [
       name,
       str(formData, "contactNumber"),
@@ -462,6 +487,7 @@ export async function updateTechnician(formData: FormData) {
       str(formData, "employmentStatus") || "full_time",
       listStr(formData, "branchIds"),
       earningsSharePercentFromForm(formData),
+      formData.has("canPickupDelivery"),
       techId,
     ]
   );
@@ -566,26 +592,38 @@ export async function setRiderOnDuty(formData: FormData) {
   revalidatePath("/admin/pickup-delivery");
 }
 
-export async function deleteRider(formData: FormData) {
+export async function deleteRider(formData: FormData): Promise<{ ok: true } | { ok: false; error: string }> {
   const actor = await requireRole("owner_admin");
-  if (!actor) return;
+  if (!actor) return { ok: false, error: "Only the owner admin can delete riders." };
 
   const riderId = str(formData, "id");
 
   // Block deleting a rider still assigned to an in-flight pickup or delivery
   // leg — same reasoning as deleteTechnician: reassign first rather than
-  // silently leaving a job's rider field pointing nowhere.
-  const requests = await getRequests();
-  const hasOpenLeg = requests.some(
+  // silently leaving a job's rider field pointing nowhere. Cancelled and
+  // Completed jobs never block: nothing is left for the rider to do on them.
+  const [requests, lookups] = await Promise.all([getRequests(), getLookups()]);
+  const closedStatusIds = new Set(
+    lookups.filter((l) => l.kind === "request_status" && (l.label === "Completed" || l.label === "Cancelled")).map((l) => l.id)
+  );
+  const blocking = requests.filter(
     (r) =>
       r.fulfillmentMode === "pickup_delivery" &&
+      !closedStatusIds.has(r.statusId) &&
       ((r.pickupRiderId === riderId && !r.pickedUpAt) || (r.deliveryRiderId === riderId && !r.deliveredAt))
   );
-  if (hasOpenLeg) return;
+  if (blocking.length > 0) {
+    const refs = blocking.map((r) => r.reference).join(", ");
+    return {
+      ok: false,
+      error: `This rider is still assigned to ${refs}. Reassign or cancel ${blocking.length === 1 ? "that job" : "those jobs"} first, then delete.`,
+    };
+  }
 
   await query("delete from riders where id=$1", [riderId]);
   revalidatePath("/admin/riders");
   revalidatePath("/admin/users");
+  return { ok: true };
 }
 
 // Admin assigns (or reassigns) a rider to a request's pickup leg — manual,
@@ -737,6 +775,14 @@ export async function riderUpdatePickupStatus(_prev: RiderStatusResult | undefin
       if (!req.pickupRiderAcceptedAt) return { ok: false, error: "Please accept this job before starting the trip." };
       await query("update home_service_requests set pickup_started_at=now() where id=$1", [requestId]);
       await logActivity("home_service_request", requestId, `Rider ${user.name} is on the way to pick up the device`, user.name);
+      if (req.customerId) {
+        sendCustomerPush(
+          req.customerId,
+          "Your rider is on the way",
+          `The rider is on the way to pick up your device for repair ${req.reference}.`,
+          `/track?reference=${encodeURIComponent(req.reference)}&phone=${encodeURIComponent(req.phone)}`,
+        ).catch(() => {});
+      }
       if (req.email && emailConfigured()) {
         try {
           await sendTrackingLinkEmail(req.email, { customerName: req.customerName, reference: req.reference, phone: req.phone, stage: "heading_to_pickup" });
@@ -894,6 +940,14 @@ export async function riderUpdateDeliveryStatus(_prev: RiderStatusResult | undef
       }
       await query("update home_service_requests set out_for_delivery_at=now() where id=$1", [requestId]);
       await logActivity("home_service_request", requestId, `Rider ${user.name} is on the way to deliver the device`, user.name);
+      if (req.customerId) {
+        sendCustomerPush(
+          req.customerId,
+          "Your device is on its way",
+          `The rider is on the way to deliver your device for repair ${req.reference}.`,
+          `/track?reference=${encodeURIComponent(req.reference)}&phone=${encodeURIComponent(req.phone)}`,
+        ).catch(() => {});
+      }
       break;
     }
     case "delivered":
@@ -1738,11 +1792,17 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
   // PICKUP_DELIVERY_PUBLIC_ENABLED is on (see HomeServiceForm.tsx's "Soon"
   // gate) — re-checked here too, so a hand-crafted submission can't get a
   // pickup_delivery row past a production site that still has it off. The
-  // one exception is a logged-in admin: app/(site)/pickup-delivery/page.tsx
+  // native app can be opened up on its own via PICKUP_DELIVERY_MOBILE_ENABLED:
+  // its submit route stamps channel=mobile (app/api/mobile/home-service/submit).
+  // The other exception is a logged-in admin: app/(site)/pickup-delivery/page.tsx
   // shows them the real form as a staff preview, so their submission has to
   // be accepted as pickup_delivery too.
   const requestedFulfillmentMode = str(formData, "fulfillmentMode");
-  const pickupDeliveryAllowed = PICKUP_DELIVERY_PUBLIC_ENABLED || canManageHomeServiceRequests(await getCurrentUser());
+  const fromMobileApp = str(formData, "channel") === "mobile";
+  const pickupDeliveryAllowed =
+    PICKUP_DELIVERY_PUBLIC_ENABLED ||
+    (fromMobileApp && PICKUP_DELIVERY_MOBILE_ENABLED) ||
+    canManageHomeServiceRequests(await getCurrentUser());
   const fulfillmentMode: "on_site" | "pickup_delivery" =
     requestedFulfillmentMode === "pickup_delivery" && pickupDeliveryAllowed ? "pickup_delivery" : "on_site";
 
@@ -1765,6 +1825,8 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
   const preferredDatetime = str(formData, "preferredDatetime");
   const email = str(formData, "email");
   const landmark = str(formData, "landmark");
+  const lat = str(formData, "lat") ? Number(str(formData, "lat")) : null;
+  const lng = str(formData, "lng") ? Number(str(formData, "lng")) : null;
   const vlogConsent = formData.has("vlogConsent");
   const vlogBlurPreference = vlogConsent ? str(formData, "vlogBlurPreference") : "";
   if (vlogConsent && vlogBlurPreference !== "blurred" && vlogBlurPreference !== "not_blurred") {
@@ -1797,6 +1859,12 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
     if (!otpRow?.verified) return { ok: false, error: "Please verify your phone number before submitting." };
   }
   if (isRequired("street") && !street) return { ok: false, error: `${label("street")} is required.` };
+  // Same admin toggle (Admin > Request Form Content > Street) governs
+  // whether the map pin is required — it's rendered directly under Street
+  // on the form as an alternative/companion way to give an exact location.
+  if (isRequired("street") && (lat === null || lng === null)) {
+    return { ok: false, error: "Please pin your exact location on the map." };
+  }
   if (isRequired("city") && !city) return { ok: false, error: `${label("city")} is required.` };
   if (isRequired("province") && !province) return { ok: false, error: `${label("province")} is required.` };
   // Barangay isn't an admin-configurable field like the others — it only
@@ -1836,7 +1904,7 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
   // submission — every new request lands in the Unassigned queue for an
   // admin to triage and assign manually. Whenever an email was captured, it
   // first has to sit in "Pending Confirmation" until the customer clicks
-  // the link in their quotation email (or the 2-hour window lapses and
+  // the link in their quotation email (or the confirmation window lapses and
   // the void-unconfirmed-requests cron cancels it) — only then is it truly
   // "Pending" and ready to assign. No email means no way to send that link,
   // so it skips straight to Pending as before. Laguna/Batangas/Pampanga
@@ -1983,8 +2051,6 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
   }
 
   const now = new Date().toISOString();
-  const lat = str(formData, "lat") ? Number(str(formData, "lat")) : null;
-  const lng = str(formData, "lng") ? Number(str(formData, "lng")) : null;
   const year = new Date().getFullYear();
 
   // The reference number is the highest already-used number for this year,
@@ -2002,7 +2068,7 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
   // My Booking" link confirms all of them together (see confirmBooking()).
   const confirmationToken = needsConfirmation ? crypto.randomUUID() : null;
   const confirmationExpiresAt = needsConfirmation
-    ? new Date(Date.now() + BOOKING_CONFIRMATION_WINDOW_HOURS * 60 * 60 * 1000).toISOString()
+    ? new Date(Date.now() + BOOKING_CONFIRMATION_WINDOW_MINUTES * 60 * 1000).toISOString()
     : null;
   // Every device's row shares this too, always (not just multi-device
   // bookings) — it's how reassignRequest() knows which other rows to
@@ -2132,8 +2198,8 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
   if (phone && smsConfigured()) {
     const confirmMessage =
       createdRequests.length > 1
-        ? `Hi ${name || "there"}, your Ceejay repair requests ${referenceList} have been received! Please confirm your booking within ${BOOKING_CONFIRMATION_WINDOW_HOURS} hours on the confirmation page shown after you submitted, or it will be automatically cancelled.`
-        : `Hi ${name || "there"}, your Ceejay repair request ${referenceList} has been received! Please confirm your booking within ${BOOKING_CONFIRMATION_WINDOW_HOURS} hours on the confirmation page shown after you submitted, or it will be automatically cancelled.`;
+        ? `Hi ${name || "there"}, your Ceejay repair requests ${referenceList} have been received! Please confirm your booking within ${BOOKING_CONFIRMATION_WINDOW_MINUTES} minutes on the confirmation page shown after you submitted, or it will be automatically cancelled.`
+        : `Hi ${name || "there"}, your Ceejay repair request ${referenceList} has been received! Please confirm your booking within ${BOOKING_CONFIRMATION_WINDOW_MINUTES} minutes on the confirmation page shown after you submitted, or it will be automatically cancelled.`;
     try {
       await sendSms(phone, confirmMessage);
       smsNote = ` — confirmation SMS sent to ${phone}`;
@@ -2162,7 +2228,7 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
         address,
         serviceFee,
         confirmationUrl: downpaymentActive && confirmationToken ? `${SITE_URL}/confirm-booking/${confirmationToken}` : null,
-        confirmationWindowHours: BOOKING_CONFIRMATION_WINDOW_HOURS,
+        confirmationWindowMinutes: BOOKING_CONFIRMATION_WINDOW_MINUTES,
         downpaymentRequired: downpaymentActive,
         downpaymentAmount,
         fulfillmentMode,
@@ -3328,6 +3394,16 @@ async function startTechnicianTrackingIfOnTheWay(req: HomeServiceRequest, newSta
   if (!isOnTheWayStatus(newStatusLabel) || req.trackingToken) return "";
   const token = crypto.randomUUID().replace(/-/g, "");
   await query("update home_service_requests set tracking_token=$1 where id=$2", [token, req.id]);
+  if (req.customerId) {
+    // Best-effort — a customer who never registered the app (or hasn't
+    // granted notification permission) simply has no tokens to send to.
+    sendCustomerPush(
+      req.customerId,
+      "Your technician is on the way",
+      `Track your technician's live location for repair ${req.reference}.`,
+      `/track-technician/${token}`,
+    ).catch(() => {});
+  }
   if (!req.email) return " — no customer email on file, tracking link not sent";
   if (!emailConfigured()) return " — email not configured, tracking link not sent";
 
@@ -3346,20 +3422,6 @@ async function startTechnicianTrackingIfOnTheWay(req: HomeServiceRequest, newSta
   }
 }
 
-// GPS fix pushed from the assigned technician's phone while their job is
-// En Route (components/TechnicianLocationSharer.tsx). `stop` tells the
-// phone to stop sharing once the job is no longer En Route.
-export async function updateTechnicianLocation(requestId: string, lat: number, lng: number): Promise<{ ok: boolean; stop?: boolean }> {
-  const user = await getCurrentUser();
-  if (!user || user.role !== "technician") return { ok: false, stop: true };
-  if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) return { ok: false };
-  const req = await getRequestById(requestId);
-  if (!req || req.assignedTechnicianId !== user.technicianId) return { ok: false, stop: true };
-  const status = (await getLookups()).find((l) => l.id === req.statusId);
-  if (!isOnTheWayStatus(status?.label)) return { ok: false, stop: true };
-  await query("update home_service_requests set tech_lat=$1, tech_lng=$2, tech_location_at=now() where id=$3", [lat, lng, requestId]);
-  return { ok: true };
-}
 
 export async function technicianUpdateStatus(formData: FormData) {
   const user = await getCurrentUser();
@@ -3372,6 +3434,14 @@ export async function technicianUpdateStatus(formData: FormData) {
   const status = lookups.find((l) => l.id === statusId && l.kind === "request_status");
   // Only the technician assigned to this job may move it.
   if (!req || !status || req.assignedTechnicianId !== user.technicianId) return;
+  // "Pending Confirmation" is a customer/admin-side booking state, and
+  // "Completed" only ever happens automatically once the Post-Repair
+  // checklist is submitted (submitChecklist) — a technician is never
+  // allowed to set either manually. Mirrors the restriction already
+  // applied client-side in TechnicianBoard.tsx's status dropdown. A no-op
+  // change (already at that status) is still allowed through, so saving a
+  // note alone never fails.
+  if (statusId !== req.statusId && (status.label === "Pending Confirmation" || status.label === "Completed")) return;
 
   const statusHistory = [...req.statusHistory, { statusId, at: new Date().toISOString() }];
   const adminNotes = note ? (req.adminNotes ? `${req.adminNotes}\n[${user?.name}] ${note}` : `[${user?.name}] ${note}`) : req.adminNotes;
@@ -3507,7 +3577,7 @@ export async function submitChecklist(_prev: SubmitChecklistResult | undefined, 
     technicianName = record.technicianName || user.name;
   }
 
-  const agreements = await getServiceAgreements();
+  const agreements = requestId ? await getServiceAgreementsForRequest(requestId) : await getServiceAgreementsForRepairRecord(repairRecordId!);
   const existingForPhase = agreements.find((a) =>
     requestId ? a.requestId === requestId && a.phase === phase : a.repairRecordId === repairRecordId && a.phase === phase
   );
@@ -3575,8 +3645,15 @@ export async function submitChecklist(_prev: SubmitChecklistResult | undefined, 
       if (!costRaw) return { ok: false, error: "Price of the repair is required." };
       cost = Math.max(0, Number(costRaw) || 0);
       partsCost = Math.max(0, Number(str(formData, "partsCost")) || 0);
-      laborCost = Math.max(0, Number(str(formData, "laborCost")) || 0);
-      otherExpenses = Math.max(0, Number(str(formData, "otherExpenses")) || 0);
+      // The service fee is the one the customer was quoted when they booked
+      // (province/city, Pickup & Delivery flat fee, or ₱0 if waived) — stored
+      // in labor_cost so every Home Service report/receipt keeps reading
+      // "Repair Price + labor_cost" as the customer's Total Amount. Never
+      // taken from the form: the technician only types the Repair Price and
+      // the internal Parts/Material Cost. Other Expenses isn't collected on
+      // this flow at all.
+      laborCost = requestServiceFee(req!);
+      otherExpenses = 0;
     }
   }
 
@@ -3741,10 +3818,12 @@ export async function submitChecklist(_prev: SubmitChecklistResult | undefined, 
   return { ok: true, agreementId, phase };
 }
 
-// Lets a technician self-correct the Repair Price / Labor-Service Cost on
+// Lets a technician self-correct the Repair Price / Parts-Material Cost on
 // their own completed Post-Repair checklist (e.g. a typo at submission
 // time) — capped at MAX_PRICE_EDITS so it stays a correction tool, not an
-// open price field.
+// open price field. The service fee is re-derived from the request on every
+// edit (same rule as submitChecklist), so an edit also repairs an older
+// record whose fee was typed by hand.
 export type UpdateAgreementPriceResult = { ok: true } | { ok: false; error: string };
 
 export async function updateAgreementPrice(
@@ -3768,7 +3847,7 @@ export async function updateAgreementPrice(
   }
 
   const cost = Math.max(0, Number(str(formData, "cost")) || 0);
-  const laborCost = Math.max(0, Number(str(formData, "laborCost")) || 0);
+  const laborCost = requestServiceFee(req);
   const partsCost = Math.max(0, Number(str(formData, "partsCost")) || 0);
 
   await query("update service_agreements set cost=$1, labor_cost=$2, parts_cost=$3, price_edit_count=price_edit_count+1 where id=$4", [
@@ -3787,6 +3866,52 @@ export async function updateAgreementPrice(
   revalidatePath(`/technician/requests/${req.id}/checklist`);
   revalidatePath("/admin/requests");
   revalidatePath(`/admin/requests/${req.id}`);
+  return { ok: true };
+}
+
+// Same fields as updateAgreementPrice above (Repair Price + Parts/Material
+// Cost — the Service Fee stays derived from the request via
+// requestServiceFee, never freely typed here either), but for an
+// owner/branch admin correcting a mistake from the request's own detail
+// page (Admin > Home Service Requests > [request]) rather than the
+// assigned technician self-correcting from their own job. Deliberately
+// uncapped — MAX_PRICE_EDITS is a guardrail on a technician's own
+// self-correction allowance, not a limit on the shop's own data-correction
+// tool — and gated on canManageHomeServiceRequests (the same access the
+// request page itself requires) instead of "assigned to me".
+export type UpdateAgreementPriceAdminResult = { ok: true } | { ok: false; error: string };
+
+export async function updateAgreementPriceAdmin(
+  _prev: UpdateAgreementPriceAdminResult | undefined,
+  formData: FormData
+): Promise<UpdateAgreementPriceAdminResult> {
+  const user = await getCurrentUser();
+  if (!canManageHomeServiceRequests(user)) return { ok: false, error: "You don't have access to edit this." };
+
+  const agreementId = str(formData, "agreementId");
+  const agreements = await getServiceAgreements();
+  const agreement = agreements.find((a) => a.id === agreementId);
+  if (!agreement) return { ok: false, error: "Checklist not found." };
+  if (agreement.phase !== "post_repair" || !agreement.requestId) return { ok: false, error: "This checklist can't be price-edited." };
+
+  const req = await getRequestById(agreement.requestId);
+  if (!req) return { ok: false, error: "Request not found." };
+  if (isBranchHidden(user, req.queueBranchId)) return { ok: false, error: "You don't have access to this request." };
+
+  const cost = Math.max(0, Number(str(formData, "cost")) || 0);
+  const laborCost = requestServiceFee(req);
+  const partsCost = Math.max(0, Number(str(formData, "partsCost")) || 0);
+
+  await query("update service_agreements set cost=$1, labor_cost=$2, parts_cost=$3 where id=$4", [cost, laborCost, partsCost, agreementId]);
+  await logActivity(
+    "home_service_request",
+    req.id,
+    `${user!.name} edited the repair price/parts cost on ${agreement.reference}`,
+    user!.name
+  );
+  revalidatePath(`/admin/requests/${req.id}`);
+  revalidatePath("/admin/sales/home-service");
+  revalidatePath("/admin/sales/pickup-delivery");
   return { ok: true };
 }
 
@@ -3816,7 +3941,7 @@ export async function resendReceiptEmail(_prev: ResendReceiptResult | undefined,
     return { ok: false, error: "Technicians can only resend home service receipts." };
   }
 
-  const agreements = await getServiceAgreements();
+  const agreements = requestId ? await getServiceAgreementsForRequest(requestId) : await getServiceAgreementsForRepairRecord(repairRecordId!);
 
   if (requestId) {
     const req = await getRequestById(requestId);
@@ -3921,6 +4046,313 @@ export async function markAllNotificationsRead() {
   revalidatePath("/admin");
 }
 
+// ---------- Manual Checklist & Receipt ----------
+// A standalone repair ticket (ManualRepairRecord) for a customer with no
+// online booking or POS sale yet, with its own Pre/Post-Repair checklist
+// pair (ManualChecklist) — see their own comments in types.ts. Mirrors
+// createRepairRecordDraft + submitChecklist's repairRecord branch, minus
+// pricing/CRM linking. Available to owner_admin/branch_admin always, and to
+// a technician only when canManageManualChecklists(user) is true (Settings
+// > Staff Accounts) — and then only for tickets that technician created.
+
+function canEditManualRecord(user: User | null, record: Pick<ManualRepairRecord, "branchId" | "createdByUserId">) {
+  if (!canManageManualChecklists(user)) return false;
+  if (user!.role === "technician") return record.createdByUserId === user!.id;
+  return !isBranchHidden(user, record.branchId);
+}
+
+export type CreateManualRepairRecordResult = { ok: true; recordId: string; reference: string } | { ok: false; error: string };
+
+export async function createManualRepairRecord(
+  _prev: CreateManualRepairRecordResult | undefined,
+  formData: FormData
+): Promise<CreateManualRepairRecordResult> {
+  const user = await getCurrentUser();
+  if (!canManageManualChecklists(user)) return { ok: false, error: "You don't have access to Manual Checklist & Receipt." };
+
+  const customerName = str(formData, "customerName");
+  const customerPhone = str(formData, "customerPhone");
+  const customerEmail = str(formData, "customerEmail");
+  const deviceLabel = str(formData, "deviceLabel");
+  const issueDescription = str(formData, "issueDescription");
+  const branchId = str(formData, "branchId") || null;
+  const summaryNotes = str(formData, "summaryNotes");
+  if (!customerName || !deviceLabel) return { ok: false, error: "Customer name and device are required." };
+
+  const items: ChecklistItem[] = CHECKLIST_TEMPLATE.map((t) => {
+    const result = str(formData, `result_${t.key}`) as ChecklistResult;
+    return {
+      ...t,
+      result: result === "pass" || result === "fail" || result === "na" ? result : null,
+      notes: str(formData, `notes_${t.key}`),
+    };
+  });
+  if (items.some((i) => !i.result)) {
+    return { ok: false, error: "Please mark every checklist item as Pass, Fail, or N/A." };
+  }
+
+  const customerSignatureDataUrl = str(formData, "customerSignature");
+  if (!customerSignatureDataUrl.startsWith("data:image/")) return { ok: false, error: "Customer signature is required." };
+  const staffSignatureDataUrl = str(formData, "staffSignature");
+  if (!staffSignatureDataUrl.startsWith("data:image/")) return { ok: false, error: "Staff signature is required." };
+
+  // Same max-based + retry-on-collision reference pattern used for
+  // walkin_requests/repair_records — a plain count(*) undercounts once any
+  // row has ever been deleted, causing later inserts to collide.
+  const year = new Date().getFullYear();
+  let reference = "";
+  let record: { id: string } | null = null;
+  for (let attempt = 1; attempt <= 5; attempt++) {
+    const max = await queryOne<{ n: number }>(
+      "select coalesce(max(split_part(reference, '-', 3)::int), 0)::int as n from manual_repair_records where reference like $1",
+      [`MC-${year}-%`]
+    );
+    reference = `MC-${year}-${String((max?.n ?? 0) + 1).padStart(4, "0")}`;
+    try {
+      record = await queryOne<{ id: string }>(
+        `insert into manual_repair_records
+           (reference, branch_id, created_by_user_id, created_by_name, customer_name, customer_phone, customer_email, device_label, issue_description)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9) returning id`,
+        [reference, branchId, user!.id, user!.name, customerName, customerPhone, customerEmail, deviceLabel, issueDescription]
+      );
+      break;
+    } catch (err) {
+      const code = (err as { code?: string }).code;
+      if (code === "23505" && attempt < 5) continue;
+      throw err;
+    }
+  }
+
+  await query(
+    `insert into manual_checklists (manual_record_id, phase, items, summary_notes, technician_name, customer_signature_data_url, staff_signature_data_url, completed_at)
+     values ($1,'pre_repair',$2,$3,$4,$5,$6,now())`,
+    [record!.id, JSON.stringify(items), summaryNotes, user!.name, customerSignatureDataUrl, staffSignatureDataUrl]
+  );
+
+  await logActivity("manual_checklist", record!.id, `Manual repair ticket ${reference} created by ${user!.name}`, user!.name);
+  revalidatePath("/admin/manual-checklists");
+  revalidatePath("/technician/manual-checklists");
+  return { ok: true, recordId: record!.id, reference };
+}
+
+export type SubmitManualChecklistResult = { ok: true; phase: ChecklistPhase } | { ok: false; error: string };
+
+export async function submitManualChecklist(
+  _prev: SubmitManualChecklistResult | undefined,
+  formData: FormData
+): Promise<SubmitManualChecklistResult> {
+  const user = await getCurrentUser();
+  if (!canManageManualChecklists(user)) return { ok: false, error: "You don't have access to Manual Checklist & Receipt." };
+
+  const manualRecordId = str(formData, "manualRecordId");
+  const phase = str(formData, "phase") as ChecklistPhase;
+  if (phase !== "pre_repair" && phase !== "post_repair") return { ok: false, error: "Invalid checklist phase." };
+
+  const record = await getManualRepairRecordById(manualRecordId);
+  if (!record || record.deletedAt) return { ok: false, error: "Ticket not found." };
+  if (!canEditManualRecord(user, record)) return { ok: false, error: "You don't have access to this ticket." };
+
+  const checklists = (await getManualChecklists()).filter((c) => c.manualRecordId === manualRecordId);
+  if (checklists.some((c) => c.phase === phase)) return { ok: false, error: "This checklist has already been completed." };
+  const preChecklist = checklists.find((c) => c.phase === "pre_repair");
+  if (phase === "post_repair" && !preChecklist) return { ok: false, error: "Complete the pre-repair checklist first." };
+
+  const items: ChecklistItem[] = CHECKLIST_TEMPLATE.map((t) => {
+    const result = str(formData, `result_${t.key}`) as ChecklistResult;
+    return { ...t, result: result === "pass" || result === "fail" || result === "na" ? result : null, notes: str(formData, `notes_${t.key}`) };
+  });
+  if (items.some((i) => !i.result)) return { ok: false, error: "Please mark every checklist item as Pass, Fail, or N/A." };
+
+  const summaryNotes = str(formData, "summaryNotes");
+  const customerSignatureDataUrl = str(formData, "customerSignature");
+  if (!customerSignatureDataUrl.startsWith("data:image/")) return { ok: false, error: "Customer signature is required." };
+  const staffSignatureDataUrl = str(formData, "staffSignature");
+  if (!staffSignatureDataUrl.startsWith("data:image/")) return { ok: false, error: "Staff signature is required." };
+
+  let agreedToTerms = false;
+  let warrantyCoverage = "";
+  let receiptPhotoDataUrl: string | null = null;
+  let cost = 0;
+  let partsCost = 0;
+  let laborCost = 0;
+  let otherExpenses = 0;
+  if (phase === "post_repair") {
+    agreedToTerms = formData.has("agreedToTerms");
+    if (!agreedToTerms) return { ok: false, error: "The customer must acknowledge the terms and conditions." };
+    warrantyCoverage = str(formData, "warrantyCoverage");
+    if (!warrantyCoverage) return { ok: false, error: "Warranty coverage is required." };
+    const photo = str(formData, "receiptPhotoDataUrl");
+    receiptPhotoDataUrl = photo.startsWith("data:image/") ? photo : null;
+    cost = Math.max(0, Number(str(formData, "cost")) || 0);
+    partsCost = Math.max(0, Number(str(formData, "partsCost")) || 0);
+    laborCost = Math.max(0, Number(str(formData, "laborCost")) || 0);
+    otherExpenses = Math.max(0, Number(str(formData, "otherExpenses")) || 0);
+  }
+
+  const created = await queryOne<{ id: string }>(
+    `insert into manual_checklists
+       (manual_record_id, phase, items, summary_notes, agreed_to_terms, warranty_coverage, cost, parts_cost, labor_cost, other_expenses, technician_name, receipt_photo_data_url, customer_signature_data_url, staff_signature_data_url, completed_at)
+     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,now()) returning id`,
+    [manualRecordId, phase, JSON.stringify(items), summaryNotes, agreedToTerms, warrantyCoverage, cost, partsCost, laborCost, otherExpenses, user!.name, receiptPhotoDataUrl, customerSignatureDataUrl, staffSignatureDataUrl]
+  );
+
+  let emailNote = "no email on file — receipt not emailed";
+  if (phase === "post_repair") {
+    if (record.customerEmail) {
+      try {
+        // Deliberately reuses sendRepairReceiptEmail/generateRepairReceiptPdf —
+        // the exact same invoice a normal Home Service/POS booking produces
+        // once completed, not a lookalike template. See
+        // lib/receiptPdf.ts's note above generateQuotationPdf.
+        await sendRepairReceiptEmail(record.customerEmail, {
+          customerName: record.customerName,
+          reference: record.reference,
+          serviceDate: new Date().toISOString().slice(0, 10),
+          deviceLabel: record.deviceLabel,
+          natureOfRepair: record.issueDescription,
+          warrantyCoverage,
+          postNotes: summaryNotes,
+          repairCost: cost,
+          serviceFee: laborCost, // parts/material cost and other expenses are internal-only, never included here
+          technicianName: user!.name,
+          preItems: preChecklist?.items ?? [],
+          postItems: items,
+          preCustomerSignature: preChecklist?.customerSignatureDataUrl ?? null,
+          preTechnicianSignature: preChecklist?.staffSignatureDataUrl ?? null,
+          postCustomerSignature: customerSignatureDataUrl,
+          postTechnicianSignature: staffSignatureDataUrl,
+          receiptPhoto: receiptPhotoDataUrl,
+        });
+        await query("update manual_checklists set sent_to_customer_at=now() where id=$1", [created!.id]);
+        emailNote = `receipt emailed to ${record.customerEmail}`;
+      } catch (err) {
+        emailNote = `receipt email failed to send to ${record.customerEmail} (${err instanceof Error ? err.message : "unknown error"})`;
+      }
+    }
+    await logActivity("manual_checklist", record.id, `Manual repair ticket ${record.reference} post-repair checklist completed by ${user!.name} — ${emailNote}`, user!.name);
+  } else {
+    await logActivity("manual_checklist", record.id, `Manual repair ticket ${record.reference} pre-repair checklist completed by ${user!.name}`, user!.name);
+  }
+
+  revalidatePath("/admin/manual-checklists");
+  revalidatePath(`/admin/manual-checklists/${manualRecordId}`);
+  revalidatePath("/technician/manual-checklists");
+  revalidatePath(`/technician/manual-checklists/${manualRecordId}`);
+  return { ok: true, phase };
+}
+
+export async function deleteManualChecklist(formData: FormData) {
+  const user = await getCurrentUser();
+  if (!user || (user.role !== "owner_admin" && user.role !== "branch_admin")) return;
+  const id = str(formData, "id");
+  const record = await getManualRepairRecordById(id);
+  if (!record || isBranchHidden(user, record.branchId)) return;
+  await query("update manual_repair_records set deleted_at=now() where id=$1", [id]);
+  await logActivity("manual_checklist", id, `Manual repair ticket ${record.reference} deleted by ${user.name}`, user.name);
+  revalidatePath("/admin/manual-checklists");
+}
+
+// Edits a manual repair ticket's customer/device/branch info, and — once
+// its Post-Repair checklist exists — also its warranty coverage, notes, and
+// price/cost fields, so a mistake found after completion isn't stuck.
+// Mirrors updateRepairRecordDetails: stays editable anytime the ticket
+// isn't deleted, and never auto-resends the receipt on its own — use
+// resendManualChecklistReceiptEmail for that.
+export async function updateManualRecordDetails(formData: FormData) {
+  const user = await getCurrentUser();
+  const id = str(formData, "id");
+  const record = await getManualRepairRecordById(id);
+  if (!record || record.deletedAt) return;
+  if (!canEditManualRecord(user, record)) return;
+
+  const customerName = str(formData, "customerName");
+  const deviceLabel = str(formData, "deviceLabel");
+  if (!customerName || !deviceLabel) return;
+  const customerPhone = str(formData, "customerPhone");
+  const customerEmail = str(formData, "customerEmail");
+  const issueDescription = str(formData, "issueDescription");
+  const branchId = str(formData, "branchId") || null;
+
+  await query(
+    "update manual_repair_records set customer_name=$1, customer_phone=$2, customer_email=$3, device_label=$4, branch_id=$5, issue_description=$6 where id=$7",
+    [customerName, customerPhone, customerEmail, deviceLabel, branchId, issueDescription, id]
+  );
+
+  if (formData.has("warrantyCoverage")) {
+    const post = (await getManualChecklists()).find((c) => c.manualRecordId === id && c.phase === "post_repair");
+    if (post) {
+      const warrantyCoverage = str(formData, "warrantyCoverage");
+      const summaryNotes = str(formData, "summaryNotes");
+      const cost = Math.max(0, Number(str(formData, "cost")) || 0);
+      const partsCost = Math.max(0, Number(str(formData, "partsCost")) || 0);
+      const laborCost = Math.max(0, Number(str(formData, "laborCost")) || 0);
+      const otherExpenses = Math.max(0, Number(str(formData, "otherExpenses")) || 0);
+      await query(
+        "update manual_checklists set warranty_coverage=$1, summary_notes=$2, cost=$3, parts_cost=$4, labor_cost=$5, other_expenses=$6 where id=$7",
+        [warrantyCoverage, summaryNotes, cost, partsCost, laborCost, otherExpenses, post.id]
+      );
+    }
+  }
+
+  await logActivity("manual_checklist", id, `Manual repair ticket ${record.reference} details updated by ${user!.name}`, user!.name);
+  revalidatePath("/admin/manual-checklists");
+  revalidatePath(`/admin/manual-checklists/${id}`);
+  revalidatePath("/technician/manual-checklists");
+  revalidatePath(`/technician/manual-checklists/${id}`);
+}
+
+// Re-sends the same PDF receipt that was emailed when the Post-Repair
+// checklist was completed — for when a customer calls back asking for
+// another copy, or after fixing a detail via updateManualRecordDetails.
+export type ResendManualChecklistReceiptResult = { ok: true; email: string } | { ok: false; error: string };
+
+export async function resendManualChecklistReceiptEmail(
+  _prev: ResendManualChecklistReceiptResult | undefined,
+  formData: FormData
+): Promise<ResendManualChecklistReceiptResult> {
+  const user = await getCurrentUser();
+  const manualRecordId = str(formData, "manualRecordId");
+  const record = await getManualRepairRecordById(manualRecordId);
+  if (!record || record.deletedAt) return { ok: false, error: "Ticket not found." };
+  if (!canEditManualRecord(user, record)) return { ok: false, error: "You don't have access to this ticket." };
+  if (!record.customerEmail) return { ok: false, error: "No email on file for this customer." };
+
+  const checklists = (await getManualChecklists()).filter((c) => c.manualRecordId === manualRecordId);
+  const pre = checklists.find((c) => c.phase === "pre_repair");
+  const post = checklists.find((c) => c.phase === "post_repair");
+  if (!post) return { ok: false, error: "The Post-Repair checklist hasn't been completed yet — there's no receipt to resend." };
+
+  try {
+    await sendRepairReceiptEmail(record.customerEmail, {
+      customerName: record.customerName,
+      reference: record.reference,
+      serviceDate: post.completedAt?.slice(0, 10) ?? record.createdAt.slice(0, 10),
+      deviceLabel: record.deviceLabel,
+      natureOfRepair: record.issueDescription,
+      warrantyCoverage: post.warrantyCoverage,
+      postNotes: post.summaryNotes,
+      repairCost: post.cost,
+      serviceFee: post.laborCost, // parts/material cost and other expenses are internal-only, never included here
+      technicianName: post.technicianName || record.createdByName,
+      preItems: pre?.items ?? [],
+      postItems: post.items,
+      preCustomerSignature: pre?.customerSignatureDataUrl ?? null,
+      preTechnicianSignature: pre?.staffSignatureDataUrl ?? null,
+      postCustomerSignature: post.customerSignatureDataUrl,
+      postTechnicianSignature: post.staffSignatureDataUrl,
+      receiptPhoto: post.receiptPhotoDataUrl,
+    });
+  } catch (err) {
+    return { ok: false, error: `Couldn't send the email — ${err instanceof Error ? err.message : "unknown error"}. Please try again.` };
+  }
+
+  await query("update manual_checklists set sent_to_customer_at=now() where id=$1", [post.id]);
+  await logActivity("manual_checklist", record.id, `Receipt for ${record.reference} resent to ${record.customerEmail} by ${user!.name}`, user!.name);
+  revalidatePath(`/admin/manual-checklists/${manualRecordId}`);
+  revalidatePath(`/technician/manual-checklists/${manualRecordId}`);
+  return { ok: true, email: record.customerEmail };
+}
+
 // ---------- Web Push subscriptions ----------
 // Called directly from PushSubscribe.tsx (not a <form>), so these take
 // plain arguments rather than FormData.
@@ -3939,4 +4371,14 @@ export async function removePushSubscription(endpoint: string) {
   const user = await getCurrentUser();
   if (!user) return;
   await query("delete from push_subscriptions where endpoint=$1 and user_id=$2", [endpoint, user.id]);
+}
+
+// ---------- FCM device tokens (native staff apps) ----------
+// Web Push above doesn't reach the Capacitor-wrapped Admin app (and later
+// Technician/Rider), so those register an FCM token here instead — see
+// components/StaffPushNotificationRegistrar.tsx.
+export async function registerStaffPushToken(token: string) {
+  const user = await getCurrentUser();
+  if (!user) return;
+  await saveStaffPushToken(user.id, token);
 }

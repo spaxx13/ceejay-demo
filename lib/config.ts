@@ -9,7 +9,7 @@ export const SITE_URL = "https://www.ceejayrepair.com";
 // How long a customer has to click the confirmation link in their
 // quotation email before their Home Service Request is auto-voided (see
 // app/api/cron/void-unconfirmed-requests).
-export const BOOKING_CONFIRMATION_WINDOW_HOURS = 2;
+export const BOOKING_CONFIRMATION_WINDOW_MINUTES = 30;
 
 // Cap on how many times a technician can self-correct the Repair Price /
 // Labor-Service Cost on their own completed Post-Repair checklist.
@@ -27,6 +27,11 @@ export const ICLOUD_CHECK_PRICE_PESOS = 10;
 // public entry point — Admin > Riders, Admin > Pickup & Delivery, and the
 // Rider app all work regardless, for any request already in that mode.
 export const PICKUP_DELIVERY_PUBLIC_ENABLED = process.env.NEXT_PUBLIC_PICKUP_DELIVERY_ENABLED === "true";
+// Lets the native customer app take Pickup & Delivery bookings while the
+// website still shows it as "Soon" — a soft launch through the app only.
+// Server-only (no NEXT_PUBLIC_), read by the mobile config route and the
+// booking action's fulfillment-mode gate; the public site never sees it.
+export const PICKUP_DELIVERY_MOBILE_ENABLED = process.env.PICKUP_DELIVERY_MOBILE_ENABLED === "true";
 
 // TEMPORARY testing toggle — set PICKUP_DELIVERY_SKIP_PAYMENT=true (Preview
 // only) to skip the PayMongo Booking & Diagnostic Fee gate for Pickup &

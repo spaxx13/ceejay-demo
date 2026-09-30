@@ -93,7 +93,9 @@ export default async function PickupDeliveryDetailPage({ params }: { params: Pro
   // the repair happens at the branch the device is physically at.
   const repairBranch = deliveredBranch ?? branches.find((b) => b.id === req.queueBranchId) ?? branches.find((b) => !b.address);
   const assignableTechnicians = technicians.filter(
-    (t) => (t.active && (repairBranch ? t.branchIds.includes(repairBranch.id) : true)) || t.id === req.assignedTechnicianId
+    (t) =>
+      (t.active && t.canPickupDelivery && (repairBranch ? t.branchIds.includes(repairBranch.id) : true)) ||
+      t.id === req.assignedTechnicianId
   );
   const openIssues = exceptions.filter((e) => e.requestId === req.id && !e.resolvedAt);
   const resolvedIssues = exceptions.filter((e) => e.requestId === req.id && e.resolvedAt);

@@ -28,7 +28,7 @@ const peso = (n: number) => `₱${n.toLocaleString(undefined, { minimumFractionD
 export default async function RequestsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string; technician?: string; date?: string; unassigned?: string; province?: string; downpayment?: string }>;
+  searchParams: Promise<{ status?: string; technician?: string; date?: string; unassigned?: string; province?: string; downpayment?: string; reference?: string }>;
 }) {
   const user = await getCurrentUser();
   if (!canManageHomeServiceRequests(user)) redirect("/admin");
@@ -72,6 +72,7 @@ export default async function RequestsPage({
   if (sp.date) requests = requests.filter((r) => r.preferredDatetime.startsWith(sp.date!));
   if (sp.province) requests = requests.filter((r) => r.province === sp.province);
   if (sp.downpayment) requests = requests.filter((r) => r.downpaymentStatus === sp.downpayment);
+  if (sp.reference) requests = requests.filter((r) => r.reference.toLowerCase().includes(sp.reference!.trim().toLowerCase()));
   if (sp.unassigned === "1") requests = requests.filter(isUnassigned);
   requests.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
 
@@ -250,15 +251,20 @@ export default async function RequestsPage({
         )}
       </div>
 
-      <RequestsFilterForm statuses={statuses} technicians={homeServiceTechnicians} provinces={provinceOptions} current={sp} />
+      {/* Keyed on the reference filter so the search box's local input state
+          resets when it changes from outside the form itself — the Clear
+          link, or the browser's back/forward button — since router.push
+          alone won't remount this client component otherwise. */}
+      <RequestsFilterForm key={sp.reference ?? ""} statuses={statuses} technicians={homeServiceTechnicians} provinces={provinceOptions} current={sp} />
 
-      {(sp.date || sp.province || sp.status || sp.technician || sp.downpayment || sp.unassigned === "1") && (
+      {(sp.date || sp.province || sp.status || sp.technician || sp.downpayment || sp.reference || sp.unassigned === "1") && (
         <div className="card">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-sm font-semibold text-slate-800">
               {requests.length} job{requests.length === 1 ? "" : "s"}
               {sp.date && <> on {formatDate(sp.date)}</>}
               {sp.province && <> in {sp.province}</>}
+              {sp.reference && <> matching &ldquo;{sp.reference}&rdquo;</>}
             </p>
           </div>
           {filteredTechnicianCounts.length > 0 && (

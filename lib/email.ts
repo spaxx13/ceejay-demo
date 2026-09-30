@@ -91,7 +91,7 @@ export async function sendQuotationEmail(
     address: string;
     serviceFee: number | null;
     confirmationUrl: string | null;
-    confirmationWindowHours: number;
+    confirmationWindowMinutes: number;
     downpaymentRequired: boolean;
     downpaymentAmount: number | null;
     fulfillmentMode: "on_site" | "pickup_delivery";
@@ -123,7 +123,7 @@ export async function sendQuotationEmail(
       <div style="margin: 20px 0; padding: 16px; border: 2px solid #f59e0b; border-radius: 8px; background: #fffbeb; text-align: center;">
         <p style="font-size: 14px; font-weight: 700; color: #92400e; margin: 0 0 4px;">Action required</p>
         <p style="font-size: 13px; color: #78350f; margin: 0 0 12px; line-height: 1.5;">
-          Please confirm your booking within <strong>${opts.confirmationWindowHours} hours</strong>, or it will be automatically
+          Please confirm your booking within <strong>${opts.confirmationWindowMinutes} minutes</strong>, or it will be automatically
           cancelled.
         </p>
         <a
