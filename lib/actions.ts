@@ -85,7 +85,7 @@ import {
   sendTechnicianOnTheWayEmail,
   emailConfigured,
 } from "./email";
-import { isOnTheWayStatus } from "./technicianTracking";
+import { isOnTheWayStatus, distanceKm } from "./technicianTracking";
 import { sendSms, sendOtpSms, smsConfigured, normalizePhone, isValidPhone, getAccountStatus, type SmsAccountStatus } from "./sms";
 import { SUNDAY_ONLY_PROVINCES, DOWNPAYMENT_PROVINCES, serviceFeeAmount, requestServiceFee, PICKUP_DELIVERY_FEE_PESOS } from "./homeServiceFees";
 import { getRepairQuote } from "./servicePricing";
@@ -834,21 +834,42 @@ export async function riderUpdatePickupStatus(_prev: RiderStatusResult | undefin
         photos.push({ label: slot.label, dataUrl });
       }
 
+      // Destination branch — decided here, the moment the rider has the
+      // device, so the card can tell them where to bring it right away
+      // instead of asking at the "On The Way to Branch" step. Nearest
+      // active physical branch (by pin) to the customer's pin; without pins
+      // on both sides, the first active physical branch. The rider can still
+      // redirect (riderUpdateDestinationBranch) and the next step's dropdown
+      // is pre-filled with this, so a wrong guess costs one tap.
+      let destinationBranchId = req.deliveredBranchId;
+      let destinationBranchName: string | null = null;
+      if (!destinationBranchId) {
+        const physicalBranches = (await getBranches()).filter((b) => b.active && b.address);
+        const withDistance = physicalBranches
+          .filter((b) => b.lat !== null && b.lng !== null && req.lat !== null && req.lng !== null)
+          .map((b) => ({ b, d: distanceKm({ lat: req.lat!, lng: req.lng! }, { lat: b.lat!, lng: b.lng! }) }))
+          .sort((a, z) => a.d - z.d);
+        const chosen = withDistance[0]?.b ?? physicalBranches[0] ?? null;
+        destinationBranchId = chosen?.id ?? null;
+        destinationBranchName = chosen?.name ?? null;
+      }
+
       await query(
-        "update home_service_requests set picked_up_at=now(), pickup_signature_data_url=$1, pickup_photo_data_url=$2, pickup_condition_checklist=$3, pickup_photos=$4, pickup_security_seal=$5 where id=$6",
+        "update home_service_requests set picked_up_at=now(), pickup_signature_data_url=$1, pickup_photo_data_url=$2, pickup_condition_checklist=$3, pickup_photos=$4, pickup_security_seal=$5, delivered_branch_id=coalesce(delivered_branch_id, $6) where id=$7",
         [
           str(formData, "signatureDataUrl") || null,
           photos[0]?.dataUrl ?? null,
           JSON.stringify(checklist),
           JSON.stringify(photos),
           str(formData, "securitySeal") || null,
+          destinationBranchId,
           requestId,
         ]
       );
       await logActivity(
         "home_service_request",
         requestId,
-        `Picked up by rider ${user.name} — condition checklist and ${photos.length} photo(s) recorded`,
+        `Picked up by rider ${user.name} — condition checklist and ${photos.length} photo(s) recorded${destinationBranchName ? `; bring to ${destinationBranchName} branch` : ""}`,
         user.name
       );
       break;
@@ -912,8 +933,10 @@ export async function riderUpdateDestinationBranch(_prev: RiderStatusResult | un
 
   const req = await getRequestById(requestId);
   if (!req || req.pickupRiderId !== user.riderId) return { ok: false, error: "This job isn't assigned to you." };
-  if (!req.headingToShopAt || req.receivedAtShopAt) {
-    return { ok: false, error: "You can only change the destination branch while this trip is in progress." };
+  // Allowed from the moment the rider has the device (the destination is
+  // auto-picked at "Picked Up") until it's handed over at the shop.
+  if (!req.pickedUpAt || req.receivedAtShopAt) {
+    return { ok: false, error: "You can only change the destination branch while you have the device and haven't reached the shop yet." };
   }
   if (deliveredBranchId === req.deliveredBranchId) return { ok: true };
 

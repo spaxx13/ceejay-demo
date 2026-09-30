@@ -41,6 +41,7 @@ export default async function RiderPage() {
     riderId ? getRiderById(riderId) : Promise.resolve(null),
   ]);
   const branches = allBranches.filter((b) => b.active).map((b) => ({ id: b.id, name: b.name }));
+  const branchById = (id: string | null) => (id ? allBranches.find((b) => b.id === id) ?? null : null);
   // The pickup leg isn't done until the device is actually at the shop, not
   // just once it leaves the customer's hands.
   const myPickups = allRequests
@@ -122,13 +123,32 @@ export default async function RiderPage() {
                     </div>
                   )}
                   {r.pickupStartedAt && !r.receivedAtShopAt && <RiderLocationReporter requestId={r.id} />}
-                  {r.headingToShopAt && !r.receivedAtShopAt && (
-                    <RiderBranchRedirectForm
-                      action={riderUpdateDestinationBranch}
-                      requestId={r.id}
-                      branches={branches}
-                      currentBranchId={r.deliveredBranchId}
-                    />
+                  {r.pickedUpAt && !r.receivedAtShopAt && (
+                    <div className="space-y-2 rounded-lg border-2 border-blue-300 bg-blue-50 p-3">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">Bring the device to</p>
+                      {(() => {
+                        const dest = branchById(r.deliveredBranchId);
+                        return dest ? (
+                          <>
+                            <p className="text-base font-bold text-slate-900">{dest.name} branch</p>
+                            {dest.address && <p className="text-sm text-slate-600">{dest.address}</p>}
+                            {dest.contactNumber && (
+                              <a href={`tel:${dest.contactNumber}`} className="inline-block text-xs text-blue-600 hover:underline">
+                                Call branch {dest.contactNumber}
+                              </a>
+                            )}
+                          </>
+                        ) : (
+                          <p className="text-sm text-amber-700">No branch assigned yet — pick one below.</p>
+                        );
+                      })()}
+                      <RiderBranchRedirectForm
+                        action={riderUpdateDestinationBranch}
+                        requestId={r.id}
+                        branches={branches}
+                        currentBranchId={r.deliveredBranchId}
+                      />
+                    </div>
                   )}
                   <RiderStatusUpdateForm
                     action={riderUpdatePickupStatus}
