@@ -10,6 +10,8 @@ import {
   PICKUP_DELIVERY_FEE_TIERS,
   PICKUP_DELIVERY_FEE_MIN_PESOS,
   PICKUP_DELIVERY_ROAD_FACTOR,
+  PICKUP_DELIVERY_COVERAGE,
+  PICKUP_DELIVERY_COVERAGE_LABEL,
 } from "@/lib/homeServiceFees";
 
 // One bundle the native app fetches on launch (and can refresh) to render
@@ -45,6 +47,11 @@ export async function GET() {
         pickupDeliveryFeeTiers: PICKUP_DELIVERY_FEE_TIERS,
         pickupDeliveryRoadFactor: PICKUP_DELIVERY_ROAD_FACTOR,
         pickupDeliveryFeePesos: PICKUP_DELIVERY_FEE_MIN_PESOS,
+        // Where Pickup & Delivery can be booked: provinces (keys/labels as
+        // in the near-area address dataset) and, when `cities` is set, only
+        // those cities/municipalities within it (null = whole province).
+        pickupDeliveryCoverage: PICKUP_DELIVERY_COVERAGE,
+        pickupDeliveryCoverageLabel: PICKUP_DELIVERY_COVERAGE_LABEL,
       },
       flags: {
         // The app's own switch — on for the app alone via

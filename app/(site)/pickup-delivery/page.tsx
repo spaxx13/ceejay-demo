@@ -4,14 +4,15 @@ import { PICKUP_DELIVERY_PUBLIC_ENABLED, PICKUP_DELIVERY_SKIP_OTP } from "@/lib/
 import { getCurrentUser } from "@/lib/auth";
 import HomeServiceForm from "@/components/HomeServiceForm";
 import { smsConfigured } from "@/lib/sms";
+import { PICKUP_DELIVERY_COVERAGE_LABEL } from "@/lib/homeServiceFees";
 
 // Its own page, separate from the Home Service (on-site) request flow at
 // /request — same underlying form/fields/submission action (both are still
 // Home Service Requests under the hood), but Pickup & Delivery gets its own
 // entry point and copy rather than a toggle buried inside the on-site form.
-// Metro Manila only for now (riders don't cover the wider near-queue area or
-// the far/other-provinces queue at all) — HomeServiceForm restricts the
-// address picker to Metro Manila cities whenever mode="pickup_delivery".
+// Coverage is PICKUP_DELIVERY_COVERAGE (lib/homeServiceFees.ts): Metro
+// Manila plus Cainta/Antipolo/Taytay in Rizal — HomeServiceForm trims the
+// address picker to that whenever mode="pickup_delivery".
 
 export default async function PickupDeliveryPage() {
   // Staff preview: while the public gate is still off, a logged-in admin
@@ -106,7 +107,7 @@ export default async function PickupDeliveryPage() {
           <p className="kicker">Pickup &amp; Delivery</p>
           <h1 className="mt-1 text-2xl font-bold text-slate-900">We pick up, repair, and deliver it back</h1>
           <p className="mt-2 text-sm text-slate-400">No need to leave home — a rider handles the trip both ways.</p>
-          <p className="mt-1 text-xs text-slate-400">Metro Manila only, for now.</p>
+          <p className="mt-1 text-xs text-slate-400">Available in {PICKUP_DELIVERY_COVERAGE_LABEL}.</p>
         </div>
         {fields.length === 0 ? (
           <p className="card text-center text-sm text-slate-400">
