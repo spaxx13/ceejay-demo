@@ -712,9 +712,10 @@ export default function HomeServiceForm({
               )}
               {pdQuote && (
                 <p className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
-                  About <span className="font-semibold">{pdQuote.km} km</span> from our {pdQuote.branchName} branch → Booking, Diagnostic &amp; Delivery
-                  Fee: <span className="font-semibold">₱{pdQuote.fee.toLocaleString()}.00</span>
-                  <span className="block text-[11px] text-blue-600">{PICKUP_DELIVERY_FEE_TIER_LABEL}</span>
+                  About <span className="font-semibold">{pdQuote.km} km</span> from our {pdQuote.branchName} branch → Pickup &amp; Delivery Booking,
+                  Diagnostic &amp; Delivery Fee: <span className="font-semibold">₱{pdQuote.fee.toLocaleString()}.00</span> (round trip — pickup from you and
+                  delivery back, both included)
+                  <span className="block text-[11px] text-blue-600">Pickup &amp; Delivery rates, round trip: {PICKUP_DELIVERY_FEE_TIER_LABEL}</span>
                 </p>
               )}
               {pinError && <p className="text-xs font-medium text-red-600">{pinError}</p>}
@@ -913,9 +914,9 @@ export default function HomeServiceForm({
       {mode === "pickup_delivery" && (
         <FormNotice tone="blue" icon="🚚">
           A rider will pick up your device at the address below, we&apos;ll repair it at the shop, then a rider delivers it back to you.
-          One Booking, Diagnostic &amp; Delivery Fee covers it all — ₱{PICKUP_DELIVERY_FEE_MIN_PESOS.toLocaleString()} to ₱
+          One Pickup &amp; Delivery Booking, Diagnostic &amp; Delivery Fee covers the whole round trip — ₱{PICKUP_DELIVERY_FEE_MIN_PESOS.toLocaleString()} to ₱
           {PICKUP_DELIVERY_FEE_MAX_PESOS.toLocaleString()} depending on how far you are from our nearest branch ({PICKUP_DELIVERY_FEE_TIER_LABEL}) —
-          nothing more to pay when it comes back.
+          pickup and delivery back are both included, nothing more to pay when it comes back.
         </FormNotice>
       )}
 
@@ -979,8 +980,8 @@ export default function HomeServiceForm({
         {mode === "pickup_delivery" && (
           <p className="mt-2 font-semibold">
             {pdQuote
-              ? `Your pickup address is about ${pdQuote.km} km from our ${pdQuote.branchName} branch — a ₱${pdQuote.fee.toLocaleString()}.00 Booking, Diagnostic & Delivery Fee (pickup + diagnosis + delivery back to you, all included) is required via QR Ph after phone verification, before we confirm your booking and assign a rider.`
-              : `A Booking, Diagnostic & Delivery Fee of ₱${PICKUP_DELIVERY_FEE_MIN_PESOS.toLocaleString()}–₱${PICKUP_DELIVERY_FEE_MAX_PESOS.toLocaleString()}, depending on your distance from our nearest branch (${PICKUP_DELIVERY_FEE_TIER_LABEL}), is required via QR Ph after phone verification — pin your pickup location on the map above to see your exact fee.`}
+              ? `Your pickup address is about ${pdQuote.km} km from our ${pdQuote.branchName} branch — a ₱${pdQuote.fee.toLocaleString()}.00 Pickup & Delivery Booking, Diagnostic & Delivery Fee is required via QR Ph after phone verification, before we confirm your booking and assign a rider. This rate is for Pickup & Delivery and already covers the round trip: pickup from you, the initial diagnosis, and delivery back to you — nothing more to pay when your device comes back.`
+              : `A Pickup & Delivery Booking, Diagnostic & Delivery Fee of ₱${PICKUP_DELIVERY_FEE_MIN_PESOS.toLocaleString()}–₱${PICKUP_DELIVERY_FEE_MAX_PESOS.toLocaleString()}, depending on your distance from our nearest branch, is required via QR Ph after phone verification. These rates are for Pickup & Delivery and already cover the round trip — pickup from you and delivery back (${PICKUP_DELIVERY_FEE_TIER_LABEL}). Pin your pickup location on the map above to see your exact fee.`}
           </p>
         )}
       </FormNotice>
