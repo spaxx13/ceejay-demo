@@ -1,6 +1,8 @@
 import Image from "next/image";
 import Link from "next/link";
 import { getCurrentCustomer } from "@/lib/customerAuth";
+import { PICKUP_DELIVERY_PUBLIC_ENABLED, PICKUP_DELIVERY_MOBILE_ENABLED } from "@/lib/config";
+import { isCeejayCustomerApp } from "@/lib/mobileApp";
 
 // Dedicated entry screen for the Ceejay mobile app (Capacitor wraps this
 // page, not the full marketing site) — just the two booking flows the app
@@ -9,6 +11,10 @@ import { getCurrentCustomer } from "@/lib/customerAuth";
 // from a browser as normal; this page is only ever the app's start screen.
 export default async function AppHomePage() {
   const customer = await getCurrentCustomer();
+  // Pickup & Delivery is still a soft launch through the native app only —
+  // this same URL is also reachable from a regular browser (it's not
+  // auth-gated), which must not see it until it's publicly enabled.
+  const pickupDeliveryVisible = PICKUP_DELIVERY_PUBLIC_ENABLED || (PICKUP_DELIVERY_MOBILE_ENABLED && (await isCeejayCustomerApp()));
 
   return (
     <main className="grid-bg flex min-h-screen flex-col items-center justify-center px-4 py-10 pb-20 sm:px-6">
@@ -24,10 +30,12 @@ export default async function AppHomePage() {
             <p className="text-lg font-semibold text-slate-900">🚚 Home Service</p>
             <p className="text-sm text-slate-400">A technician comes to your address to repair your device.</p>
           </Link>
-          <Link href="/pickup-delivery" className="card block space-y-1 text-left transition hover:border-blue-300 hover:shadow-md">
-            <p className="text-lg font-semibold text-slate-900">📦 Pick-up &amp; Delivery</p>
-            <p className="text-sm text-slate-400">A rider picks up your device, we repair it at the shop, then deliver it back.</p>
-          </Link>
+          {pickupDeliveryVisible && (
+            <Link href="/pickup-delivery" className="card block space-y-1 text-left transition hover:border-blue-300 hover:shadow-md">
+              <p className="text-lg font-semibold text-slate-900">📦 Pick-up &amp; Delivery</p>
+              <p className="text-sm text-slate-400">A rider picks up your device, we repair it at the shop, then deliver it back.</p>
+            </Link>
+          )}
         </div>
 
         {/* A padded block (not a bare text link) — a thin one-line link sitting

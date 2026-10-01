@@ -47,6 +47,7 @@ export default async function TechnicianUnboxingPage({ params }: { params: Promi
               recordedAt={req.unboxingVideoRecordedAt}
               publishedAt={req.unboxingVideoPublishedAt}
               canDelete={canManageHomeServiceRequests(user) || !req.unboxingVideoPublishedAt}
+              canUnpublish={canManageHomeServiceRequests(user)}
             />
           )}
           <UnboxingVideoRecorder requestId={req.id} existing={!!req.unboxingVideoPath} />

@@ -285,6 +285,7 @@ export default async function PickupDeliveryDetailPage({ params }: { params: Pro
                   recordedAt={req.unboxingVideoRecordedAt}
                   publishedAt={req.unboxingVideoPublishedAt}
                   canDelete
+                  canUnpublish
                 />
               </div>
             ) : req.unboxingVideoPath ? (
