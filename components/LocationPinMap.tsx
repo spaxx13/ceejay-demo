@@ -5,6 +5,9 @@ import type { Map as LeafletMap, Marker } from "leaflet";
 import "leaflet/dist/leaflet.css";
 
 export type LatLng = { lat: number; lng: number };
+// Optional box the address search is limited to (Pickup & Delivery's
+// coverage area) — Google: locationRestriction; Nominatim: viewbox+bounded.
+export type SearchBounds = { south: number; west: number; north: number; east: number };
 
 type SearchResult = { placeId: number; label: string; lat: number; lng: number };
 
@@ -17,8 +20,9 @@ const DEFAULT_CENTER: LatLng = { lat: 14.5995, lng: 120.9842 };
 // at ~1 request/second, so searches are debounced below.
 const NOMINATIM = "https://nominatim.openstreetmap.org";
 
-async function searchPlaces(query: string, signal: AbortSignal): Promise<SearchResult[]> {
-  const url = `${NOMINATIM}/search?format=jsonv2&countrycodes=ph&limit=6&q=${encodeURIComponent(query)}`;
+async function searchPlaces(query: string, signal: AbortSignal, bounds?: SearchBounds): Promise<SearchResult[]> {
+  const box = bounds ? `&viewbox=${bounds.west},${bounds.north},${bounds.east},${bounds.south}&bounded=1` : "";
+  const url = `${NOMINATIM}/search?format=jsonv2&countrycodes=ph&limit=6${box}&q=${encodeURIComponent(query)}`;
   const res = await fetch(url, { signal, headers: { "Accept-Language": "en" } });
   if (!res.ok) return [];
   const rows: { place_id: number; display_name: string; lat: string; lon: string }[] = await res.json();
@@ -59,7 +63,11 @@ const GOOGLE_MAPS_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 // set — Google finds exact PH house/street addresses that OpenStreetMap's
 // search often can't — and falls back to the key-less OpenStreetMap
 // version otherwise.
-export default function LocationPinMap(props: { value: LatLng | null; onChange: (pos: LatLng, address: string | null) => void }) {
+export default function LocationPinMap(props: {
+  value: LatLng | null;
+  onChange: (pos: LatLng, address: string | null) => void;
+  searchBounds?: SearchBounds;
+}) {
   const googleBroken = useGoogleAuthFailed();
   const [debug] = useState(() => typeof window !== "undefined" && new URLSearchParams(window.location.search).has("debugmaps"));
   return (
@@ -220,7 +228,7 @@ export type PlaceResult = {
 // Debounced place search shared by the pin map and the Home Service form's
 // Street field: Google Places API (New) when a key is set, else (or once
 // Google errors, with `osmFallback`) OpenStreetMap.
-export function usePlaceSearch(query: string, { osmFallback }: { osmFallback: boolean }) {
+export function usePlaceSearch(query: string, { osmFallback, bounds }: { osmFallback: boolean; bounds?: SearchBounds }) {
   const [ready, setReady] = useState(!GOOGLE_MAPS_KEY);
   const [results, setResults] = useState<PlaceResult[]>([]);
   const [searching, setSearching] = useState(false);
@@ -250,6 +258,7 @@ export function usePlaceSearch(query: string, { osmFallback }: { osmFallback: bo
               input: q,
               sessionToken: sessionTokenRef.current,
               includedRegionCodes: ["ph"],
+              ...(bounds ? { locationRestriction: bounds } : {}),
             });
             if (controller.signal.aborted) return;
             setResults(
@@ -274,7 +283,7 @@ export function usePlaceSearch(query: string, { osmFallback }: { osmFallback: bo
             if (!osmFallback) return;
           }
         }
-        const osm = await searchPlaces(q, controller.signal);
+        const osm = await searchPlaces(q, controller.signal, bounds);
         setResults(osm.map((r) => ({ id: String(r.placeId), label: r.label, mainText: r.label, prediction: null, lat: r.lat, lng: r.lng })));
       } catch {
         // aborted or network error — leave previous results
@@ -286,7 +295,7 @@ export function usePlaceSearch(query: string, { osmFallback }: { osmFallback: bo
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [query, ready, googleFailed, osmFallback]);
+  }, [query, ready, googleFailed, osmFallback, bounds]);
 
   // Turns a picked result into coordinates + a display address.
   async function resolve(r: PlaceResult): Promise<{ pos: LatLng; address: string } | null> {
@@ -302,7 +311,15 @@ export function usePlaceSearch(query: string, { osmFallback }: { osmFallback: bo
   return { ready, results, searching, googleFailed, googleError, resolve };
 }
 
-function GooglePinMap({ value, onChange }: { value: LatLng | null; onChange: (pos: LatLng, address: string | null) => void }) {
+function GooglePinMap({
+  value,
+  onChange,
+  searchBounds,
+}: {
+  value: LatLng | null;
+  onChange: (pos: LatLng, address: string | null) => void;
+  searchBounds?: SearchBounds;
+}) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<GMap | null>(null);
   const markerRef = useRef<GMarker | null>(null);
@@ -315,6 +332,7 @@ function GooglePinMap({ value, onChange }: { value: LatLng | null; onChange: (po
   const [showResults, setShowResults] = useState(false);
   const { ready, results, searching, googleFailed: googleSearchFailed, resolve } = usePlaceSearch(query, {
     osmFallback: true,
+    bounds: searchBounds,
   });
   const queryReady = query.trim().length >= 3;
   const [locating, setLocating] = useState(false);
@@ -466,9 +484,11 @@ function GooglePinMap({ value, onChange }: { value: LatLng | null; onChange: (po
 function OsmPinMap({
   value,
   onChange,
+  searchBounds,
 }: {
   value: LatLng | null;
   onChange: (pos: LatLng, address: string | null) => void;
+  searchBounds?: SearchBounds;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<LeafletMap | null>(null);
@@ -562,7 +582,7 @@ function OsmPinMap({
     const controller = new AbortController();
     const timer = window.setTimeout(() => {
       setSearching(true);
-      searchPlaces(q, controller.signal)
+      searchPlaces(q, controller.signal, searchBounds)
         .then((r) => {
           setResults(r);
           setShowResults(true);
@@ -574,7 +594,7 @@ function OsmPinMap({
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [query]);
+  }, [query, searchBounds]);
 
   function useMyLocation() {
     setLocating(true);

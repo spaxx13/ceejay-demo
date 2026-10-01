@@ -12,6 +12,9 @@ import {
   pickupDeliveryQuote,
   PICKUP_DELIVERY_FEE_TIER_LABEL,
   PICKUP_DELIVERY_COVERAGE,
+  PICKUP_DELIVERY_COVERAGE_LABEL,
+  PICKUP_DELIVERY_SEARCH_BOUNDS,
+  pointInPickupDeliveryCoverage,
   nextSunday,
   minPreferredDateStr,
 } from "@/lib/homeServiceFees";
@@ -218,12 +221,22 @@ export default function HomeServiceForm({
   const streetField = fields.find((f) => f.systemKey === "street");
   // Pickup & Delivery always needs the pin — the fee is computed from it.
   const pinRequired = (streetField?.active === true && streetField.required) || mode === "pickup_delivery";
-  const pdQuote = mode === "pickup_delivery" ? pickupDeliveryQuote({ lat, lng }, branchPins) : null;
+  // The pin itself has to land inside the coverage area — the address
+  // search can still surface places outside it (Google ranks its bounds as
+  // a preference, OSM as a hard box), and "drag the pin" is unrestricted.
+  const pinOutsideCoverage =
+    mode === "pickup_delivery" && lat !== null && lng !== null && !pointInPickupDeliveryCoverage(lat, lng);
+  const pdQuote = mode === "pickup_delivery" && !pinOutsideCoverage ? pickupDeliveryQuote({ lat, lng }, branchPins) : null;
   const [pinError, setPinError] = useState("");
   const pinSectionRef = useRef<HTMLDivElement>(null);
   function validatePin(required: boolean): boolean {
     if (required && (lat === null || lng === null)) {
       setPinError("Please pin your exact location on the map.");
+      pinSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      return false;
+    }
+    if (pinOutsideCoverage) {
+      setPinError(`Your pin is outside our Pickup & Delivery area (${PICKUP_DELIVERY_COVERAGE_LABEL}). Please pin an address within it.`);
       pinSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
       return false;
     }
@@ -699,10 +712,17 @@ export default function HomeServiceForm({
                   setLng(pos.lng);
                   setPinError("");
                 }}
+                searchBounds={mode === "pickup_delivery" ? PICKUP_DELIVERY_SEARCH_BOUNDS : undefined}
               />
-              {lat !== null && lng !== null && (
+              {lat !== null && lng !== null && !pinOutsideCoverage && (
                 <p className="text-xs font-medium text-green-700">
                   ✓ Location pinned ({lat.toFixed(5)}, {lng.toFixed(5)})
+                </p>
+              )}
+              {pinOutsideCoverage && (
+                <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
+                  ✕ This pin is outside our Pickup &amp; Delivery area. We only pick up and deliver within {PICKUP_DELIVERY_COVERAGE_LABEL}.
+                  Please search or drag the pin to an address within it, or book Home Service instead.
                 </p>
               )}
               {pdQuote && (
@@ -981,7 +1001,7 @@ export default function HomeServiceForm({
       </FormNotice>
 
       {!phoneGateActive && (
-        <button type="submit" disabled={pending || pickupDeliveryAgreementPending} className="btn-primary w-full">
+        <button type="submit" disabled={pending || pickupDeliveryAgreementPending || pinOutsideCoverage} className="btn-primary w-full">
           {pending ? "Submitting..." : content.submitButtonLabel}
         </button>
       )}
@@ -991,7 +1011,12 @@ export default function HomeServiceForm({
 
       {phoneGateActive && otpStage === "idle" && (
         <>
-          <button type="button" onClick={handleProceedToOtp} disabled={sendingOtp || pickupDeliveryAgreementPending} className="btn-primary w-full">
+          <button
+            type="button"
+            onClick={handleProceedToOtp}
+            disabled={sendingOtp || pickupDeliveryAgreementPending || pinOutsideCoverage}
+            className="btn-primary w-full"
+          >
             {sendingOtp ? "Sending verification code..." : content.submitButtonLabel}
           </button>
           {otpError && <p className="text-center text-sm text-red-600">{otpError}</p>}
