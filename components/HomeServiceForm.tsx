@@ -893,8 +893,9 @@ export default function HomeServiceForm({
       {mode === "pickup_delivery" && (
         <FormNotice tone="blue" icon="🚚">
           A rider will pick up your device at the address below, we&apos;ll repair it at the shop, then a rider delivers it back to you.
-          One Booking, Diagnostic &amp; Delivery Fee covers it all — ₱500 to ₱1,000 depending on how far you are from our nearest branch
-          ({PICKUP_DELIVERY_FEE_TIER_LABEL}) — nothing more to pay when it comes back.
+          One Booking, Diagnostic &amp; Delivery Fee covers it all — ₱{PICKUP_DELIVERY_FEE_MIN_PESOS.toLocaleString()} to ₱
+          {PICKUP_DELIVERY_FEE_MAX_PESOS.toLocaleString()} depending on how far you are from our nearest branch ({PICKUP_DELIVERY_FEE_TIER_LABEL}) —
+          nothing more to pay when it comes back.
         </FormNotice>
       )}
 
