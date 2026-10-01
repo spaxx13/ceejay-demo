@@ -434,6 +434,13 @@ export type HomeServiceRequest = {
   // (lib/pickupDeliveryAgreement.ts) — null for on-site bookings.
   pickupDeliveryAgreedAt: string | null;
   pickupDeliveryAgreementVersion: string | null;
+  // Distance-tiered fee computed at booking (lib/homeServiceFees.ts
+  // pickupDeliveryQuote): estimated road km from the pickup pin to the
+  // nearest pinned branch and the tier it landed in. Null for on-site
+  // bookings and for bookings made before distance pricing.
+  pickupDeliveryFeePesos: number | null;
+  pickupDeliveryDistanceKm: number | null;
+  pickupDeliveryNearestBranchId: string | null;
 };
 
 // Rider's device-condition checklist at "Picked Up" — a deliberate copy of

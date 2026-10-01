@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getLookups, getDeviceModels, getRequestFormContent, getCustomFormFields, canManageHomeServiceRequests } from "@/lib/db";
+import { getLookups, getDeviceModels, getRequestFormContent, getCustomFormFields, getBranches, canManageHomeServiceRequests } from "@/lib/db";
 import { PICKUP_DELIVERY_PUBLIC_ENABLED, PICKUP_DELIVERY_SKIP_OTP } from "@/lib/config";
 import { getCurrentUser } from "@/lib/auth";
 import HomeServiceForm from "@/components/HomeServiceForm";
@@ -42,12 +42,14 @@ export default async function PickupDeliveryPage() {
     );
   }
 
-  const [lookups, deviceModels, content, customFormFields] = await Promise.all([
+  const [lookups, deviceModels, content, customFormFields, branches] = await Promise.all([
     getLookups(),
     getDeviceModels(),
     getRequestFormContent(),
     getCustomFormFields(),
+    getBranches(),
   ]);
+  const branchPins = branches.filter((b) => b.active && b.address).map((b) => ({ id: b.id, name: b.name, lat: b.lat, lng: b.lng }));
 
   if (!content.nearAreaEnabled) {
     return (
@@ -118,6 +120,7 @@ export default async function PickupDeliveryPage() {
             // submitHomeServiceRequest's matching staffPreview gate.
             smsAvailable={smsConfigured() && !PICKUP_DELIVERY_SKIP_OTP && !staffPreview}
             mode="pickup_delivery"
+            branchPins={branchPins}
           />
         )}
       </div>

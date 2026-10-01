@@ -7,7 +7,9 @@ import {
   SUNDAY_ONLY_PROVINCES,
   DOWNPAYMENT_PROVINCES,
   EXCLUDED_FROM_HOME_SERVICE,
-  PICKUP_DELIVERY_FEE_PESOS,
+  PICKUP_DELIVERY_FEE_TIERS,
+  PICKUP_DELIVERY_FEE_MIN_PESOS,
+  PICKUP_DELIVERY_ROAD_FACTOR,
 } from "@/lib/homeServiceFees";
 
 // One bundle the native app fetches on launch (and can refresh) to render
@@ -35,7 +37,14 @@ export async function GET() {
         sundayOnlyProvinces: [...SUNDAY_ONLY_PROVINCES],
         downpaymentProvinces: [...DOWNPAYMENT_PROVINCES],
         excludedFromHomeService: [...EXCLUDED_FROM_HOME_SERVICE],
-        pickupDeliveryFeePesos: PICKUP_DELIVERY_FEE_PESOS,
+        // Distance-tiered (lib/homeServiceFees.ts pickupDeliveryQuote):
+        // straight-line km from the pickup pin to the nearest pinned branch
+        // × roadFactor, then the first tier whose maxKm covers it (null =
+        // no cap). pickupDeliveryFeePesos is kept as the base tier for
+        // app builds that still read the old flat value.
+        pickupDeliveryFeeTiers: PICKUP_DELIVERY_FEE_TIERS,
+        pickupDeliveryRoadFactor: PICKUP_DELIVERY_ROAD_FACTOR,
+        pickupDeliveryFeePesos: PICKUP_DELIVERY_FEE_MIN_PESOS,
       },
       flags: {
         // The app's own switch — on for the app alone via

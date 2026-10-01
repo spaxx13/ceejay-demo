@@ -91,7 +91,14 @@ import { storageConfigured, createSignedUploadUrl, deleteStorageObject, UPDATES_
 import { PICKUP_DELIVERY_AGREEMENT_VERSION } from "./pickupDeliveryAgreement";
 import { getRequestUpdateById } from "./db";
 import { sendSms, sendOtpSms, smsConfigured, normalizePhone, isValidPhone, getAccountStatus, type SmsAccountStatus } from "./sms";
-import { SUNDAY_ONLY_PROVINCES, DOWNPAYMENT_PROVINCES, serviceFeeAmount, requestServiceFee, PICKUP_DELIVERY_FEE_PESOS } from "./homeServiceFees";
+import {
+  SUNDAY_ONLY_PROVINCES,
+  DOWNPAYMENT_PROVINCES,
+  serviceFeeAmount,
+  requestServiceFee,
+  pickupDeliveryQuote,
+  PICKUP_DELIVERY_FEE_MIN_PESOS,
+} from "./homeServiceFees";
 import { getRepairQuote } from "./servicePricing";
 import { formatDate, isCheckInOpen } from "./format";
 import { createCheckoutSession as createPaymongoCheckoutSession, paymongoConfigured } from "./paymongo";
@@ -2253,6 +2260,14 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
   const landmark = str(formData, "landmark");
   const lat = str(formData, "lat") ? Number(str(formData, "lat")) : null;
   const lng = str(formData, "lng") ? Number(str(formData, "lng")) : null;
+  // Distance-tiered Pickup & Delivery fee — the pin is required on the web
+  // form so there's always a real distance; the native app's form may not
+  // send one yet, in which case it gets the base tier rather than a block.
+  const pdQuote = fulfillmentMode === "pickup_delivery" ? pickupDeliveryQuote({ lat, lng }, branches.filter((b) => b.active && b.address)) : null;
+  if (fulfillmentMode === "pickup_delivery" && !fromMobileApp && (lat === null || lng === null)) {
+    return { ok: false, error: "Please pin your exact pickup location on the map so we can compute your Booking, Diagnostic & Delivery Fee." };
+  }
+  const pdFee = pdQuote?.fee ?? PICKUP_DELIVERY_FEE_MIN_PESOS;
   const vlogConsent = formData.has("vlogConsent");
   const vlogBlurPreference = vlogConsent ? str(formData, "vlogBlurPreference") : "";
   if (vlogConsent && vlogBlurPreference !== "blurred" && vlogBlurPreference !== "not_blurred") {
@@ -2343,7 +2358,7 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
   const pendingStatus = requestStatuses.find((s) => s.label === "Pending") ?? requestStatuses[0];
   const pendingConfirmationStatus = requestStatuses.find((s) => s.label === "Pending Confirmation");
   // Pickup & Delivery always requires its flat Booking + Diagnostic Fee
-  // (PICKUP_DELIVERY_FEE_PESOS) — same QR Ph down-payment gate as
+  // (distance-tiered, see pickupDeliveryQuote) — same QR Ph down-payment gate as
   // DOWNPAYMENT_PROVINCES, just always on instead of province-gated.
   // TEMPORARY: PICKUP_DELIVERY_SKIP_PAYMENT bypasses this (and the email-
   // confirmation gate below) entirely, straight to "Pending" — see
@@ -2357,7 +2372,7 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
   // a "Pending Confirmation" status exists) — otherwise there's no gate to
   // attach a down payment requirement to at all.
   const downpaymentActive = requiresDownpayment && needsConfirmation;
-  const downpaymentAmount = downpaymentActive ? (fulfillmentMode === "pickup_delivery" ? PICKUP_DELIVERY_FEE_PESOS : serviceFeeAmount(province, city)) : null;
+  const downpaymentAmount = downpaymentActive ? (fulfillmentMode === "pickup_delivery" ? pdFee : serviceFeeAmount(province, city)) : null;
   const cancelledStatus = requestStatuses.find((s) => s.label === "Cancelled");
 
   // A customer can book several devices in one submission (the "+ Add
@@ -2589,11 +2604,18 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
     createdRequests.push({ id: created!.id, reference, device: d });
   }
 
-  if (fulfillmentMode === "pickup_delivery" && pickupDeliveryAgreed) {
-    await query("update home_service_requests set pickup_delivery_agreed_at=now(), pickup_delivery_agreement_version=$1 where id = any($2::uuid[])", [
-      PICKUP_DELIVERY_AGREEMENT_VERSION,
-      createdRequests.map((r) => r.id),
-    ]);
+  if (fulfillmentMode === "pickup_delivery") {
+    const ids = createdRequests.map((r) => r.id);
+    if (pickupDeliveryAgreed) {
+      await query("update home_service_requests set pickup_delivery_agreed_at=now(), pickup_delivery_agreement_version=$1 where id = any($2::uuid[])", [
+        PICKUP_DELIVERY_AGREEMENT_VERSION,
+        ids,
+      ]);
+    }
+    await query(
+      "update home_service_requests set pickup_delivery_fee_pesos=$1, pickup_delivery_distance_km=$2, pickup_delivery_nearest_branch_id=$3 where id = any($4::uuid[])",
+      [pdFee, pdQuote?.km ?? null, pdQuote?.branchId ?? null, ids]
+    );
   }
 
   const referenceList = createdRequests.map((r) => r.reference).join(", ");
@@ -2609,7 +2631,7 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
   const address = [street, barangay, city, province].filter(Boolean).join(", ") || "Not specified";
   // Pickup & Delivery has its own flat fee, not the per-province on-site
   // visit fee — the quotation email/PDF label it accordingly.
-  const serviceFee = fulfillmentMode === "pickup_delivery" ? PICKUP_DELIVERY_FEE_PESOS : serviceFeeAmount(province, city);
+  const serviceFee = fulfillmentMode === "pickup_delivery" ? pdFee : serviceFeeAmount(province, city);
   const [deviceModels, servicePrices] = await Promise.all([getDeviceModels(), getServicePrices()]);
   const quotationDevices = createdRequests.map((cr) => {
     const brand = allLookups.find((l) => l.id === cr.device.validDeviceBrandId);

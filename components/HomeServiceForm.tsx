@@ -9,7 +9,8 @@ import {
   SUNDAY_ONLY_PROVINCES,
   DOWNPAYMENT_PROVINCES,
   EXCLUDED_FROM_HOME_SERVICE,
-  PICKUP_DELIVERY_FEE_PESOS,
+  pickupDeliveryQuote,
+  PICKUP_DELIVERY_FEE_TIER_LABEL,
   nextSunday,
   minPreferredDateStr,
 } from "@/lib/homeServiceFees";
@@ -81,6 +82,7 @@ export default function HomeServiceForm({
   area,
   smsAvailable,
   mode = "on_site",
+  branchPins = [],
 }: {
   brands: Brand[];
   models: Model[];
@@ -93,6 +95,10 @@ export default function HomeServiceForm({
   // user-facing toggle (Pickup & Delivery has its own separate page,
   // app/(site)/pickup-delivery, distinct from this Home Service form).
   mode?: "on_site" | "pickup_delivery";
+  // Active branches with map pins — Pickup & Delivery only, for the live
+  // distance-tiered fee preview once the customer pins their address
+  // (lib/homeServiceFees.ts pickupDeliveryQuote; the server recomputes).
+  branchPins?: { id: string; name: string; lat: number | null; lng: number | null }[];
 }) {
   const [state, formAction, pending] = useActionState(submitHomeServiceRequest, undefined);
   // Confirming right on the success screen below (state?.ok), instead of
@@ -201,7 +207,9 @@ export default function HomeServiceForm({
   // native HTML5 "required" validation (hidden inputs are excluded from
   // constraint validation entirely).
   const streetField = fields.find((f) => f.systemKey === "street");
-  const pinRequired = streetField?.active === true && streetField.required;
+  // Pickup & Delivery always needs the pin — the fee is computed from it.
+  const pinRequired = (streetField?.active === true && streetField.required) || mode === "pickup_delivery";
+  const pdQuote = mode === "pickup_delivery" ? pickupDeliveryQuote({ lat, lng }, branchPins) : null;
   const [pinError, setPinError] = useState("");
   const pinSectionRef = useRef<HTMLDivElement>(null);
   function validatePin(required: boolean): boolean {
@@ -688,6 +696,13 @@ export default function HomeServiceForm({
                   ✓ Location pinned ({lat.toFixed(5)}, {lng.toFixed(5)})
                 </p>
               )}
+              {pdQuote && (
+                <p className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
+                  About <span className="font-semibold">{pdQuote.km} km</span> from our {pdQuote.branchName} branch → Booking, Diagnostic &amp; Delivery
+                  Fee: <span className="font-semibold">₱{pdQuote.fee.toLocaleString()}.00</span>
+                  <span className="block text-[11px] text-blue-600">{PICKUP_DELIVERY_FEE_TIER_LABEL}</span>
+                </p>
+              )}
               {pinError && <p className="text-xs font-medium text-red-600">{pinError}</p>}
             </div>
           </div>
@@ -885,8 +900,8 @@ export default function HomeServiceForm({
       {mode === "pickup_delivery" && (
         <FormNotice tone="blue" icon="🚚">
           A rider will pick up your device at the address below, we&apos;ll repair it at the shop, then a rider delivers it back to you.
-          The delivery fee is already included in the Booking, Diagnostic &amp; Delivery Fee below — nothing more to pay when it comes
-          back.
+          One Booking, Diagnostic &amp; Delivery Fee covers it all — ₱500 to ₱1,000 depending on how far you are from our nearest branch
+          ({PICKUP_DELIVERY_FEE_TIER_LABEL}) — nothing more to pay when it comes back.
         </FormNotice>
       )}
 
@@ -949,8 +964,9 @@ export default function HomeServiceForm({
         {serviceFeeNote() && <p className="mt-2 font-semibold">{serviceFeeNote()}</p>}
         {mode === "pickup_delivery" && (
           <p className="mt-2 font-semibold">
-            A ₱{PICKUP_DELIVERY_FEE_PESOS.toLocaleString()}.00 Booking, Diagnostic &amp; Delivery Fee (pickup + diagnosis + delivery back
-            to you, all included) is required via QR Ph after phone verification, before we confirm your booking and assign a rider.
+            {pdQuote
+              ? `Your pickup address is about ${pdQuote.km} km from our ${pdQuote.branchName} branch — a ₱${pdQuote.fee.toLocaleString()}.00 Booking, Diagnostic & Delivery Fee (pickup + diagnosis + delivery back to you, all included) is required via QR Ph after phone verification, before we confirm your booking and assign a rider.`
+              : `A Booking, Diagnostic & Delivery Fee of ₱500–₱1,000, depending on your distance from our nearest branch (${PICKUP_DELIVERY_FEE_TIER_LABEL}), is required via QR Ph after phone verification — pin your pickup location on the map above to see your exact fee.`}
           </p>
         )}
       </FormNotice>
