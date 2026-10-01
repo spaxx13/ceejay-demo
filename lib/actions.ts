@@ -98,6 +98,8 @@ import {
   requestServiceFee,
   pickupDeliveryQuote,
   PICKUP_DELIVERY_FEE_MIN_PESOS,
+  pickupDeliveryCovers,
+  PICKUP_DELIVERY_COVERAGE_LABEL,
 } from "./homeServiceFees";
 import { getRepairQuote } from "./servicePricing";
 import { formatDate, isCheckInOpen } from "./format";
@@ -2285,6 +2287,15 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
   // form so there's always a real distance; the native app's form may not
   // send one yet, in which case it gets the base tier rather than a block.
   const pdQuote = fulfillmentMode === "pickup_delivery" ? pickupDeliveryQuote({ lat, lng }, branches.filter((b) => b.active && b.address)) : null;
+  // Coverage backstop — the web form only offers covered provinces/cities,
+  // this catches a stale or hand-crafted submission (and an app build
+  // whose picker hasn't picked up the coverage list yet).
+  if (fulfillmentMode === "pickup_delivery" && !pickupDeliveryCovers(province, city)) {
+    return {
+      ok: false,
+      error: `Pickup & Delivery is only available in ${PICKUP_DELIVERY_COVERAGE_LABEL}. Please choose an address there, or book Home Service instead.`,
+    };
+  }
   if (fulfillmentMode === "pickup_delivery" && !fromMobileApp && (lat === null || lng === null)) {
     return { ok: false, error: "Please pin your exact pickup location on the map so we can compute your Booking, Diagnostic & Delivery Fee." };
   }

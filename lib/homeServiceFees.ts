@@ -66,9 +66,26 @@ export const DOWNPAYMENT_PROVINCES = new Set(["Laguna", "Batangas", "Pampanga"])
 // near delivery time. Tiered by how far the pickup address is from the
 // nearest branch: straight-line between the customer's map pin and the
 // branch's pin (Admin > Branches), scaled by PICKUP_DELIVERY_ROAD_FACTOR to
-// approximate the real road trip. Metro Manila only; no upper cap — 11 km
-// and beyond is simply the top tier.
+// approximate the real road trip. No upper cap — 11 km and beyond is
+// simply the top tier. Coverage area: PICKUP_DELIVERY_COVERAGE below.
 export const PICKUP_DELIVERY_ROAD_FACTOR = 1.3;
+
+// Where riders actually go: all of Metro Manila, plus the three Rizal
+// towns right next to it. `cities: null` = every city/municipality in that
+// province; otherwise only the listed ones (names as in
+// public/ph-addresses-near.json, e.g. "City of Antipolo"). Shared by the
+// web form (trims the address picker), the submit action (server-side
+// backstop) and the native app's config bundle.
+export const PICKUP_DELIVERY_COVERAGE: { provinceKey: string; province: string; cities: string[] | null }[] = [
+  { provinceKey: "metro_manila", province: "Metro Manila", cities: null },
+  { provinceKey: "rizal", province: "Rizal", cities: ["Cainta", "City of Antipolo", "Taytay"] },
+];
+export const PICKUP_DELIVERY_COVERAGE_LABEL = "Metro Manila, plus Cainta, Antipolo, and Taytay in Rizal";
+export function pickupDeliveryCovers(province: string, city: string): boolean {
+  const entry = PICKUP_DELIVERY_COVERAGE.find((c) => c.province === province);
+  if (!entry) return false;
+  return entry.cities === null || entry.cities.includes(city);
+}
 export const PICKUP_DELIVERY_FEE_TIERS: { maxKm: number | null; fee: number }[] = [
   { maxKm: 5, fee: 500 },
   { maxKm: 10, fee: 700 },

@@ -11,6 +11,7 @@ import {
   EXCLUDED_FROM_HOME_SERVICE,
   pickupDeliveryQuote,
   PICKUP_DELIVERY_FEE_TIER_LABEL,
+  PICKUP_DELIVERY_COVERAGE,
   nextSunday,
   minPreferredDateStr,
 } from "@/lib/homeServiceFees";
@@ -146,15 +147,23 @@ export default function HomeServiceForm({
     const file = area === "near" ? "/ph-addresses-near.json" : "/ph-addresses-far.json";
     fetch(file)
       .then((r) => r.json())
-      // Pickup & Delivery only covers Metro Manila for now — trim the
-      // near queue's other 6 provinces out rather than fetching a
-      // separate dataset just for this.
-      .then((data: PhProvince[]) => (mode === "pickup_delivery" ? data.filter((p) => p.key === "metro_manila") : data))
+      // Pickup & Delivery only covers PICKUP_DELIVERY_COVERAGE (Metro
+      // Manila + a few Rizal towns) — trim the near queue's dataset down
+      // to that rather than fetching a separate file just for this.
+      .then((data: PhProvince[]) =>
+        mode === "pickup_delivery"
+          ? data.flatMap((p) => {
+              const cov = PICKUP_DELIVERY_COVERAGE.find((c) => c.provinceKey === p.key);
+              if (!cov) return [];
+              return [cov.cities === null ? p : { ...p, cities: p.cities.filter((c) => cov.cities!.includes(c.name)) }];
+            })
+          : data
+      )
       .then(setPhData)
       .catch(() => setPhData([]));
   }, [area, mode]);
-  // Only one province to pick from in Pickup & Delivery mode (Metro Manila,
-  // filtered above) — treat it as selected without making the customer
+  // If Pickup & Delivery coverage ever collapses to a single province
+  // (filtered above) — treat it as selected without making the customer
   // choose among one option, rather than setting state from an effect.
   const effectiveProvince = mode === "pickup_delivery" && phData?.length === 1 ? phData[0].label : province;
   const selectedPhProvince = phData?.find((p) => p.label === effectiveProvince) ?? null;
@@ -531,7 +540,7 @@ export default function HomeServiceForm({
                   setBarangay("");
                 }}
                 className="input"
-                disabled={!phData || mode === "pickup_delivery"}
+                disabled={!phData || (mode === "pickup_delivery" && phData.length === 1)}
               >
                 <option value="">{phData ? "Select province..." : "Loading..."}</option>
                 {provinces.map((p) => (
