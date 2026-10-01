@@ -426,16 +426,29 @@ function floatOrNull(fd: FormData, key: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-export async function createBranch(formData: FormData) {
+// Both branch actions report back to BranchManager instead of failing
+// silently: a save that threw (e.g. the lat/lng columns missing before
+// migration 0068 was applied) used to look exactly like a success — the form
+// reset and the pin quietly didn't stick.
+export type BranchSaveResult = { ok: true; lat: number | null; lng: number | null } | { ok: false; error: string };
+
+export async function createBranch(formData: FormData): Promise<BranchSaveResult> {
   // Owner-only, same as the admin page that renders this form.
   const actor = await requireRole("owner_admin");
-  if (!actor) return;
+  if (!actor) return { ok: false, error: "Only the owner account can edit branches." };
   const name = str(formData, "name");
-  if (!name) return;
-  const created = await queryOne<{ id: string }>(
-    "insert into branches (name, address, contact_number, lat, lng) values ($1,$2,$3,$4,$5) returning id",
-    [name, str(formData, "address"), str(formData, "contactNumber"), floatOrNull(formData, "lat"), floatOrNull(formData, "lng")]
-  );
+  if (!name) return { ok: false, error: "Branch name is required." };
+  const lat = floatOrNull(formData, "lat");
+  const lng = floatOrNull(formData, "lng");
+  let created: { id: string } | null;
+  try {
+    created = await queryOne<{ id: string }>(
+      "insert into branches (name, address, contact_number, lat, lng) values ($1,$2,$3,$4,$5) returning id",
+      [name, str(formData, "address"), str(formData, "contactNumber"), lat, lng]
+    );
+  } catch (e) {
+    return { ok: false, error: `Couldn't save branch: ${e instanceof Error ? e.message : String(e)}` };
+  }
   await logActivity("branch", created!.id, `${actor.name} added branch "${name}"`, actor.name);
   revalidatePath("/admin/branches");
   // Branch name/address/contact number is shown across the public site — the
@@ -443,26 +456,34 @@ export async function createBranch(formData: FormData) {
   // page, and every service-mode form's branch picker — so a branch edit
   // needs the whole public route group revalidated, not just /admin/branches.
   revalidatePath("/", "layout");
+  return { ok: true, lat, lng };
 }
 
-export async function updateBranch(formData: FormData) {
+export async function updateBranch(formData: FormData): Promise<BranchSaveResult> {
   // Owner-only, same as the admin page that renders this form.
   const actor = await requireRole("owner_admin");
-  if (!actor) return;
+  if (!actor) return { ok: false, error: "Only the owner account can edit branches." };
   const branchId = str(formData, "id");
   const name = str(formData, "name");
-  if (!name) return;
-  await query("update branches set name=$1, address=$2, contact_number=$3, lat=$4, lng=$5 where id=$6", [
-    name,
-    str(formData, "address"),
-    str(formData, "contactNumber"),
-    floatOrNull(formData, "lat"),
-    floatOrNull(formData, "lng"),
-    branchId,
-  ]);
+  if (!name) return { ok: false, error: "Branch name is required." };
+  const lat = floatOrNull(formData, "lat");
+  const lng = floatOrNull(formData, "lng");
+  try {
+    await query("update branches set name=$1, address=$2, contact_number=$3, lat=$4, lng=$5 where id=$6", [
+      name,
+      str(formData, "address"),
+      str(formData, "contactNumber"),
+      lat,
+      lng,
+      branchId,
+    ]);
+  } catch (e) {
+    return { ok: false, error: `Couldn't save branch: ${e instanceof Error ? e.message : String(e)}` };
+  }
   await logActivity("branch", branchId, `${actor.name} updated branch "${name}"`, actor.name);
   revalidatePath("/admin/branches");
   revalidatePath("/", "layout");
+  return { ok: true, lat, lng };
 }
 
 export async function toggleBranchActive(formData: FormData) {

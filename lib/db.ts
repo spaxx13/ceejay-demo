@@ -283,10 +283,20 @@ type BranchRow = {
   id: string; name: string; address: string; contact_number: string; home_service_queue: Branch["homeServiceQueue"]; active: boolean;
   lat: number | string | null; lng: number | string | null;
 };
+// lat/lng come back as undefined (not null) when migration 0068 hasn't been
+// applied yet, and Number(undefined) is NaN — which then flows into the
+// Pickup & Delivery distance quote as "NaN km". Treat anything non-finite
+// as "no pin" so the UI degrades to the fee range + "set the pin" warnings
+// instead of a broken quote.
+function finiteOrNull(v: number | string | null | undefined): number | null {
+  if (v === null || v === undefined || v === "") return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
 function mapBranch(r: BranchRow): Branch {
   return {
     id: r.id, name: r.name, address: r.address, contactNumber: r.contact_number, homeServiceQueue: r.home_service_queue, active: r.active,
-    lat: r.lat === null ? null : Number(r.lat), lng: r.lng === null ? null : Number(r.lng),
+    lat: finiteOrNull(r.lat), lng: finiteOrNull(r.lng),
   };
 }
 

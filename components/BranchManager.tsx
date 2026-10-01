@@ -12,7 +12,7 @@ function PinBadge({ b }: { b: { lat: number | null; lng: number | null } }) {
   const pinned = b.lat !== null && b.lng !== null;
   return (
     <span className={`badge border ${pinned ? "border-green-200 bg-green-50 text-green-700" : "border-red-200 bg-red-50 text-red-700"}`}>
-      {pinned ? "Pinned" : "No pin — set it"}
+      {pinned ? `Pinned (${b.lat!.toFixed(4)}, ${b.lng!.toFixed(4)})` : "No pin — set it"}
     </span>
   );
 }
@@ -20,6 +20,10 @@ function PinBadge({ b }: { b: { lat: number | null; lng: number | null } }) {
 export default function BranchManager({ branches }: { branches: Branch[] }) {
   const formRef = useRef<HTMLFormElement>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
+  // Feedback after Save: the action used to be fire-and-forget, so a failed
+  // save (e.g. before migration 0068 added lat/lng) reset the form exactly
+  // like a successful one and the pin silently didn't stick.
+  const [notice, setNotice] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
   const editing = branches.find((b) => b.id === editingId);
 
   function reset() {
@@ -33,13 +37,27 @@ export default function BranchManager({ branches }: { branches: Branch[] }) {
         <h3 className="text-sm font-semibold text-slate-800">{editingId ? "Edit Branch" : "Add Branch"}</h3>
         <form
           ref={formRef}
-          action={(fd) => {
+          action={async (fd) => {
+            setNotice(null);
+            const name = String(fd.get("name") ?? "").trim();
+            let result;
             if (editingId) {
               fd.set("id", editingId);
-              updateBranch(fd);
+              result = await updateBranch(fd);
             } else {
-              createBranch(fd);
+              result = await createBranch(fd);
             }
+            if (!result.ok) {
+              setNotice({ kind: "error", text: result.error });
+              return;
+            }
+            setNotice({
+              kind: "ok",
+              text:
+                result.lat !== null && result.lng !== null
+                  ? `Saved "${name}" — map pin set at ${result.lat.toFixed(5)}, ${result.lng.toFixed(5)}.`
+                  : `Saved "${name}" — but no map pin was set. Click the exact spot on the map before saving so Pickup & Delivery can price by distance.`,
+            });
             reset();
           }}
           className="space-y-3"
@@ -60,6 +78,10 @@ export default function BranchManager({ branches }: { branches: Branch[] }) {
           </div>
           {GOOGLE_MAPS_KEY ? (
             <MapPinPicker
+              // Remount per branch so the map re-centers on (and shows) the
+              // branch's existing pin when editing, instead of keeping the
+              // first-initialized view.
+              key={editingId ?? "new"}
               latName="lat"
               lngName="lng"
               defaultLat={editing?.lat ?? undefined}
@@ -84,6 +106,15 @@ export default function BranchManager({ branches }: { branches: Branch[] }) {
                 them, then paste the two numbers above (separated by the comma) into Latitude and Longitude.
               </p>
             </>
+          )}
+          {notice && (
+            <p
+              className={`rounded-lg border px-3 py-2 text-xs ${
+                notice.kind === "ok" ? "border-green-200 bg-green-50 text-green-700" : "border-red-200 bg-red-50 text-red-700"
+              }`}
+            >
+              {notice.text}
+            </p>
           )}
           <div className="flex gap-2">
             <button type="submit" className="btn-primary">
