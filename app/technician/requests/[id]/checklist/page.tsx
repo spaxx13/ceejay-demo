@@ -8,6 +8,11 @@ import ChecklistForm from "@/components/ChecklistForm";
 import AgreementSummary from "@/components/AgreementSummary";
 import ResendReceiptButton from "@/components/ResendReceiptButton";
 
+// The checklist action (submitChecklist) builds the receipt PDF, emails it
+// and pushes admins — comfortably more than Vercel's 10s default for a
+// function, which would cut it off mid-way with the form stuck on "Saving…".
+export const maxDuration = 60;
+
 export default async function TechnicianChecklistPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const [user, req] = await Promise.all([getCurrentUser(), getRequestById(id)]);

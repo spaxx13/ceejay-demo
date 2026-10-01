@@ -14,6 +14,11 @@ import { retrieveCheckoutSession, paymongoConfigured } from "@/lib/paymongo";
 const peso = (n: number) => `₱${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const RESULT_LABEL: Record<string, string> = { pass: "Pass", fail: "Fail", na: "N/A" };
 
+// The checklist action (submitChecklist) builds the receipt PDF, emails it
+// and pushes admins — comfortably more than Vercel's 10s default for a
+// function, which would cut it off mid-way with the form stuck on "Saving…".
+export const maxDuration = 60;
+
 export default async function RepairRecordDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   let record = await getRepairRecordById(id);

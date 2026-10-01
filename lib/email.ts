@@ -7,10 +7,37 @@ import { PICKUP_DELIVERY_AGREEMENT_TERMS } from "./pickupDeliveryAgreement";
 
 const FROM = "Ceejay Cellphone Repair Shop <noreply@ceejayrepair.com>";
 
+// Every send is capped (Resend's SDK has no request timeout of its own):
+// an email provider that stalls must surface as a failed email — which the
+// callers already handle (logged, noted on the activity log) — rather than
+// hold a server action like the post-repair checklist open until the
+// serverless function is killed and the technician's screen sits on
+// "Saving…" forever.
+const SEND_TIMEOUT_MS = 20_000;
 function getClient() {
   const key = process.env.RESEND_API_KEY;
   if (!key) throw new Error("RESEND_API_KEY is not set");
-  return new Resend(key);
+  const resend = new Resend(key);
+  type SendArgs = Parameters<typeof resend.emails.send>;
+  type SendResult = Awaited<ReturnType<typeof resend.emails.send>>;
+  return {
+    emails: {
+      send: (...args: SendArgs): Promise<SendResult> =>
+        new Promise<SendResult>((resolve, reject) => {
+          const timer = setTimeout(() => reject(new Error(`Email send timed out after ${SEND_TIMEOUT_MS / 1000}s`)), SEND_TIMEOUT_MS);
+          resend.emails.send(...args).then(
+            (r) => {
+              clearTimeout(timer);
+              resolve(r);
+            },
+            (e) => {
+              clearTimeout(timer);
+              reject(e);
+            }
+          );
+        }),
+    },
+  };
 }
 
 export function emailConfigured() {
