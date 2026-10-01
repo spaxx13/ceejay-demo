@@ -28,6 +28,7 @@ export default function ChecklistForm({
   terms,
   backHref,
   serviceFee = 0,
+  customerPresent = true,
 }: {
   phase: ChecklistPhase;
   target: { type: "request"; id: string } | { type: "repairRecord"; id: string };
@@ -44,6 +45,10 @@ export default function ChecklistForm({
   // they booked (lib/homeServiceFees.ts requestServiceFee). Added to the
   // Repair Price for the Total Amount; the technician never types it.
   serviceFee?: number;
+  // false for Pickup & Delivery jobs at the shop — the customer isn't there
+  // to sign, so only the technician signs (server mirrors this in
+  // submitChecklist).
+  customerPresent?: boolean;
 }) {
   const isPost = phase === "post_repair";
   const isRequestFlow = target.type === "request";
@@ -242,19 +247,31 @@ export default function ChecklistForm({
                 onChange={(e) => setAgreed(e.target.checked)}
                 className="mt-0.5 h-4 w-4 rounded border-slate-300"
               />
-              The customer agrees to the terms and conditions above.
+              {customerPresent
+                ? "The customer agrees to the terms and conditions above."
+                : "The customer approved the final repair cost (via Repair Updates, call, or message) and accepted the Pickup & Delivery Agreement at booking."}
             </label>
+            {!customerPresent && (
+              <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                Pickup &amp; Delivery job — the customer isn&apos;t at the shop, so no customer signature is needed here. The rider confirms
+                hand-over with the customer at delivery.
+              </p>
+            )}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <SignaturePad name="customerSignature" label="Customer Signature" />
+              {customerPresent && <SignaturePad name="customerSignature" label="Customer Signature" />}
               <SignaturePad name="technicianSignature" label="Technician's Signature" />
             </div>
           </>
         ) : (
           <>
-            <h3 className="text-sm font-semibold text-slate-800">Customer &amp; Technician Sign-Off</h3>
-            <p className="text-xs text-slate-500">Both sign to confirm this is an accurate record of the device&apos;s condition before repair.</p>
+            <h3 className="text-sm font-semibold text-slate-800">{customerPresent ? "Customer & Technician Sign-Off" : "Technician Sign-Off"}</h3>
+            <p className="text-xs text-slate-500">
+              {customerPresent
+                ? "Both sign to confirm this is an accurate record of the device's condition before repair."
+                : "Pickup & Delivery job — the customer isn't at the shop. The rider's pickup checklist and the unboxing video are the customer-facing record of the device's condition; sign to confirm your own inspection matches."}
+            </p>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <SignaturePad name="customerSignature" label="Customer Signature" />
+              {customerPresent && <SignaturePad name="customerSignature" label="Customer Signature" />}
               <SignaturePad name="technicianSignature" label="Technician's Signature" />
             </div>
           </>

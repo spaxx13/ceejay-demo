@@ -4034,6 +4034,7 @@ export async function technicianUpdateStatus(formData: FormData) {
     );
   }
   revalidatePath("/technician");
+  revalidatePath(`/technician/requests/${requestId}/updates`);
   revalidatePath("/admin/requests");
   revalidatePath(`/admin/requests/${requestId}`);
   revalidatePath("/admin");
@@ -4153,10 +4154,16 @@ export async function submitChecklist(_prev: SubmitChecklistResult | undefined, 
     }
   }
 
-  const customerSignatureDataUrl = str(formData, "customerSignature");
-  if (!customerSignatureDataUrl.startsWith("data:image/")) {
+  // Pickup & Delivery: the customer isn't at the shop to sign. Their side is
+  // the Pickup & Delivery Agreement accepted at booking plus the rider's
+  // pickup condition checklist, so the customer signature is optional here
+  // (stored as null) and only the technician signs.
+  const customerPresent = !(req && req.fulfillmentMode === "pickup_delivery");
+  const customerSignatureRaw = str(formData, "customerSignature");
+  if (customerPresent && !customerSignatureRaw.startsWith("data:image/")) {
     return { ok: false, error: "Customer signature is required." };
   }
+  const customerSignatureDataUrl: string | null = customerSignatureRaw.startsWith("data:image/") ? customerSignatureRaw : null;
 
   const technicianSignatureDataUrl = str(formData, "technicianSignature");
   if (!technicianSignatureDataUrl.startsWith("data:image/")) {
@@ -4295,8 +4302,15 @@ export async function submitChecklist(_prev: SubmitChecklistResult | undefined, 
       await notifyAdmins(
         "checklist_completed",
         req.id,
-        `${technicianName} completed the post-repair checklist for ${req.reference} (${req.customerName}) — case marked Completed. ${emailNote}.`
+        `${technicianName} completed the post-repair checklist for ${req.reference} (${req.customerName}) — case marked Completed${
+          req.fulfillmentMode === "pickup_delivery" ? " and Ready for Delivery: assign a delivery rider in Admin > Pickup & Delivery" : ""
+        }. ${emailNote}.`
       );
+      if (req.fulfillmentMode === "pickup_delivery") {
+        revalidatePath("/admin/pickup-delivery");
+        revalidatePath(`/admin/pickup-delivery/${req.id}`);
+        revalidatePath(`/technician/requests/${req.id}/updates`);
+      }
     }
     revalidatePath("/technician");
     revalidatePath("/admin/requests");

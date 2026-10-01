@@ -201,7 +201,8 @@ export default function RequestUpdateComposer({ requestId }: { requestId: string
       {error && <p className="text-sm text-red-600">{error}</p>}
       {posted && !busy && (
         <p className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm font-medium text-green-700">
-          ✅ Update posted — the customer can see it now and has been notified.
+          ✅ Update posted — the customer can see it now and has been notified. Post another update anytime, or see &quot;What&apos;s next&quot; below
+          when the repair is done.
         </p>
       )}
 

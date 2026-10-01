@@ -39,6 +39,7 @@ export default async function TechnicianChecklistPage({ params }: { params: Prom
     terms: SERVICE_AGREEMENT_TERMS,
     backHref: "/technician",
     serviceFee: requestServiceFee(req),
+    customerPresent: req.fulfillmentMode !== "pickup_delivery",
   };
 
   return (
