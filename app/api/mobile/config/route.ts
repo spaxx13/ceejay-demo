@@ -12,7 +12,12 @@ import {
   PICKUP_DELIVERY_ROAD_FACTOR,
   PICKUP_DELIVERY_COVERAGE,
   PICKUP_DELIVERY_COVERAGE_LABEL,
+  PICKUP_DELIVERY_COVERAGE_POLYGON,
+  PICKUP_DELIVERY_SEARCH_BOUNDS,
+  PICKUP_DELIVERY_FEE_MAX_PESOS,
+  PICKUP_DELIVERY_FEE_TIER_LABEL,
 } from "@/lib/homeServiceFees";
+import { PICKUP_DELIVERY_AGREEMENT_TERMS, PICKUP_DELIVERY_AGREEMENT_VERSION } from "@/lib/pickupDeliveryAgreement";
 
 // One bundle the native app fetches on launch (and can refresh) to render
 // the Home Service / Pickup & Delivery forms without hardcoding business
@@ -52,6 +57,18 @@ export async function GET() {
         // those cities/municipalities within it (null = whole province).
         pickupDeliveryCoverage: PICKUP_DELIVERY_COVERAGE,
         pickupDeliveryCoverageLabel: PICKUP_DELIVERY_COVERAGE_LABEL,
+        // The pin itself must land inside this outline (pointInPickupDeliveryCoverage),
+        // and the address search is limited to its bounding box — same checks
+        // the web form runs before submit.
+        pickupDeliveryCoveragePolygon: PICKUP_DELIVERY_COVERAGE_POLYGON,
+        pickupDeliverySearchBounds: PICKUP_DELIVERY_SEARCH_BOUNDS,
+        pickupDeliveryFeeMinPesos: PICKUP_DELIVERY_FEE_MIN_PESOS,
+        pickupDeliveryFeeMaxPesos: PICKUP_DELIVERY_FEE_MAX_PESOS,
+        pickupDeliveryFeeTierLabel: PICKUP_DELIVERY_FEE_TIER_LABEL,
+        // The Pickup & Delivery Agreement shown above the submit button; the
+        // app sends pickupDeliveryAgreed: "1" once it's accepted.
+        pickupDeliveryAgreementTerms: PICKUP_DELIVERY_AGREEMENT_TERMS,
+        pickupDeliveryAgreementVersion: PICKUP_DELIVERY_AGREEMENT_VERSION,
       },
       flags: {
         // The app's own switch — on for the app alone via
