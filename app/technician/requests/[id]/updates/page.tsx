@@ -1,7 +1,15 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
-import { getRequestById, getRequestUpdates, canManageHomeServiceRequests } from "@/lib/db";
+import {
+  getRequestById,
+  getRequestUpdates,
+  getLookups,
+  getServiceAgreementsForRequest,
+  canManageHomeServiceRequests,
+  pickupDeliveryStage,
+} from "@/lib/db";
+import { technicianUpdateStatus } from "@/lib/actions";
 import RequestUpdateComposer from "@/components/RequestUpdateComposer";
 import RequestUpdatesList from "@/components/RequestUpdatesList";
 
@@ -13,10 +21,28 @@ export default async function TechnicianUpdatesPage({ params }: { params: Promis
   if (!user || (user.role !== "technician" && !canManageHomeServiceRequests(user))) redirect("/login");
 
   const { id } = await params;
-  const [req, updates] = await Promise.all([getRequestById(id), getRequestUpdates(id)]);
+  const [req, updates, lookups, agreements] = await Promise.all([
+    getRequestById(id),
+    getRequestUpdates(id),
+    getLookups(),
+    getServiceAgreementsForRequest(id),
+  ]);
   if (!req || req.fulfillmentMode !== "pickup_delivery") notFound();
   const isAdmin = canManageHomeServiceRequests(user);
   const deletableIds = updates.filter((u) => isAdmin || u.postedByUserId === user.id).map((u) => u.id);
+
+  // "What's next" — the same steps the technician board offers, in order,
+  // so the page doesn't dead-end after an update is posted: start the
+  // repair (In Progress) → Pre-Repair checklist → Post-Repair checklist
+  // (auto-marks Completed = Ready for Delivery, admin assigns the rider).
+  const statuses = lookups.filter((l) => l.kind === "request_status");
+  const statusLabel = statuses.find((s) => s.id === req.statusId)?.label;
+  const inProgressStatusId = statuses.find((s) => s.label === "In Progress")?.id;
+  const stage = pickupDeliveryStage(req, statusLabel);
+  const hasPre = agreements.some((a) => a.phase === "pre_repair");
+  const hasPost = agreements.some((a) => a.phase === "post_repair");
+  const isAssignedTechnician = user.role === "technician" && req.assignedTechnicianId === user.technicianId;
+  const inProgress = statusLabel === "In Progress";
 
   return (
     <div className="space-y-4">
@@ -41,6 +67,66 @@ export default async function TechnicianUpdatesPage({ params }: { params: Promis
           <div className="card space-y-2">
             <p className="text-xs font-semibold text-slate-700">Posted updates ({updates.length})</p>
             <RequestUpdatesList updates={updates} deletableIds={deletableIds} />
+          </div>
+
+          <div className="card space-y-3 border-blue-200 bg-blue-50/40">
+            <h2 className="text-sm font-semibold text-slate-800">What&apos;s next?</h2>
+            {hasPost || stage === "ready_for_delivery" || stage === "delivery_assigned" || stage === "out_for_delivery" || stage === "delivered" ? (
+              <>
+                <p className="text-sm font-medium text-green-700">✅ Repair completed — this job is Ready for Delivery.</p>
+                <p className="text-xs text-slate-500">
+                  {stage === "delivered"
+                    ? "The device has been delivered back to the customer."
+                    : stage === "out_for_delivery"
+                      ? "A rider is on the way to deliver it back to the customer."
+                      : stage === "delivery_assigned"
+                        ? "A delivery rider has been assigned and will pick it up from the shop."
+                        : "The admin will now assign a delivery rider to bring the device back to the customer. Nothing more to do here."}
+                </p>
+              </>
+            ) : !inProgress && !hasPre ? (
+              <>
+                <p className="text-xs text-slate-500">
+                  <span className="font-semibold text-slate-700">Step 1 of 3 — Start the repair.</span> Marks the job In Progress and opens the
+                  Pre-Repair Checklist.
+                </p>
+                {isAssignedTechnician && inProgressStatusId ? (
+                  <form action={technicianUpdateStatus}>
+                    <input type="hidden" name="id" value={req.id} />
+                    <input type="hidden" name="statusId" value={inProgressStatusId} />
+                    <button type="submit" className="btn-primary w-full text-sm">
+                      ▶ Start the Repair (In Progress)
+                    </button>
+                  </form>
+                ) : (
+                  <p className="text-xs text-amber-700">Only the assigned technician can start the repair.</p>
+                )}
+              </>
+            ) : !hasPre ? (
+              <>
+                <p className="text-xs text-slate-500">
+                  <span className="font-semibold text-slate-700">Step 2 of 3 — Pre-Repair Checklist.</span> Record the device&apos;s condition as you
+                  received it (technician signature only — the customer isn&apos;t at the shop).
+                </p>
+                <Link href={`/technician/requests/${req.id}/checklist`} className="btn-primary block w-full text-center text-sm">
+                  📋 Open Pre-Repair Checklist
+                </Link>
+              </>
+            ) : (
+              <>
+                <p className="text-xs text-slate-500">
+                  <span className="font-semibold text-slate-700">Step 3 of 3 — Post-Repair Checklist.</span> When the repair is done: photo of the
+                  device, repair price, and warranty. Submitting it marks the job <span className="font-semibold">Completed → Ready for Delivery</span>,
+                  emails the customer their receipt, and tells the admin to assign a delivery rider.
+                </p>
+                <Link href={`/technician/requests/${req.id}/checklist`} className="btn-primary block w-full text-center text-sm">
+                  🔧 Repair done — Open Post-Repair Checklist
+                </Link>
+              </>
+            )}
+            <Link href="/technician" className="btn-secondary block w-full text-center text-xs">
+              ← Back to My Jobs
+            </Link>
           </div>
         </>
       )}
