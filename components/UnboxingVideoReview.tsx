@@ -1,5 +1,5 @@
 import { formatDateTime } from "@/lib/format";
-import { publishUnboxingVideo, deleteUnboxingVideo } from "@/lib/actions";
+import { publishUnboxingVideo, unpublishUnboxingVideo, deleteUnboxingVideo } from "@/lib/actions";
 import DeleteButton from "./DeleteButton";
 
 // The current unboxing video with its draft/sent state and the actions on
@@ -13,6 +13,7 @@ export default function UnboxingVideoReview({
   recordedAt,
   publishedAt,
   canDelete,
+  canUnpublish,
 }: {
   requestId: string;
   reference: string;
@@ -21,6 +22,7 @@ export default function UnboxingVideoReview({
   recordedAt: string | null;
   publishedAt: string | null;
   canDelete: boolean;
+  canUnpublish: boolean;
 }) {
   return (
     <div className="space-y-2">
@@ -43,6 +45,14 @@ export default function UnboxingVideoReview({
             <input type="hidden" name="id" value={requestId} />
             <button type="submit" className="btn-primary">
               📤 Send to Customer
+            </button>
+          </form>
+        )}
+        {publishedAt && canUnpublish && (
+          <form action={unpublishUnboxingVideo}>
+            <input type="hidden" name="id" value={requestId} />
+            <button type="submit" className="btn-secondary">
+              🔒 Make Private Again
             </button>
           </form>
         )}

@@ -1196,6 +1196,23 @@ export async function publishUnboxingVideo(formData: FormData) {
   revalidateUnboxingPaths(requestId);
 }
 
+// Reverts an already-sent unboxing video back to a private draft — for when
+// it was published by mistake (e.g. a test/demo booking). The recording
+// itself is kept (unlike deleteUnboxingVideo), so it can be re-sent later;
+// admin-only, since un-sending something the customer may have already
+// gotten a push/email about is a corrective action, not routine review.
+export async function unpublishUnboxingVideo(formData: FormData) {
+  const user = await getCurrentUser();
+  if (!canManageHomeServiceRequests(user)) return;
+  const requestId = str(formData, "id");
+  const req = await getRequestById(requestId);
+  if (!req?.unboxingVideoPath || !req.unboxingVideoPublishedAt) return;
+
+  await query("update home_service_requests set unboxing_video_published_at=null where id=$1", [requestId]);
+  await logActivity("home_service_request", requestId, `Unboxing video unpublished (made private again) by ${user!.name}`, user!.name);
+  revalidateUnboxingPaths(requestId);
+}
+
 // Admins can delete at any time; a technician only while it's still a
 // draft (once the customer has been sent it, taking it back is an admin call).
 export async function deleteUnboxingVideo(formData: FormData) {
