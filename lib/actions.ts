@@ -1197,6 +1197,23 @@ export async function publishUnboxingVideo(formData: FormData) {
   revalidateUnboxingPaths(requestId);
 }
 
+// Reverts an already-sent unboxing video back to a private draft — for when
+// it was published by mistake (e.g. a test/demo booking). The recording
+// itself is kept (unlike deleteUnboxingVideo), so it can be re-sent later;
+// admin-only, since un-sending something the customer may have already
+// gotten a push/email about is a corrective action, not routine review.
+export async function unpublishUnboxingVideo(formData: FormData) {
+  const user = await getCurrentUser();
+  if (!canManageHomeServiceRequests(user)) return;
+  const requestId = str(formData, "id");
+  const req = await getRequestById(requestId);
+  if (!req?.unboxingVideoPath || !req.unboxingVideoPublishedAt) return;
+
+  await query("update home_service_requests set unboxing_video_published_at=null where id=$1", [requestId]);
+  await logActivity("home_service_request", requestId, `Unboxing video unpublished (made private again) by ${user!.name}`, user!.name);
+  revalidateUnboxingPaths(requestId);
+}
+
 // Admins can delete at any time; a technician only while it's still a
 // draft (once the customer has been sent it, taking it back is an admin call).
 export async function deleteUnboxingVideo(formData: FormData) {
@@ -2725,6 +2742,7 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
         preferredDate: preferredDatetime ? formatDate(preferredDatetime) : "To be confirmed",
         address,
         serviceFee,
+        phone,
         confirmationUrl: downpaymentActive && confirmationToken ? `${SITE_URL}/confirm-booking/${confirmationToken}` : null,
         confirmationWindowMinutes: BOOKING_CONFIRMATION_WINDOW_MINUTES,
         downpaymentRequired: downpaymentActive,
@@ -3906,7 +3924,9 @@ export async function addConversationMessage(formData: FormData) {
 
 // Called after any status change: the first time a request goes "En Route",
 // mints its tracking token and emails the customer the live map link
-// (/track-technician/<token>). Returns a note for the activity log.
+// (/track-technician/<token>). Email/push only, deliberately — SMS credits
+// are reserved for OTP, so this never spends one on a tracking notification.
+// Returns a note for the activity log.
 async function startTechnicianTrackingIfOnTheWay(req: HomeServiceRequest, newStatusLabel: string): Promise<string> {
   // Pickup & Delivery devices are repaired in-shop, not visited at the
   // customer's address — a technician going "En Route" there just means

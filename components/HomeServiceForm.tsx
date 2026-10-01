@@ -11,6 +11,8 @@ import {
   EXCLUDED_FROM_HOME_SERVICE,
   pickupDeliveryQuote,
   PICKUP_DELIVERY_FEE_TIER_LABEL,
+  PICKUP_DELIVERY_FEE_MIN_PESOS,
+  PICKUP_DELIVERY_FEE_MAX_PESOS,
   PICKUP_DELIVERY_COVERAGE,
   PICKUP_DELIVERY_COVERAGE_LABEL,
   PICKUP_DELIVERY_SEARCH_BOUNDS,
@@ -207,11 +209,6 @@ export default function HomeServiceForm({
   // Captured on submit purely to display "we sent your quotation to X" on
   // the success screen — independent of the phone-based OTP gate above.
   const [sentEmail, setSentEmail] = useState("");
-  // Same idea, for the "Save your account to track this?" prompt on the
-  // success screen — captured generically here (not from sentPhone above)
-  // since that one is only ever set when the OTP gate actually ran, and a
-  // guest can submit successfully with the gate off.
-  const [bookedEmail, setBookedEmail] = useState("");
 
   // Same admin toggle as the Street field's own "required" setting (they're
   // rendered together, the pin being the more exact of the two) — checked
@@ -424,18 +421,6 @@ export default function HomeServiceForm({
           <a href={`/track?reference=${encodeURIComponent(state.references[0])}`} className="btn-secondary inline-block">
             Track this request
           </a>
-        )}
-        {bookedEmail && (
-          <FormNotice tone="blue" icon="👤">
-            <p className="font-semibold">Want to track this without digging up a link later?</p>
-            <p className="mt-1">
-              Save an account with the email you just gave us — no password, just a code we email you. Your bookings (this one and any
-              future ones) show up automatically, with a live map whenever someone&apos;s on the way.
-            </p>
-            <a href={`/my/login?email=${encodeURIComponent(bookedEmail)}`} className="btn-primary mt-3 inline-block">
-              Save My Account
-            </a>
-          </FormNotice>
         )}
         <a href={`/${mode === "pickup_delivery" ? "pickup-delivery" : "request"}?area=${area}`} className="btn-secondary inline-block">
           Submit another request
@@ -918,7 +903,6 @@ export default function HomeServiceForm({
         }
         const fd = new FormData(e.currentTarget);
         setSentEmail(String(fd.get("email") ?? "").trim());
-        setBookedEmail(String(fd.get("email") ?? "").trim());
       }}
       className="card space-y-5"
     >
@@ -929,8 +913,9 @@ export default function HomeServiceForm({
       {mode === "pickup_delivery" && (
         <FormNotice tone="blue" icon="🚚">
           A rider will pick up your device at the address below, we&apos;ll repair it at the shop, then a rider delivers it back to you.
-          One Booking, Diagnostic &amp; Delivery Fee covers it all — ₱500 to ₱1,000 depending on how far you are from our nearest branch
-          ({PICKUP_DELIVERY_FEE_TIER_LABEL}) — nothing more to pay when it comes back.
+          One Booking, Diagnostic &amp; Delivery Fee covers it all — ₱{PICKUP_DELIVERY_FEE_MIN_PESOS.toLocaleString()} to ₱
+          {PICKUP_DELIVERY_FEE_MAX_PESOS.toLocaleString()} depending on how far you are from our nearest branch ({PICKUP_DELIVERY_FEE_TIER_LABEL}) —
+          nothing more to pay when it comes back.
         </FormNotice>
       )}
 
@@ -995,7 +980,7 @@ export default function HomeServiceForm({
           <p className="mt-2 font-semibold">
             {pdQuote
               ? `Your pickup address is about ${pdQuote.km} km from our ${pdQuote.branchName} branch — a ₱${pdQuote.fee.toLocaleString()}.00 Booking, Diagnostic & Delivery Fee (pickup + diagnosis + delivery back to you, all included) is required via QR Ph after phone verification, before we confirm your booking and assign a rider.`
-              : `A Booking, Diagnostic & Delivery Fee of ₱500–₱1,000, depending on your distance from our nearest branch (${PICKUP_DELIVERY_FEE_TIER_LABEL}), is required via QR Ph after phone verification — pin your pickup location on the map above to see your exact fee.`}
+              : `A Booking, Diagnostic & Delivery Fee of ₱${PICKUP_DELIVERY_FEE_MIN_PESOS.toLocaleString()}–₱${PICKUP_DELIVERY_FEE_MAX_PESOS.toLocaleString()}, depending on your distance from our nearest branch (${PICKUP_DELIVERY_FEE_TIER_LABEL}), is required via QR Ph after phone verification — pin your pickup location on the map above to see your exact fee.`}
           </p>
         )}
       </FormNotice>

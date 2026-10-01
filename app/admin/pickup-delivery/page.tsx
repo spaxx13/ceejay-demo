@@ -15,6 +15,7 @@ import {
 } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { deleteHomeServiceRequest } from "@/lib/actions";
+import { PICKUP_DELIVERY_FEE_MIN_PESOS, PICKUP_DELIVERY_FEE_MAX_PESOS } from "@/lib/homeServiceFees";
 import StatusBadge from "@/components/StatusBadge";
 import BarBreakdownChart from "@/components/BarBreakdownChart";
 import OpenIssuesList from "@/components/OpenIssuesList";
@@ -117,7 +118,8 @@ export default async function PickupDeliveryPage({ searchParams }: { searchParam
           <p className="text-sm font-semibold text-red-700">⚠ Branches without a map pin: {branchesWithoutPins.map((b) => b.name).join(", ")}</p>
           <p className="mt-1 text-xs text-red-700">
             Pickup &amp; Delivery pricing is by distance from the nearest branch, and riders are routed to the nearest branch — both need
-            every branch&apos;s Exact Pin set. Customers only see the fee range (₱500–₱1,000) instead of their exact fee until this is fixed.{" "}
+            every branch&apos;s Exact Pin set. Customers only see the fee range (₱{PICKUP_DELIVERY_FEE_MIN_PESOS.toLocaleString()}–₱
+            {PICKUP_DELIVERY_FEE_MAX_PESOS.toLocaleString()}) instead of their exact fee until this is fixed.{" "}
             <Link href="/admin/branches" className="font-semibold underline">
               Open Settings &gt; Branches
             </Link>

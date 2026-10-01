@@ -2,6 +2,8 @@ import Link from "next/link";
 import { requireCustomer, logoutCustomer } from "@/lib/customerActions";
 import { getRequestsForCustomer, getRequestUpdateCounts, getLookups, getDeviceModels, pickupDeliveryStage, PICKUP_DELIVERY_STAGE_LABELS } from "@/lib/db";
 import { formatDate } from "@/lib/format";
+import { PICKUP_DELIVERY_PUBLIC_ENABLED, PICKUP_DELIVERY_MOBILE_ENABLED } from "@/lib/config";
+import { isCeejayCustomerApp } from "@/lib/mobileApp";
 import PushNotificationRegistrar from "@/components/PushNotificationRegistrar";
 
 // Stages worth showing a "Track" button for — before pickup_started
@@ -11,7 +13,13 @@ const TRACKABLE_PD_STAGES = new Set(["pickup_started", "heading_to_shop", "out_f
 
 export default async function MyBookingsPage() {
   const customer = await requireCustomer();
-  const [requests, lookups, deviceModels] = await Promise.all([getRequestsForCustomer(customer), getLookups(), getDeviceModels()]);
+  // Pickup & Delivery is still a soft launch through the native app only
+  // (PICKUP_DELIVERY_MOBILE_ENABLED) — a customer hitting this same page
+  // from a regular browser shouldn't see the booking option or any
+  // existing Pickup & Delivery bookings until it's publicly enabled.
+  const pickupDeliveryVisible = PICKUP_DELIVERY_PUBLIC_ENABLED || (PICKUP_DELIVERY_MOBILE_ENABLED && (await isCeejayCustomerApp()));
+  const [allRequests, lookups, deviceModels] = await Promise.all([getRequestsForCustomer(customer), getLookups(), getDeviceModels()]);
+  const requests = pickupDeliveryVisible ? allRequests : allRequests.filter((r) => r.fulfillmentMode !== "pickup_delivery");
   const updateCounts = await getRequestUpdateCounts(requests.map((r) => r.id));
 
   return (
@@ -33,17 +41,21 @@ export default async function MyBookingsPage() {
           </form>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className={pickupDeliveryVisible ? "grid grid-cols-2 gap-3" : "grid grid-cols-1 gap-3"}>
           <Link href="/request" className="card text-center text-sm font-semibold text-slate-700 hover:border-blue-300">
             🚚 Book Home Service
           </Link>
-          <Link href="/pickup-delivery" className="card text-center text-sm font-semibold text-slate-700 hover:border-blue-300">
-            📦 Pick-up &amp; Delivery
-          </Link>
+          {pickupDeliveryVisible && (
+            <Link href="/pickup-delivery" className="card text-center text-sm font-semibold text-slate-700 hover:border-blue-300">
+              📦 Pick-up &amp; Delivery
+            </Link>
+          )}
         </div>
 
         {requests.length === 0 ? (
-          <p className="card text-center text-sm text-slate-400">No bookings yet — book a Home Service or Pick-up & Delivery above.</p>
+          <p className="card text-center text-sm text-slate-400">
+            No bookings yet — book a Home Service{pickupDeliveryVisible ? " or Pick-up & Delivery" : ""} above.
+          </p>
         ) : (
           <div className="space-y-3">
             {requests.map((r) => {
