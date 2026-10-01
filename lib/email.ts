@@ -96,6 +96,14 @@ export async function sendQuotationEmail(
     downpaymentRequired: boolean;
     downpaymentAmount: number | null;
     fulfillmentMode: "on_site" | "pickup_delivery";
+    // Used to build a "Track This Request" link for a single-device Pickup &
+    // Delivery booking (/track needs both reference and phone to look it
+    // up) — same condition the on-screen success page uses. Multi-device
+    // bookings create one request row per device, so there's no single
+    // reference to link to; an on-site booking has no usable tracker yet
+    // either (its own tracking link is emailed later, once a technician
+    // actually heads out — see startTechnicianTrackingIfOnTheWay).
+    phone: string;
   }
 ) {
   const client = getClient();
@@ -112,6 +120,10 @@ export async function sendQuotationEmail(
   const bookingPhrase = pickupDelivery
     ? "thanks for booking Pickup &amp; Delivery with us — a rider will pick up your device, we'll repair it at the shop, then a rider brings it back to you"
     : "thanks for booking a home service repair with us";
+  const trackingUrl =
+    pickupDelivery && opts.devices.length === 1 && opts.phone
+      ? `${SITE_URL}/track?reference=${encodeURIComponent(opts.devices[0].reference)}&phone=${encodeURIComponent(opts.phone)}`
+      : null;
 
   const deviceLines = opts.devices
     .map(
@@ -182,6 +194,16 @@ export async function sendQuotationEmail(
     `
     : "";
 
+  const trackingBlock = trackingUrl
+    ? `
+      <p style="margin: 16px 0; text-align: center;">
+        <a href="${trackingUrl}" style="display: inline-block; background: #0071e3; color: #fff; padding: 10px 20px; border-radius: 999px; text-decoration: none; font-size: 14px; font-weight: 600;">
+          Track This Request
+        </a>
+      </p>
+    `
+    : "";
+
   const html = `
     <div style="font-family: -apple-system, sans-serif; max-width: 480px; margin: 0 auto; color: #1e293b;">
       <p style="font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8;">Ceejay Cellphone Repair Shop</p>
@@ -193,6 +215,7 @@ export async function sendQuotationEmail(
       <ul style="font-size: 13px; padding-left: 18px; margin: 12px 0;">${deviceLines}</ul>
       ${downpaymentBlock}
       ${confirmationBlock}
+      ${trackingBlock}
       ${agreementBlock}
       <p style="font-size: 13px; color: #64748b;">
         This is an estimate based on our standard price list. Final pricing will be confirmed by our technician before any repair work

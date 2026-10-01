@@ -206,11 +206,6 @@ export default function HomeServiceForm({
   // Captured on submit purely to display "we sent your quotation to X" on
   // the success screen — independent of the phone-based OTP gate above.
   const [sentEmail, setSentEmail] = useState("");
-  // Same idea, for the "Save your account to track this?" prompt on the
-  // success screen — captured generically here (not from sentPhone above)
-  // since that one is only ever set when the OTP gate actually ran, and a
-  // guest can submit successfully with the gate off.
-  const [bookedEmail, setBookedEmail] = useState("");
 
   // Same admin toggle as the Street field's own "required" setting (they're
   // rendered together, the pin being the more exact of the two) — checked
@@ -413,18 +408,6 @@ export default function HomeServiceForm({
           <a href={`/track?reference=${encodeURIComponent(state.references[0])}`} className="btn-secondary inline-block">
             Track this request
           </a>
-        )}
-        {bookedEmail && (
-          <FormNotice tone="blue" icon="👤">
-            <p className="font-semibold">Want to track this without digging up a link later?</p>
-            <p className="mt-1">
-              Save an account with the email you just gave us — no password, just a code we email you. Your bookings (this one and any
-              future ones) show up automatically, with a live map whenever someone&apos;s on the way.
-            </p>
-            <a href={`/my/login?email=${encodeURIComponent(bookedEmail)}`} className="btn-primary mt-3 inline-block">
-              Save My Account
-            </a>
-          </FormNotice>
         )}
         <a href={`/${mode === "pickup_delivery" ? "pickup-delivery" : "request"}?area=${area}`} className="btn-secondary inline-block">
           Submit another request
@@ -900,7 +883,6 @@ export default function HomeServiceForm({
         }
         const fd = new FormData(e.currentTarget);
         setSentEmail(String(fd.get("email") ?? "").trim());
-        setBookedEmail(String(fd.get("email") ?? "").trim());
       }}
       className="card space-y-5"
     >
