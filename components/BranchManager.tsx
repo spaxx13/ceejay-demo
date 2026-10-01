@@ -8,6 +8,15 @@ const GOOGLE_MAPS_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 
 type Branch = { id: string; name: string; address: string; contactNumber: string; active: boolean; lat: number | null; lng: number | null };
 
+function PinBadge({ b }: { b: { lat: number | null; lng: number | null } }) {
+  const pinned = b.lat !== null && b.lng !== null;
+  return (
+    <span className={`badge border ${pinned ? "border-green-200 bg-green-50 text-green-700" : "border-red-200 bg-red-50 text-red-700"}`}>
+      {pinned ? "Pinned" : "No pin — set it"}
+    </span>
+  );
+}
+
 export default function BranchManager({ branches }: { branches: Branch[] }) {
   const formRef = useRef<HTMLFormElement>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -55,7 +64,7 @@ export default function BranchManager({ branches }: { branches: Branch[] }) {
               lngName="lng"
               defaultLat={editing?.lat ?? undefined}
               defaultLng={editing?.lng ?? undefined}
-              label="Exact Pin (optional, recommended for Pickup & Delivery's live tracking map)"
+              label="Exact Pin (required for Pickup & Delivery — distance pricing and nearest-branch routing are measured from this pin)"
             />
           ) : (
             <>
@@ -70,8 +79,8 @@ export default function BranchManager({ branches }: { branches: Branch[] }) {
                 </div>
               </div>
               <p className="text-[11px] text-slate-400">
-                Optional, but recommended for Pickup &amp; Delivery&apos;s live tracking map — a plain address can geocode to the wrong
-                nearby landmark. On Google Maps, right-click the branch&apos;s exact spot → click the coordinates shown at the top to copy
+                Required for Pickup &amp; Delivery — the customer&apos;s distance-based fee and the &quot;nearest branch&quot; are measured from
+                this pin, and a plain address can geocode to the wrong nearby landmark. On Google Maps, right-click the branch&apos;s exact spot → click the coordinates shown at the top to copy
                 them, then paste the two numbers above (separated by the comma) into Latitude and Longitude.
               </p>
             </>
@@ -112,6 +121,10 @@ export default function BranchManager({ branches }: { branches: Branch[] }) {
               <span className="text-right text-slate-600">{b.address || "—"}</span>
               <span className="text-slate-400">Contact</span>
               <span className="text-right text-slate-600">{b.contactNumber || "—"}</span>
+              <span className="text-slate-400">Map Pin</span>
+              <span className="text-right">
+                <PinBadge b={b} />
+              </span>
             </div>
             <button className="btn-secondary block w-full !py-1.5 text-xs" onClick={() => setEditingId(b.id)}>
               Edit
@@ -128,6 +141,7 @@ export default function BranchManager({ branches }: { branches: Branch[] }) {
               <th className="pb-2 pr-3">Branch</th>
               <th className="pb-2 pr-3">Address</th>
               <th className="pb-2 pr-3">Contact</th>
+              <th className="pb-2 pr-3">Map Pin</th>
               <th className="pb-2 pr-3">Status</th>
               <th className="pb-2">Actions</th>
             </tr>
@@ -135,7 +149,7 @@ export default function BranchManager({ branches }: { branches: Branch[] }) {
           <tbody>
             {branches.length === 0 && (
               <tr>
-                <td colSpan={5} className="py-6 text-center text-slate-400">
+                <td colSpan={6} className="py-6 text-center text-slate-400">
                   No branches yet. Add the first one above.
                 </td>
               </tr>
@@ -145,6 +159,9 @@ export default function BranchManager({ branches }: { branches: Branch[] }) {
                 <td className="py-3 pr-3 font-medium text-slate-800">{b.name}</td>
                 <td className="py-3 pr-3 text-slate-500">{b.address || "—"}</td>
                 <td className="py-3 pr-3 text-slate-500">{b.contactNumber || "—"}</td>
+                <td className="py-3 pr-3">
+                  <PinBadge b={b} />
+                </td>
                 <td className="py-3 pr-3">
                   <form action={toggleBranchActive}>
                     <input type="hidden" name="id" value={b.id} />
