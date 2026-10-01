@@ -81,6 +81,45 @@ export const PICKUP_DELIVERY_COVERAGE: { provinceKey: string; province: string; 
   { provinceKey: "rizal", province: "Rizal", cities: ["Cainta", "City of Antipolo", "Taytay"] },
 ];
 export const PICKUP_DELIVERY_COVERAGE_LABEL = "Metro Manila, plus Cainta, Antipolo, and Taytay in Rizal";
+
+// Rough outline of the same coverage area as a lat/lng polygon, for the
+// map pin: the province/city dropdowns say where the customer *claims* to
+// be, this checks where the pin actually is (a map search for "Tanay" once
+// landed a pin in Laguna and quoted 45 km). Hand-traced, clockwise from
+// Valenzuela, around Metro Manila's edge and out east over Antipolo; good
+// to within a km or two, which is all a "clearly outside" guard needs.
+export const PICKUP_DELIVERY_COVERAGE_POLYGON: { lat: number; lng: number }[] = [
+  { lat: 14.78, lng: 120.93 }, // Valenzuela / Caloocan NW
+  { lat: 14.79, lng: 121.06 }, // Caloocan North
+  { lat: 14.76, lng: 121.12 }, // Quezon City NE (La Mesa)
+  { lat: 14.73, lng: 121.18 }, // Antipolo north
+  { lat: 14.72, lng: 121.3 }, // Antipolo NE
+  { lat: 14.56, lng: 121.3 }, // Antipolo SE
+  { lat: 14.52, lng: 121.2 }, // Antipolo south
+  { lat: 14.53, lng: 121.13 }, // Taytay (Laguna de Bay shore)
+  { lat: 14.49, lng: 121.1 }, // Taguig east
+  { lat: 14.44, lng: 121.08 }, // Taguig south
+  { lat: 14.36, lng: 121.05 }, // Muntinlupa south
+  { lat: 14.36, lng: 120.99 }, // Muntinlupa SW
+  { lat: 14.42, lng: 120.96 }, // Las Piñas west
+  { lat: 14.5, lng: 120.95 }, // Parañaque coast
+  { lat: 14.6, lng: 120.95 }, // Manila coast
+  { lat: 14.7, lng: 120.92 }, // Navotas / Valenzuela coast
+];
+// Bounding box of the polygon — what the address search is limited to.
+export const PICKUP_DELIVERY_SEARCH_BOUNDS = { south: 14.36, west: 120.92, north: 14.79, east: 121.3 };
+
+export function pointInPickupDeliveryCoverage(lat: number, lng: number): boolean {
+  // Standard ray-casting point-in-polygon.
+  const poly = PICKUP_DELIVERY_COVERAGE_POLYGON;
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const yi = poly[i].lat, xi = poly[i].lng, yj = poly[j].lat, xj = poly[j].lng;
+    const crosses = yi > lat !== yj > lat && lng < ((xj - xi) * (lat - yi)) / (yj - yi) + xi;
+    if (crosses) inside = !inside;
+  }
+  return inside;
+}
 export function pickupDeliveryCovers(province: string, city: string): boolean {
   const entry = PICKUP_DELIVERY_COVERAGE.find((c) => c.province === province);
   if (!entry) return false;

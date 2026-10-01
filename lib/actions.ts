@@ -99,6 +99,7 @@ import {
   pickupDeliveryQuote,
   PICKUP_DELIVERY_FEE_MIN_PESOS,
   pickupDeliveryCovers,
+  pointInPickupDeliveryCoverage,
   PICKUP_DELIVERY_COVERAGE_LABEL,
 } from "./homeServiceFees";
 import { getRepairQuote } from "./servicePricing";
@@ -2315,6 +2316,14 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
   }
   if (fulfillmentMode === "pickup_delivery" && !fromMobileApp && (lat === null || lng === null)) {
     return { ok: false, error: "Please pin your exact pickup location on the map so we can compute your Booking, Diagnostic & Delivery Fee." };
+  }
+  // …and the pin itself has to be inside the coverage area, not just the
+  // dropdown address (the map search can land a pin anywhere).
+  if (fulfillmentMode === "pickup_delivery" && lat !== null && lng !== null && !pointInPickupDeliveryCoverage(lat, lng)) {
+    return {
+      ok: false,
+      error: `Your pinned location is outside our Pickup & Delivery area (${PICKUP_DELIVERY_COVERAGE_LABEL}). Please pin an address within it, or book Home Service instead.`,
+    };
   }
   const pdFee = pdQuote?.fee ?? PICKUP_DELIVERY_FEE_MIN_PESOS;
   const vlogConsent = formData.has("vlogConsent");

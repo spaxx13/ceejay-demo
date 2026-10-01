@@ -14,6 +14,9 @@ import {
   PICKUP_DELIVERY_FEE_MIN_PESOS,
   PICKUP_DELIVERY_FEE_MAX_PESOS,
   PICKUP_DELIVERY_COVERAGE,
+  PICKUP_DELIVERY_COVERAGE_LABEL,
+  PICKUP_DELIVERY_SEARCH_BOUNDS,
+  pointInPickupDeliveryCoverage,
   nextSunday,
   minPreferredDateStr,
 } from "@/lib/homeServiceFees";
@@ -215,12 +218,22 @@ export default function HomeServiceForm({
   const streetField = fields.find((f) => f.systemKey === "street");
   // Pickup & Delivery always needs the pin — the fee is computed from it.
   const pinRequired = (streetField?.active === true && streetField.required) || mode === "pickup_delivery";
-  const pdQuote = mode === "pickup_delivery" ? pickupDeliveryQuote({ lat, lng }, branchPins) : null;
+  // The pin itself has to land inside the coverage area — the address
+  // search can still surface places outside it (Google ranks its bounds as
+  // a preference, OSM as a hard box), and "drag the pin" is unrestricted.
+  const pinOutsideCoverage =
+    mode === "pickup_delivery" && lat !== null && lng !== null && !pointInPickupDeliveryCoverage(lat, lng);
+  const pdQuote = mode === "pickup_delivery" && !pinOutsideCoverage ? pickupDeliveryQuote({ lat, lng }, branchPins) : null;
   const [pinError, setPinError] = useState("");
   const pinSectionRef = useRef<HTMLDivElement>(null);
   function validatePin(required: boolean): boolean {
     if (required && (lat === null || lng === null)) {
       setPinError("Please pin your exact location on the map.");
+      pinSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      return false;
+    }
+    if (pinOutsideCoverage) {
+      setPinError(`Your pin is outside our Pickup & Delivery area (${PICKUP_DELIVERY_COVERAGE_LABEL}). Please pin an address within it.`);
       pinSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
       return false;
     }
@@ -684,17 +697,25 @@ export default function HomeServiceForm({
                   setLng(pos.lng);
                   setPinError("");
                 }}
+                searchBounds={mode === "pickup_delivery" ? PICKUP_DELIVERY_SEARCH_BOUNDS : undefined}
               />
-              {lat !== null && lng !== null && (
+              {lat !== null && lng !== null && !pinOutsideCoverage && (
                 <p className="text-xs font-medium text-green-700">
                   ✓ Location pinned ({lat.toFixed(5)}, {lng.toFixed(5)})
                 </p>
               )}
+              {pinOutsideCoverage && (
+                <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
+                  ✕ This pin is outside our Pickup &amp; Delivery area. We only pick up and deliver within {PICKUP_DELIVERY_COVERAGE_LABEL}.
+                  Please search or drag the pin to an address within it, or book Home Service instead.
+                </p>
+              )}
               {pdQuote && (
                 <p className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
-                  About <span className="font-semibold">{pdQuote.km} km</span> from our {pdQuote.branchName} branch → Booking, Diagnostic &amp; Delivery
-                  Fee: <span className="font-semibold">₱{pdQuote.fee.toLocaleString()}.00</span>
-                  <span className="block text-[11px] text-blue-600">{PICKUP_DELIVERY_FEE_TIER_LABEL}</span>
+                  About <span className="font-semibold">{pdQuote.km} km</span> from our {pdQuote.branchName} branch → Pickup &amp; Delivery Booking,
+                  Diagnostic &amp; Delivery Fee: <span className="font-semibold">₱{pdQuote.fee.toLocaleString()}.00</span> (round trip — pickup from you and
+                  delivery back, both included)
+                  <span className="block text-[11px] text-blue-600">Pickup &amp; Delivery rates, round trip: {PICKUP_DELIVERY_FEE_TIER_LABEL}</span>
                 </p>
               )}
               {pinError && <p className="text-xs font-medium text-red-600">{pinError}</p>}
@@ -893,9 +914,9 @@ export default function HomeServiceForm({
       {mode === "pickup_delivery" && (
         <FormNotice tone="blue" icon="🚚">
           A rider will pick up your device at the address below, we&apos;ll repair it at the shop, then a rider delivers it back to you.
-          One Booking, Diagnostic &amp; Delivery Fee covers it all — ₱{PICKUP_DELIVERY_FEE_MIN_PESOS.toLocaleString()} to ₱
+          One Pickup &amp; Delivery Booking, Diagnostic &amp; Delivery Fee covers the whole round trip — ₱{PICKUP_DELIVERY_FEE_MIN_PESOS.toLocaleString()} to ₱
           {PICKUP_DELIVERY_FEE_MAX_PESOS.toLocaleString()} depending on how far you are from our nearest branch ({PICKUP_DELIVERY_FEE_TIER_LABEL}) —
-          nothing more to pay when it comes back.
+          pickup and delivery back are both included, nothing more to pay when it comes back.
         </FormNotice>
       )}
 
@@ -959,14 +980,14 @@ export default function HomeServiceForm({
         {mode === "pickup_delivery" && (
           <p className="mt-2 font-semibold">
             {pdQuote
-              ? `Your pickup address is about ${pdQuote.km} km from our ${pdQuote.branchName} branch — a ₱${pdQuote.fee.toLocaleString()}.00 Booking, Diagnostic & Delivery Fee (pickup + diagnosis + delivery back to you, all included) is required via QR Ph after phone verification, before we confirm your booking and assign a rider.`
-              : `A Booking, Diagnostic & Delivery Fee of ₱${PICKUP_DELIVERY_FEE_MIN_PESOS.toLocaleString()}–₱${PICKUP_DELIVERY_FEE_MAX_PESOS.toLocaleString()}, depending on your distance from our nearest branch (${PICKUP_DELIVERY_FEE_TIER_LABEL}), is required via QR Ph after phone verification — pin your pickup location on the map above to see your exact fee.`}
+              ? `Your pickup address is about ${pdQuote.km} km from our ${pdQuote.branchName} branch — a ₱${pdQuote.fee.toLocaleString()}.00 Pickup & Delivery Booking, Diagnostic & Delivery Fee is required via QR Ph after phone verification, before we confirm your booking and assign a rider. This rate is for Pickup & Delivery and already covers the round trip: pickup from you, the initial diagnosis, and delivery back to you — nothing more to pay when your device comes back.`
+              : `A Pickup & Delivery Booking, Diagnostic & Delivery Fee of ₱${PICKUP_DELIVERY_FEE_MIN_PESOS.toLocaleString()}–₱${PICKUP_DELIVERY_FEE_MAX_PESOS.toLocaleString()}, depending on your distance from our nearest branch, is required via QR Ph after phone verification. These rates are for Pickup & Delivery and already cover the round trip — pickup from you and delivery back (${PICKUP_DELIVERY_FEE_TIER_LABEL}). Pin your pickup location on the map above to see your exact fee.`}
           </p>
         )}
       </FormNotice>
 
       {!phoneGateActive && (
-        <button type="submit" disabled={pending || pickupDeliveryAgreementPending} className="btn-primary w-full">
+        <button type="submit" disabled={pending || pickupDeliveryAgreementPending || pinOutsideCoverage} className="btn-primary w-full">
           {pending ? "Submitting..." : content.submitButtonLabel}
         </button>
       )}
@@ -976,7 +997,12 @@ export default function HomeServiceForm({
 
       {phoneGateActive && otpStage === "idle" && (
         <>
-          <button type="button" onClick={handleProceedToOtp} disabled={sendingOtp || pickupDeliveryAgreementPending} className="btn-primary w-full">
+          <button
+            type="button"
+            onClick={handleProceedToOtp}
+            disabled={sendingOtp || pickupDeliveryAgreementPending || pinOutsideCoverage}
+            className="btn-primary w-full"
+          >
             {sendingOtp ? "Sending verification code..." : content.submitButtonLabel}
           </button>
           {otpError && <p className="text-center text-sm text-red-600">{otpError}</p>}
