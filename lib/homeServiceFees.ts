@@ -96,11 +96,14 @@ export function pickupDeliveryQuote(
   customer: { lat: number | null; lng: number | null },
   branches: { id: string; name: string; lat: number | null; lng: number | null }[]
 ): PickupDeliveryQuote | null {
-  if (customer.lat === null || customer.lng === null) return null;
+  if (customer.lat === null || customer.lng === null || !Number.isFinite(customer.lat) || !Number.isFinite(customer.lng)) return null;
   let best: PickupDeliveryQuote | null = null;
   for (const b of branches) {
-    if (b.lat === null || b.lng === null) continue;
+    if (b.lat === null || b.lng === null || !Number.isFinite(b.lat) || !Number.isFinite(b.lng)) continue;
     const km = Math.round(distanceKm({ lat: customer.lat, lng: customer.lng }, { lat: b.lat, lng: b.lng }) * PICKUP_DELIVERY_ROAD_FACTOR * 10) / 10;
+    // Belt and braces: a NaN distance (bad coordinates) must never become a
+    // "NaN km" quote — skip the branch instead.
+    if (!Number.isFinite(km)) continue;
     if (!best || km < best.km) best = { branchId: b.id, branchName: b.name, km, fee: pickupDeliveryFeeForKm(km) };
   }
   return best;
