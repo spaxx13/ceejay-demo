@@ -60,6 +60,7 @@ import {
   canManageManualChecklists,
   getManualRepairRecordById,
   getManualChecklists,
+  getManualChecklistsForRecord,
   isBranchHidden,
   getIcloudCheckById,
   createIcloudCheck,
@@ -4709,7 +4710,7 @@ export async function submitManualChecklist(
   if (!record || record.deletedAt) return { ok: false, error: "Ticket not found." };
   if (!canEditManualRecord(user, record)) return { ok: false, error: "You don't have access to this ticket." };
 
-  const checklists = (await getManualChecklists()).filter((c) => c.manualRecordId === manualRecordId);
+  const checklists = await getManualChecklistsForRecord(manualRecordId);
   if (checklists.some((c) => c.phase === phase)) return { ok: false, error: "This checklist has already been completed." };
   const preChecklist = checklists.find((c) => c.phase === "pre_repair");
   if (phase === "post_repair" && !preChecklist) return { ok: false, error: "Complete the pre-repair checklist first." };
@@ -4874,7 +4875,7 @@ export async function resendManualChecklistReceiptEmail(
   if (!canEditManualRecord(user, record)) return { ok: false, error: "You don't have access to this ticket." };
   if (!record.customerEmail) return { ok: false, error: "No email on file for this customer." };
 
-  const checklists = (await getManualChecklists()).filter((c) => c.manualRecordId === manualRecordId);
+  const checklists = await getManualChecklistsForRecord(manualRecordId);
   const pre = checklists.find((c) => c.phase === "pre_repair");
   const post = checklists.find((c) => c.phase === "post_repair");
   if (!post) return { ok: false, error: "The Post-Repair checklist hasn't been completed yet — there's no receipt to resend." };

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
-import { getManualRepairRecordById, getManualChecklists, canViewManualRecord } from "@/lib/db";
+import { getManualRepairRecordById, getManualChecklistsForRecord, canViewManualRecord } from "@/lib/db";
 import { generateRepairReceiptPdf } from "@/lib/receiptPdf";
 
 // Regenerates the Manual Checklist & Receipt PDF on the fly, same "never
@@ -12,7 +12,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   if (!record || record.deletedAt) return NextResponse.json({ error: "Not found" }, { status: 404 });
   if (!canViewManualRecord(user, record)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const checklists = (await getManualChecklists()).filter((c) => c.manualRecordId === id);
+  const checklists = await getManualChecklistsForRecord(id);
   const pre = checklists.find((c) => c.phase === "pre_repair");
   const post = checklists.find((c) => c.phase === "post_repair");
   if (!post) return NextResponse.json({ error: "No completed checklist yet — there's no receipt." }, { status: 404 });
