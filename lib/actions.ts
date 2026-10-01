@@ -3914,17 +3914,15 @@ export async function addConversationMessage(formData: FormData) {
 // ---------- Live technician tracking ----------
 
 // Called after any status change: the first time a request goes "En Route",
-// mints its tracking token and texts/emails the customer the live map link
-// (/track-technician/<token>). SMS is the primary channel — phone is always
-// required at booking, while email can be left blank — so a customer with
-// no email and no app still finds out their technician is on the way and
-// can track them, with no account/login needed either way. Returns a note
-// for the activity log.
+// mints its tracking token and emails the customer the live map link
+// (/track-technician/<token>). Email/push only, deliberately — SMS credits
+// are reserved for OTP, so this never spends one on a tracking notification.
+// Returns a note for the activity log.
 async function startTechnicianTrackingIfOnTheWay(req: HomeServiceRequest, newStatusLabel: string): Promise<string> {
   // Pickup & Delivery devices are repaired in-shop, not visited at the
   // customer's address — a technician going "En Route" there just means
   // walking to their bench, not heading to the customer, so this (Home
-  // Service-only) "technician is on the way to you" tracking/text/email must
+  // Service-only) "technician is on the way to you" tracking/email must
   // never fire for it. The delivery leg has its own rider tracking instead.
   if (req.fulfillmentMode === "pickup_delivery") return "";
   if (!isOnTheWayStatus(newStatusLabel) || req.trackingToken) return "";
@@ -3940,36 +3938,22 @@ async function startTechnicianTrackingIfOnTheWay(req: HomeServiceRequest, newSta
       `/track-technician/${token}`,
     ).catch(() => {});
   }
+  if (!req.email) return " — no customer email on file, tracking link not sent";
+  if (!emailConfigured()) return " — email not configured, tracking link not sent";
 
   // Link back to whichever deployment the technician is using (so a
-  // Preview deployment texts/emails a Preview link), falling back to SITE_URL.
+  // Preview deployment emails a Preview link), falling back to SITE_URL.
   const hdrs = await headers();
   const host = hdrs.get("x-forwarded-host") ?? hdrs.get("host");
   const origin = host ? `${hdrs.get("x-forwarded-proto") ?? "https"}://${host}` : SITE_URL;
   const trackingUrl = `${origin}/track-technician/${token}`;
-
-  const notes: string[] = [];
-
-  if (req.phone && smsConfigured()) {
-    try {
-      await sendSms(req.phone, `Hi ${req.customerName}, your Ceejay technician is on the way! Track live: ${trackingUrl}`);
-      notes.push(`tracking link texted to ${req.phone}`);
-    } catch (err) {
-      notes.push(`tracking SMS failed to send to ${req.phone} (${err instanceof Error ? err.message : "unknown error"})`);
-    }
+  const technicianName = (await getTechnicians()).find((t) => t.id === req.assignedTechnicianId)?.name ?? "Your technician";
+  try {
+    await sendTechnicianOnTheWayEmail(req.email, { customerName: req.customerName, reference: req.reference, technicianName, trackingUrl });
+    return ` — tracking link emailed to ${req.email}`;
+  } catch (err) {
+    return ` — tracking email failed to send to ${req.email} (${err instanceof Error ? err.message : "unknown error"})`;
   }
-
-  if (req.email && emailConfigured()) {
-    const technicianName = (await getTechnicians()).find((t) => t.id === req.assignedTechnicianId)?.name ?? "Your technician";
-    try {
-      await sendTechnicianOnTheWayEmail(req.email, { customerName: req.customerName, reference: req.reference, technicianName, trackingUrl });
-      notes.push(`tracking link emailed to ${req.email}`);
-    } catch (err) {
-      notes.push(`tracking email failed to send to ${req.email} (${err instanceof Error ? err.message : "unknown error"})`);
-    }
-  }
-
-  return notes.length ? ` — ${notes.join("; ")}` : "";
 }
 
 
