@@ -5,6 +5,7 @@ import {
   getRiders,
   getLookups,
   getRequestExceptions,
+  getBranches,
   canManageHomeServiceRequests,
   canDeleteHomeServiceRequests,
   isBranchHidden,
@@ -27,12 +28,16 @@ export default async function PickupDeliveryPage({ searchParams }: { searchParam
   if (!canManageHomeServiceRequests(user)) redirect("/admin");
   const sp = await searchParams;
 
-  const [allRequests, riders, lookups, exceptions] = await Promise.all([
+  const [allRequests, riders, lookups, exceptions, branches] = await Promise.all([
     getRequests(),
     getRiders(),
     getLookups(),
     getRequestExceptions(),
+    getBranches(),
   ]);
+  // Distance-tiered pricing and "nearest branch" both need every physical
+  // branch pinned — surface the gap here, where the owner will see it.
+  const branchesWithoutPins = branches.filter((b) => b.active && b.address && (b.lat === null || b.lng === null));
   const statuses = lookups.filter((l) => l.kind === "request_status");
 
   const jobs = allRequests
@@ -106,6 +111,19 @@ export default async function PickupDeliveryPage({ searchParams }: { searchParam
           the repair right here too.
         </p>
       </div>
+
+      {branchesWithoutPins.length > 0 && (
+        <div className="card border-2 border-red-200 bg-red-50">
+          <p className="text-sm font-semibold text-red-700">⚠ Branches without a map pin: {branchesWithoutPins.map((b) => b.name).join(", ")}</p>
+          <p className="mt-1 text-xs text-red-700">
+            Pickup &amp; Delivery pricing is by distance from the nearest branch, and riders are routed to the nearest branch — both need
+            every branch&apos;s Exact Pin set. Customers only see the fee range (₱500–₱1,000) instead of their exact fee until this is fixed.{" "}
+            <Link href="/admin/branches" className="font-semibold underline">
+              Open Settings &gt; Branches
+            </Link>
+          </p>
+        </div>
+      )}
 
       <div className="card">
         <h3 className="mb-3 text-sm font-semibold text-slate-800">Requests by Stage</h3>

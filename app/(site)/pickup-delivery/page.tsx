@@ -50,6 +50,7 @@ export default async function PickupDeliveryPage() {
     getBranches(),
   ]);
   const branchPins = branches.filter((b) => b.active && b.address).map((b) => ({ id: b.id, name: b.name, lat: b.lat, lng: b.lng }));
+  const branchesWithoutPins = branchPins.filter((b) => b.lat === null || b.lng === null);
 
   if (!content.nearAreaEnabled) {
     return (
@@ -93,6 +94,12 @@ export default async function PickupDeliveryPage() {
           <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-center text-xs text-amber-800">
             Staff preview — you can see this because you&apos;re logged in as an admin. Visitors still see &quot;Coming Soon&quot; until
             NEXT_PUBLIC_PICKUP_DELIVERY_ENABLED is turned on. Test bookings from here skip SMS verification and the QR Ph fee.
+          </p>
+        )}
+        {staffPreview && branchesWithoutPins.length > 0 && (
+          <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-center text-xs text-red-700">
+            ⚠ Distance pricing can&apos;t show an exact fee yet — no map pin on: {branchesWithoutPins.map((b) => b.name).join(", ")}. Set
+            each branch&apos;s Exact Pin in Admin &gt; Settings &gt; Branches. (Only admins see this notice.)
           </p>
         )}
         <div className="text-center">
