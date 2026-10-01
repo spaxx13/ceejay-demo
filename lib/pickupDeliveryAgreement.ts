@@ -4,12 +4,12 @@
 // — bump VERSION whenever the wording changes, so each booking records
 // which text the customer actually agreed to
 // (home_service_requests.pickup_delivery_agreement_version).
-export const PICKUP_DELIVERY_AGREEMENT_VERSION = "2026-10-01.3";
+export const PICKUP_DELIVERY_AGREEMENT_VERSION = "2026-10-01.4";
 
 export const PICKUP_DELIVERY_AGREEMENT_TERMS: { title: string; body: string }[] = [
   {
     title: "Booking, Diagnostic & Delivery Fee",
-    body: "The fee covers the rider's pickup trip, the initial diagnosis, and delivery of the device back to you, and depends on the distance of your pickup address from our nearest branch: ₱500 for 1–5 km, ₱700 for 6–10 km, and ₱1,000 for 11 km and above. Pickup & Delivery is available in Metro Manila and in Cainta, Antipolo, and Taytay, Rizal only. The amount is shown on the booking form once you pin your address. It is non-refundable once a rider has been dispatched, and is separate from the repair cost.",
+    body: "The fee covers the rider's pickup trip, the initial diagnosis, and delivery of the device back to you, and depends on the distance of your pickup address from our nearest branch: ₱500 for 1–5 km, ₱700 for 6–10 km, ₱800 for 11–15 km, ₱1,000 for 16–20 km, ₱1,200 for 21–25 km, ₱1,400 for 26–30 km, and ₱1,600 for 31 km and above. Pickup & Delivery is available in Metro Manila and in Cainta, Antipolo, and Taytay, Rizal only. The amount is shown on the booking form once you pin your address. It is non-refundable once a rider has been dispatched, and is separate from the repair cost.",
   },
   {
     title: "Repair cost approval",
