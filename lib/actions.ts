@@ -3915,7 +3915,9 @@ export async function addConversationMessage(formData: FormData) {
 
 // Called after any status change: the first time a request goes "En Route",
 // mints its tracking token and emails the customer the live map link
-// (/track-technician/<token>). Returns a note for the activity log.
+// (/track-technician/<token>). Email/push only, deliberately — SMS credits
+// are reserved for OTP, so this never spends one on a tracking notification.
+// Returns a note for the activity log.
 async function startTechnicianTrackingIfOnTheWay(req: HomeServiceRequest, newStatusLabel: string): Promise<string> {
   // Pickup & Delivery devices are repaired in-shop, not visited at the
   // customer's address — a technician going "En Route" there just means
