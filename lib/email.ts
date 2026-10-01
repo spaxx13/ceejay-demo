@@ -3,6 +3,7 @@ import { Resend } from "resend";
 import type { ChecklistItem } from "./types";
 import { generateRepairReceiptPdf, generateQuotationPdf } from "./receiptPdf";
 import { SITE_URL } from "./config";
+import { PICKUP_DELIVERY_AGREEMENT_TERMS } from "./pickupDeliveryAgreement";
 
 const FROM = "Ceejay Cellphone Repair Shop <noreply@ceejayrepair.com>";
 
@@ -169,6 +170,18 @@ export async function sendQuotationEmail(
     `
       : "";
 
+  // The customer's copy of the agreement they accepted on the booking form.
+  const agreementBlock = pickupDelivery
+    ? `
+      <div style="margin: 20px 0; padding: 14px 16px; border: 1px solid #e2e8f0; border-radius: 8px; background: #f8fafc;">
+        <p style="font-size: 13px; font-weight: 700; color: #1e293b; margin: 0 0 8px;">Pickup &amp; Delivery Agreement (accepted at booking)</p>
+        <ol style="font-size: 12px; color: #475569; padding-left: 18px; margin: 0; line-height: 1.5;">
+          ${PICKUP_DELIVERY_AGREEMENT_TERMS.map((t) => `<li style="margin-bottom: 6px;"><strong>${escapeHtml(t.title)}.</strong> ${escapeHtml(t.body)}</li>`).join("")}
+        </ol>
+      </div>
+    `
+    : "";
+
   const html = `
     <div style="font-family: -apple-system, sans-serif; max-width: 480px; margin: 0 auto; color: #1e293b;">
       <p style="font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8;">Ceejay Cellphone Repair Shop</p>
@@ -180,6 +193,7 @@ export async function sendQuotationEmail(
       <ul style="font-size: 13px; padding-left: 18px; margin: 12px 0;">${deviceLines}</ul>
       ${downpaymentBlock}
       ${confirmationBlock}
+      ${agreementBlock}
       <p style="font-size: 13px; color: #64748b;">
         This is an estimate based on our standard price list. Final pricing will be confirmed by our technician before any repair work
         begins.

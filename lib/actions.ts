@@ -87,6 +87,7 @@ import {
 } from "./email";
 import { isOnTheWayStatus, distanceKm } from "./technicianTracking";
 import { storageConfigured, createSignedUploadUrl, deleteStorageObject, UPDATES_BUCKET } from "./storage";
+import { PICKUP_DELIVERY_AGREEMENT_VERSION } from "./pickupDeliveryAgreement";
 import { getRequestUpdateById } from "./db";
 import { sendSms, sendOtpSms, smsConfigured, normalizePhone, isValidPhone, getAccountStatus, type SmsAccountStatus } from "./sms";
 import { SUNDAY_ONLY_PROVINCES, DOWNPAYMENT_PROVINCES, serviceFeeAmount, requestServiceFee, PICKUP_DELIVERY_FEE_PESOS } from "./homeServiceFees";
@@ -2069,6 +2070,14 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
   const pickupDeliveryAllowed = PICKUP_DELIVERY_PUBLIC_ENABLED || (fromMobileApp && PICKUP_DELIVERY_MOBILE_ENABLED) || staffAdmin;
   const fulfillmentMode: "on_site" | "pickup_delivery" =
     requestedFulfillmentMode === "pickup_delivery" && pickupDeliveryAllowed ? "pickup_delivery" : "on_site";
+  // The web form can't submit a Pickup & Delivery booking without the
+  // agreement checkbox (HomeServiceForm.tsx); re-checked here so a
+  // hand-crafted submission can't skip it. The native app's own form
+  // doesn't carry it yet, so it's not enforced on that channel.
+  const pickupDeliveryAgreed = str(formData, "pickupDeliveryAgreed") === "1";
+  if (fulfillmentMode === "pickup_delivery" && !fromMobileApp && !pickupDeliveryAgreed) {
+    return { ok: false, error: "Please read and accept the Pickup & Delivery Agreement before submitting." };
+  }
   // Staff preview = an admin testing Pickup & Delivery on a site where it's
   // still publicly off. Their test bookings skip SMS OTP and the PayMongo
   // fee (same effect as the PICKUP_DELIVERY_SKIP_* toggles, but keyed on
@@ -2432,6 +2441,13 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
       }
     }
     createdRequests.push({ id: created!.id, reference, device: d });
+  }
+
+  if (fulfillmentMode === "pickup_delivery" && pickupDeliveryAgreed) {
+    await query("update home_service_requests set pickup_delivery_agreed_at=now(), pickup_delivery_agreement_version=$1 where id = any($2::uuid[])", [
+      PICKUP_DELIVERY_AGREEMENT_VERSION,
+      createdRequests.map((r) => r.id),
+    ]);
   }
 
   const referenceList = createdRequests.map((r) => r.reference).join(", ");
