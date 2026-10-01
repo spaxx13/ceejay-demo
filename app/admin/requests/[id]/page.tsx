@@ -15,6 +15,7 @@ import {
   canManageHomeServiceRequests,
   canDeleteHomeServiceRequests,
   canWaiveServiceFee,
+  canEditRepairPrice,
   isBranchHidden,
   HOME_SERVICE_COMPANY_SHARE,
   HOME_SERVICE_TECHNICIAN_SHARE,
@@ -283,7 +284,7 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
                 <span className="font-medium text-blue-300">Technician Share (70%)</span>
                 <span className="font-semibold text-blue-300">{peso(revenueSplit.technicianShare)}</span>
               </div>
-              {canManageHomeServiceRequests(user) && postAgreement && (
+              {canEditRepairPrice(user) && postAgreement && (
                 <div className="border-t border-slate-200 pt-2">
                   <EditAgreementPriceAdminForm
                     key={`${postAgreement.cost}-${postAgreement.laborCost}-${postAgreement.partsCost}`}

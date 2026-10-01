@@ -99,6 +99,7 @@ type UserRow = {
   can_manage_walkins: boolean;
   can_waive_service_fee: boolean;
   can_manage_repair_pricing: boolean;
+  can_edit_repair_price: boolean;
   can_manage_manual_checklists: boolean;
   phone: string;
   active: boolean;
@@ -119,6 +120,7 @@ function mapUser(r: UserRow): User {
     canManageWalkIns: r.can_manage_walkins,
     canWaiveServiceFee: r.can_waive_service_fee,
     canManageRepairPricing: r.can_manage_repair_pricing,
+    canEditRepairPrice: r.can_edit_repair_price,
     canManageManualChecklists: r.can_manage_manual_checklists,
     phone: r.phone,
     active: r.active,
@@ -242,6 +244,18 @@ export function canWaiveServiceFee(user: Pick<User, "role" | "canWaiveServiceFee
 export function canManageRepairPricing(user: Pick<User, "role" | "canManageRepairPricing"> | null) {
   if (!user) return false;
   return user.role === "owner_admin" || (user.role === "branch_admin" && user.canManageRepairPricing);
+}
+
+// True when this account is allowed to edit the Repair Price/Parts Cost on a
+// completed Home Service job's Revenue Split card. Owner admins always can;
+// branch admins are scoped by canEditRepairPrice — deliberately independent
+// of every other flag (including canManageRepairPricing, which only gates
+// the Repair Pricing catalog, not an individual completed job). A
+// technician's own edit flow is separate and always available to them
+// regardless of this flag.
+export function canEditRepairPrice(user: Pick<User, "role" | "canEditRepairPrice"> | null) {
+  if (!user) return false;
+  return user.role === "owner_admin" || (user.role === "branch_admin" && user.canEditRepairPrice);
 }
 
 // True when this account is allowed to use Manual Checklist & Receipt.
