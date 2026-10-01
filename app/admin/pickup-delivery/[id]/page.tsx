@@ -171,6 +171,12 @@ export default async function PickupDeliveryDetailPage({ params }: { params: Pro
             <span className="text-right text-slate-600">{req.landmark || "—"}</span>
             <span className="text-slate-400">Preferred Date</span>
             <span className="text-right text-slate-600">{req.preferredDatetime ? formatDateTime(req.preferredDatetime) : "—"}</span>
+            <span className="text-slate-400">P&amp;D Agreement</span>
+            <span className={req.pickupDeliveryAgreedAt ? "text-right text-green-700" : "text-right text-amber-700"}>
+              {req.pickupDeliveryAgreedAt
+                ? `Accepted ${formatDateTime(req.pickupDeliveryAgreedAt)}${req.pickupDeliveryAgreementVersion ? ` (v${req.pickupDeliveryAgreementVersion})` : ""}`
+                : "Not recorded"}
+            </span>
           </div>
         </div>
 

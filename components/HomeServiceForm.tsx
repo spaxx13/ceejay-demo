@@ -3,6 +3,7 @@
 import { Fragment, useActionState, useEffect, useRef, useState } from "react";
 import { submitHomeServiceRequest, sendHomeServiceOtp, verifyHomeServiceOtp, confirmBookingFromForm } from "@/lib/actions";
 import { OTP_GATE_ENABLED, BOOKING_CONFIRMATION_WINDOW_MINUTES } from "@/lib/config";
+import { PICKUP_DELIVERY_AGREEMENT_TERMS } from "@/lib/pickupDeliveryAgreement";
 import {
   PROVINCE_FEES,
   SUNDAY_ONLY_PROVINCES,
@@ -105,6 +106,11 @@ export default function HomeServiceForm({
   const [lat, setLat] = useState<number | null>(null);
   const [lng, setLng] = useState<number | null>(null);
   const [vlogConsent, setVlogConsent] = useState(false);
+  // Pickup & Delivery Agreement (lib/pickupDeliveryAgreement.ts) — must be
+  // accepted before a pickup_delivery booking can be submitted; re-checked
+  // server-side in submitHomeServiceRequest.
+  const [agreedToPickupDelivery, setAgreedToPickupDelivery] = useState(false);
+  const pickupDeliveryAgreementPending = mode === "pickup_delivery" && !agreedToPickupDelivery;
   const [preferredDate, setPreferredDate] = useState("");
 
   // One or more devices per booking — starts with a single blank block;
@@ -905,6 +911,34 @@ export default function HomeServiceForm({
 
       {fieldsAfterDevices.map((f) => (f.systemKey ? renderSystemField(f) : <DynamicFormField key={f.id} field={f} />))}
 
+      {mode === "pickup_delivery" && (
+        <div className="space-y-3 rounded-xl border border-slate-200 p-4">
+          <input type="hidden" name="pickupDeliveryAgreed" value={agreedToPickupDelivery ? "1" : ""} />
+          <div>
+            <h3 className="text-sm font-semibold text-slate-800">Pickup &amp; Delivery Agreement</h3>
+            <p className="text-xs text-slate-400">Please read before booking — you&apos;ll get a copy in your quotation email.</p>
+          </div>
+          <ol className="max-h-64 list-decimal space-y-2 overflow-y-auto pl-5 pr-2 text-xs text-slate-600">
+            {PICKUP_DELIVERY_AGREEMENT_TERMS.map((t) => (
+              <li key={t.title}>
+                <span className="font-semibold text-slate-700">{t.title}.</span> {t.body}
+              </li>
+            ))}
+          </ol>
+          <label className="flex items-start gap-2 text-sm font-medium text-slate-700">
+            <input
+              type="checkbox"
+              checked={agreedToPickupDelivery}
+              onChange={(e) => setAgreedToPickupDelivery(e.target.checked)}
+              className="mt-0.5 h-4 w-4 rounded border-slate-300"
+            />
+            <span>
+              I have read and agree to the Pickup &amp; Delivery Agreement <span className="text-red-600">*</span>
+            </span>
+          </label>
+        </div>
+      )}
+
       {state && !state.ok && <p className="text-sm text-red-600">{state.error}</p>}
 
       <FormNotice icon="🚚">
@@ -922,14 +956,17 @@ export default function HomeServiceForm({
       </FormNotice>
 
       {!phoneGateActive && (
-        <button type="submit" disabled={pending} className="btn-primary w-full">
+        <button type="submit" disabled={pending || pickupDeliveryAgreementPending} className="btn-primary w-full">
           {pending ? "Submitting..." : content.submitButtonLabel}
         </button>
+      )}
+      {pickupDeliveryAgreementPending && (
+        <p className="text-center text-xs text-slate-400">Accept the Pickup &amp; Delivery Agreement above to continue.</p>
       )}
 
       {phoneGateActive && otpStage === "idle" && (
         <>
-          <button type="button" onClick={handleProceedToOtp} disabled={sendingOtp} className="btn-primary w-full">
+          <button type="button" onClick={handleProceedToOtp} disabled={sendingOtp || pickupDeliveryAgreementPending} className="btn-primary w-full">
             {sendingOtp ? "Sending verification code..." : content.submitButtonLabel}
           </button>
           {otpError && <p className="text-center text-sm text-red-600">{otpError}</p>}

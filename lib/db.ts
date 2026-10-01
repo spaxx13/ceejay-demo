@@ -363,6 +363,7 @@ type RequestRow = {
   tracking_token: string | null; tech_lat: number | null; tech_lng: number | null; tech_location_at: Date | null;
   unboxing_video_path?: string | null; unboxing_video_content_type?: string | null; unboxing_video_recorded_at?: Date | null; unboxing_video_recorded_by?: string | null;
   unboxing_video_published_at?: Date | null;
+  pickup_delivery_agreed_at?: Date | null; pickup_delivery_agreement_version?: string | null;
 };
 function mapRequest(r: RequestRow): HomeServiceRequest {
   return {
@@ -396,6 +397,7 @@ function mapRequest(r: RequestRow): HomeServiceRequest {
     unboxingVideoPath: r.unboxing_video_path ?? null, unboxingVideoContentType: r.unboxing_video_content_type ?? null,
     unboxingVideoRecordedAt: toIsoOrNull(r.unboxing_video_recorded_at ?? null), unboxingVideoRecordedBy: r.unboxing_video_recorded_by ?? null,
     unboxingVideoPublishedAt: toIsoOrNull(r.unboxing_video_published_at ?? null),
+    pickupDeliveryAgreedAt: toIsoOrNull(r.pickup_delivery_agreed_at ?? null), pickupDeliveryAgreementVersion: r.pickup_delivery_agreement_version ?? null,
   };
 }
 

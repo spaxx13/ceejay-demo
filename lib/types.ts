@@ -430,6 +430,10 @@ export type HomeServiceRequest = {
   // Null = draft (only staff can see it); set when "Send to Customer" is
   // tapped — /track and My Bookings show the video only from then on.
   unboxingVideoPublishedAt: string | null;
+  // Pickup & Delivery Agreement acceptance at booking
+  // (lib/pickupDeliveryAgreement.ts) — null for on-site bookings.
+  pickupDeliveryAgreedAt: string | null;
+  pickupDeliveryAgreementVersion: string | null;
 };
 
 // Rider's device-condition checklist at "Picked Up" — a deliberate copy of
