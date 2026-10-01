@@ -52,7 +52,21 @@ function getPool(): Pool {
   if (!g.__ceejayPool) {
     const connectionString = (process.env.POSTGRES_URL ?? "").split("?")[0];
     if (!connectionString) throw new Error("POSTGRES_URL is not set");
-    g.__ceejayPool = new Pool({ connectionString, ssl: { rejectUnauthorized: false } });
+    // Serverless-friendly limits: a few connections per instance released
+    // quickly when idle (Supabase's free tier has a small connection
+    // budget shared by every warm Vercel instance), and hard caps on how
+    // long we wait for a connection or a single query — so a saturated or
+    // unreachable database fails fast with an error instead of every page
+    // hanging until the browser gives up ("This page couldn't load").
+    g.__ceejayPool = new Pool({
+      connectionString,
+      ssl: { rejectUnauthorized: false },
+      max: 5,
+      idleTimeoutMillis: 10_000,
+      connectionTimeoutMillis: 10_000,
+      query_timeout: 30_000,
+      statement_timeout: 30_000,
+    });
   }
   return g.__ceejayPool;
 }
