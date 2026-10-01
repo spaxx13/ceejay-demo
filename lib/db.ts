@@ -364,6 +364,7 @@ type RequestRow = {
   unboxing_video_path?: string | null; unboxing_video_content_type?: string | null; unboxing_video_recorded_at?: Date | null; unboxing_video_recorded_by?: string | null;
   unboxing_video_published_at?: Date | null;
   pickup_delivery_agreed_at?: Date | null; pickup_delivery_agreement_version?: string | null;
+  pickup_delivery_fee_pesos?: string | number | null; pickup_delivery_distance_km?: string | number | null; pickup_delivery_nearest_branch_id?: string | null;
 };
 function mapRequest(r: RequestRow): HomeServiceRequest {
   return {
@@ -398,6 +399,9 @@ function mapRequest(r: RequestRow): HomeServiceRequest {
     unboxingVideoRecordedAt: toIsoOrNull(r.unboxing_video_recorded_at ?? null), unboxingVideoRecordedBy: r.unboxing_video_recorded_by ?? null,
     unboxingVideoPublishedAt: toIsoOrNull(r.unboxing_video_published_at ?? null),
     pickupDeliveryAgreedAt: toIsoOrNull(r.pickup_delivery_agreed_at ?? null), pickupDeliveryAgreementVersion: r.pickup_delivery_agreement_version ?? null,
+    pickupDeliveryFeePesos: r.pickup_delivery_fee_pesos == null ? null : Number(r.pickup_delivery_fee_pesos),
+    pickupDeliveryDistanceKm: r.pickup_delivery_distance_km == null ? null : Number(r.pickup_delivery_distance_km),
+    pickupDeliveryNearestBranchId: r.pickup_delivery_nearest_branch_id ?? null,
   };
 }
 

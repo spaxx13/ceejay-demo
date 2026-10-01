@@ -1,3 +1,5 @@
+import { distanceKm } from "./technicianTracking";
+
 // Per-province flat home service fee — shared between the client form
 // (components/HomeServiceForm.tsx, for the on-page notice) and the server
 // action (lib/actions.ts, for the Sunday-only enforcement and the
@@ -57,20 +59,52 @@ export const EXCLUDED_FROM_HOME_SERVICE = new Set([
 // decisions that only happen to share the same provinces today.
 export const DOWNPAYMENT_PROVINCES = new Set(["Laguna", "Batangas", "Pampanga"]);
 
-// Pickup & Delivery's flat Booking/Pickup Fee + Initial/Diagnostic Fee +
-// Delivery Fee (see the FINAL FLOW spec), paid via the same PayMongo QR Ph
-// down-payment flow as DOWNPAYMENT_PROVINCES above before the booking is
-// confirmed and a rider can be assigned. Flat rather than looked up from
-// PROVINCE_FEES since Pickup & Delivery is Metro Manila-only regardless of
-// city. The Delivery Fee is collected upfront here too (same one-time
-// payment) rather than as a separate charge when the repaired device goes
-// back out, so the customer knows the full cost before booking and there's
-// no second payment step to chase down near delivery time.
-export const PICKUP_DELIVERY_BOOKING_FEE_PESOS = 150;
-export const PICKUP_DELIVERY_DIAGNOSTIC_FEE_PESOS = 200;
-export const PICKUP_DELIVERY_DELIVERY_FEE_PESOS = 150;
-export const PICKUP_DELIVERY_FEE_PESOS =
-  PICKUP_DELIVERY_BOOKING_FEE_PESOS + PICKUP_DELIVERY_DIAGNOSTIC_FEE_PESOS + PICKUP_DELIVERY_DELIVERY_FEE_PESOS;
+// Pickup & Delivery's Booking, Diagnostic & Delivery Fee — one upfront QR Ph
+// payment (same PayMongo down-payment flow as DOWNPAYMENT_PROVINCES above)
+// covering the pickup trip, the initial diagnosis and delivery back, so the
+// customer knows the full cost before booking and there's no second payment
+// near delivery time. Tiered by how far the pickup address is from the
+// nearest branch: straight-line between the customer's map pin and the
+// branch's pin (Admin > Branches), scaled by PICKUP_DELIVERY_ROAD_FACTOR to
+// approximate the real road trip. Metro Manila only; no upper cap — 11 km
+// and beyond is simply the top tier.
+export const PICKUP_DELIVERY_ROAD_FACTOR = 1.3;
+export const PICKUP_DELIVERY_FEE_TIERS: { maxKm: number | null; fee: number }[] = [
+  { maxKm: 5, fee: 500 },
+  { maxKm: 10, fee: 700 },
+  { maxKm: null, fee: 1000 },
+];
+export const PICKUP_DELIVERY_FEE_MIN_PESOS = PICKUP_DELIVERY_FEE_TIERS[0].fee;
+export const PICKUP_DELIVERY_FEE_MAX_PESOS = PICKUP_DELIVERY_FEE_TIERS[PICKUP_DELIVERY_FEE_TIERS.length - 1].fee;
+export const PICKUP_DELIVERY_FEE_TIER_LABEL = "1–5 km ₱500 · 6–10 km ₱700 · 11 km+ ₱1,000";
+
+export function pickupDeliveryFeeForKm(roadKm: number): number {
+  for (const tier of PICKUP_DELIVERY_FEE_TIERS) {
+    if (tier.maxKm === null || roadKm <= tier.maxKm) return tier.fee;
+  }
+  return PICKUP_DELIVERY_FEE_MAX_PESOS;
+}
+
+export type PickupDeliveryQuote = { branchId: string; branchName: string; km: number; fee: number };
+
+// Nearest pinned branch to a pinned pickup address, with the estimated
+// road distance and the fee tier it lands in — null when either side has
+// no pin (the form then shows the fee range and asks for a pin; the server
+// falls back to the base tier). Shared by the public form (live preview)
+// and submitHomeServiceRequest (the authoritative amount).
+export function pickupDeliveryQuote(
+  customer: { lat: number | null; lng: number | null },
+  branches: { id: string; name: string; lat: number | null; lng: number | null }[]
+): PickupDeliveryQuote | null {
+  if (customer.lat === null || customer.lng === null) return null;
+  let best: PickupDeliveryQuote | null = null;
+  for (const b of branches) {
+    if (b.lat === null || b.lng === null) continue;
+    const km = Math.round(distanceKm({ lat: customer.lat, lng: customer.lng }, { lat: b.lat, lng: b.lng }) * PICKUP_DELIVERY_ROAD_FACTOR * 10) / 10;
+    if (!best || km < best.km) best = { branchId: b.id, branchName: b.name, km, fee: pickupDeliveryFeeForKm(km) };
+  }
+  return best;
+}
 
 // Local calendar date (YYYY-MM-DD) for a Date, using its local getters
 // throughout — unlike `d.toISOString().slice(0, 10)`, this can't roll the
@@ -119,8 +153,16 @@ export function serviceFeeAmount(province: string, city: string): number | null 
 // actually pays) and by Sales/Earnings reports that need to know how much a
 // currently-waived fee originally would have been, to correctly exclude it
 // from a job whose stored labor_cost/laborCost predates the waiver.
-export function quotedServiceFee(req: { province: string; city: string; fulfillmentMode: "on_site" | "pickup_delivery" }): number {
-  if (req.fulfillmentMode === "pickup_delivery") return PICKUP_DELIVERY_FEE_PESOS;
+export function quotedServiceFee(req: {
+  province: string;
+  city: string;
+  fulfillmentMode: "on_site" | "pickup_delivery";
+  pickupDeliveryFeePesos?: number | null;
+  downpaymentAmount?: number | null;
+}): number {
+  // The distance-tiered fee computed at booking; older bookings (before
+  // the column existed) only have the amount they paid, or the base tier.
+  if (req.fulfillmentMode === "pickup_delivery") return req.pickupDeliveryFeePesos ?? req.downpaymentAmount ?? PICKUP_DELIVERY_FEE_MIN_PESOS;
   return serviceFeeAmount(req.province, req.city) ?? 0;
 }
 
@@ -136,6 +178,8 @@ export function requestServiceFee(req: {
   city: string;
   serviceFeeWaived: boolean;
   fulfillmentMode: "on_site" | "pickup_delivery";
+  pickupDeliveryFeePesos?: number | null;
+  downpaymentAmount?: number | null;
 }): number {
   if (req.serviceFeeWaived) return 0;
   return quotedServiceFee(req);
