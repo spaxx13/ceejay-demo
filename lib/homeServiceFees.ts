@@ -89,11 +89,16 @@ export function pickupDeliveryCovers(province: string, city: string): boolean {
 export const PICKUP_DELIVERY_FEE_TIERS: { maxKm: number | null; fee: number }[] = [
   { maxKm: 5, fee: 500 },
   { maxKm: 10, fee: 700 },
-  { maxKm: null, fee: 1000 },
+  { maxKm: 15, fee: 800 },
+  { maxKm: 20, fee: 1000 },
+  { maxKm: 25, fee: 1200 },
+  { maxKm: 30, fee: 1400 },
+  { maxKm: null, fee: 1600 },
 ];
 export const PICKUP_DELIVERY_FEE_MIN_PESOS = PICKUP_DELIVERY_FEE_TIERS[0].fee;
 export const PICKUP_DELIVERY_FEE_MAX_PESOS = PICKUP_DELIVERY_FEE_TIERS[PICKUP_DELIVERY_FEE_TIERS.length - 1].fee;
-export const PICKUP_DELIVERY_FEE_TIER_LABEL = "1–5 km ₱500 · 6–10 km ₱700 · 11 km+ ₱1,000";
+export const PICKUP_DELIVERY_FEE_TIER_LABEL =
+  "1–5 km ₱500 · 6–10 km ₱700 · 11–15 km ₱800 · 16–20 km ₱1,000 · 21–25 km ₱1,200 · 26–30 km ₱1,400 · 31+ km ₱1,600";
 
 export function pickupDeliveryFeeForKm(roadKm: number): number {
   for (const tier of PICKUP_DELIVERY_FEE_TIERS) {

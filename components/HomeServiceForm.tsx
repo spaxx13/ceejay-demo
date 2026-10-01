@@ -11,6 +11,8 @@ import {
   EXCLUDED_FROM_HOME_SERVICE,
   pickupDeliveryQuote,
   PICKUP_DELIVERY_FEE_TIER_LABEL,
+  PICKUP_DELIVERY_FEE_MIN_PESOS,
+  PICKUP_DELIVERY_FEE_MAX_PESOS,
   PICKUP_DELIVERY_COVERAGE,
   nextSunday,
   minPreferredDateStr,
@@ -975,7 +977,7 @@ export default function HomeServiceForm({
           <p className="mt-2 font-semibold">
             {pdQuote
               ? `Your pickup address is about ${pdQuote.km} km from our ${pdQuote.branchName} branch — a ₱${pdQuote.fee.toLocaleString()}.00 Booking, Diagnostic & Delivery Fee (pickup + diagnosis + delivery back to you, all included) is required via QR Ph after phone verification, before we confirm your booking and assign a rider.`
-              : `A Booking, Diagnostic & Delivery Fee of ₱500–₱1,000, depending on your distance from our nearest branch (${PICKUP_DELIVERY_FEE_TIER_LABEL}), is required via QR Ph after phone verification — pin your pickup location on the map above to see your exact fee.`}
+              : `A Booking, Diagnostic & Delivery Fee of ₱${PICKUP_DELIVERY_FEE_MIN_PESOS.toLocaleString()}–₱${PICKUP_DELIVERY_FEE_MAX_PESOS.toLocaleString()}, depending on your distance from our nearest branch (${PICKUP_DELIVERY_FEE_TIER_LABEL}), is required via QR Ph after phone verification — pin your pickup location on the map above to see your exact fee.`}
           </p>
         )}
       </FormNotice>
