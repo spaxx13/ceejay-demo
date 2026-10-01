@@ -73,14 +73,20 @@ export default function MapPinPicker({
   onChange?: (lat: number, lng: number) => void;
 }) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
-  const latInputRef = useRef<HTMLInputElement>(null);
-  const lngInputRef = useRef<HTMLInputElement>(null);
   const mapRef = useRef<GMap | null>(null);
   const markerRef = useRef<GMarker | null>(null);
   const [ready, setReady] = useState(false);
-  const [coordsLabel, setCoordsLabel] = useState(
-    defaultLat != null && defaultLng != null ? `${defaultLat.toFixed(6)}, ${defaultLng.toFixed(6)}` : ""
+  // The picked coordinates live in React state and the hidden inputs are
+  // controlled from it. They used to be uncontrolled inputs whose .value was
+  // set imperatively on click — but for type="hidden" the value IS the
+  // value attribute, so React re-applying defaultValue on the very next
+  // re-render (triggered by the label update) wiped the pin back to "" and
+  // the form submitted without coordinates (Admin > Branches: "Saved — but
+  // no map pin was set" right after dropping a pin).
+  const [picked, setPicked] = useState<{ lat: number; lng: number } | null>(
+    defaultLat != null && defaultLng != null ? { lat: defaultLat, lng: defaultLng } : null
   );
+  const coordsLabel = picked ? `${picked.lat.toFixed(6)}, ${picked.lng.toFixed(6)}` : "";
 
   useEffect(() => {
     if (!GOOGLE_MAPS_KEY) return;
@@ -103,9 +109,7 @@ export default function MapPinPicker({
     mapRef.current = map;
 
     function setPosition(lat: number, lng: number) {
-      if (latInputRef.current) latInputRef.current.value = String(lat);
-      if (lngInputRef.current) lngInputRef.current.value = String(lng);
-      setCoordsLabel(`${lat.toFixed(6)}, ${lng.toFixed(6)}`);
+      setPicked({ lat, lng });
       onChange?.(lat, lng);
     }
 
@@ -136,8 +140,8 @@ export default function MapPinPicker({
       <div ref={mapContainerRef} className="h-52 w-full rounded-xl border border-slate-200 bg-slate-100" />
       {latName && lngName && (
         <>
-          <input ref={latInputRef} type="hidden" name={latName} defaultValue={defaultLat ?? ""} />
-          <input ref={lngInputRef} type="hidden" name={lngName} defaultValue={defaultLng ?? ""} />
+          <input type="hidden" name={latName} value={picked?.lat ?? ""} />
+          <input type="hidden" name={lngName} value={picked?.lng ?? ""} />
         </>
       )}
       <p className="text-[11px] text-slate-400">{coordsLabel ? `Pin set at ${coordsLabel}` : "Click on the map to drop a pin at the exact spot."}</p>
