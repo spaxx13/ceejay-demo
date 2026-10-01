@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
-import { getLookups, getRequests, getDeviceModels, getServiceAgreements, getCustomFormFields, getServicePrices } from "@/lib/db";
+import { getLookups, getRequests, getRequestPhotos, getDeviceModels, getServiceAgreements, getCustomFormFields, getServicePrices } from "@/lib/db";
 import { serviceFeeAmount } from "@/lib/homeServiceFees";
 import { getRepairQuote } from "@/lib/servicePricing";
 import { isOnTheWayStatus } from "@/lib/technicianTracking";
@@ -27,10 +27,13 @@ export async function GET() {
   const statuses = lookups.filter((l) => l.kind === "request_status").sort((a, b) => a.order - b.order);
   const cancelledStatusId = statuses.find((s) => s.label === "Cancelled")?.id;
 
-  const jobs = allRequests
+  const mine = allRequests
     .filter((r) => r.assignedTechnicianId === user.technicianId && r.statusId !== cancelledStatusId)
-    .sort((a, b) => (a.preferredDatetime < b.preferredDatetime ? -1 : 1))
-    .map((r) => {
+    .sort((a, b) => (a.preferredDatetime < b.preferredDatetime ? -1 : 1));
+  // getRequests() leaves the inline issue photo out (egress); fetch it for
+  // just this technician's jobs.
+  const photos = await getRequestPhotos(mine.map((r) => r.id));
+  const jobs = mine.map((r) => {
       const brand = lookups.find((l) => l.id === r.deviceBrandId);
       const model = deviceModels.find((m) => m.id === r.deviceModelId);
       const serviceType = lookups.find((l) => l.id === r.serviceTypeId);
@@ -51,7 +54,7 @@ export async function GET() {
         lat: r.lat,
         lng: r.lng,
         issueDescription: r.issueDescription,
-        photoDataUrl: r.photoDataUrl,
+        photoDataUrl: photos.get(r.id) ?? null,
         deviceLabel: brand ? `${brand.label} ${model?.name ?? ""}`.trim() : r.deviceOther || "—",
         serviceTypeLabel: serviceType?.label ?? "Service",
         preferredDatetime: r.preferredDatetime,

@@ -37,7 +37,10 @@ export async function sendPushToUsers(subscriptions: PushSubscription[], payload
   await Promise.allSettled(
     subscriptions.map(async (sub) => {
       try {
-        await webpush.sendNotification({ endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } }, body);
+        // A push service that never answers must not hold the whole server
+        // action (e.g. the post-repair checklist) open until the function
+        // is killed — cap each delivery.
+        await webpush.sendNotification({ endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } }, body, { timeout: 8000 });
       } catch (err) {
         const statusCode = err && typeof err === "object" && "statusCode" in err ? (err as { statusCode: number }).statusCode : 0;
         if (statusCode === 404 || statusCode === 410) expiredEndpoints.push(sub.endpoint);

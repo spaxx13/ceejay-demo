@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { CHECKLIST_TEMPLATE, SERVICE_AGREEMENT_TERMS } from "@/lib/checklist";
 import { submitManualChecklist } from "@/lib/actions";
 import { getCurrentUser } from "@/lib/auth";
-import { canViewManualRecord, getManualChecklists, getManualRecordStatus, getManualRepairRecordById } from "@/lib/db";
+import { canViewManualRecord, getManualChecklistsForRecord, getManualRecordStatus, getManualRepairRecordById } from "@/lib/db";
 import type { ManualChecklist } from "@/lib/types";
 
 // One manual ticket with both checklist phases, mirroring
@@ -37,8 +37,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     return NextResponse.json({ ok: false, error: "You don't have access to this ticket." }, { status: 403 });
   }
 
-  const all = await getManualChecklists();
-  const checklists = all.filter((c) => c.manualRecordId === id);
+  const checklists = await getManualChecklistsForRecord(id);
   const pre = checklists.find((c) => c.phase === "pre_repair");
   const post = checklists.find((c) => c.phase === "post_repair");
 
@@ -48,7 +47,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       record: {
         id: record.id, reference: record.reference, customerName: record.customerName, customerPhone: record.customerPhone,
         customerEmail: record.customerEmail, deviceLabel: record.deviceLabel, createdAt: record.createdAt,
-        status: getManualRecordStatus(record, all),
+        status: getManualRecordStatus(record, checklists),
       },
       pre: pre ? checklistDTO(pre) : null,
       post: post ? checklistDTO(post) : null,

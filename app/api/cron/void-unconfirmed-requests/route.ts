@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getRequests, getLookups, query, logActivity, notifyAdmins } from "@/lib/db";
+import { getLookups, query, logActivity, notifyAdmins } from "@/lib/db";
 import { sendCancellationEmail } from "@/lib/email";
 import { sendSms, normalizePhone } from "@/lib/sms";
 
@@ -14,17 +14,32 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const [requests, lookups] = await Promise.all([getRequests(), getLookups()]);
+  const lookups = await getLookups();
   const pendingConfirmationStatus = lookups.find((l) => l.kind === "request_status" && l.label === "Pending Confirmation");
   const cancelledStatus = lookups.find((l) => l.kind === "request_status" && l.label === "Cancelled");
   if (!pendingConfirmationStatus || !cancelledStatus) {
     return NextResponse.json({ skipped: "Pending Confirmation or Cancelled status not found" });
   }
 
-  const now = Date.now();
-  const due = requests.filter(
-    (r) => r.statusId === pendingConfirmationStatus.id && !r.confirmedAt && r.confirmationExpiresAt && new Date(r.confirmationExpiresAt).getTime() < now
-  );
+  // This runs every 5 minutes — ask Postgres for just the handful of rows
+  // that are actually due (and only the columns used below) instead of
+  // pulling every request each time.
+  const due = (
+    await query<{ id: string; reference: string; customer_name: string; email: string; phone: string; admin_notes: string | null; status_history: { statusId: string; at: string }[] }>(
+      `select id, reference, customer_name, email, phone, admin_notes, status_history
+       from home_service_requests
+       where deleted_at is null and status_id=$1 and confirmed_at is null and confirmation_expires_at is not null and confirmation_expires_at < now()`,
+      [pendingConfirmationStatus.id]
+    )
+  ).map((r) => ({
+    id: r.id,
+    reference: r.reference,
+    customerName: r.customer_name,
+    email: r.email,
+    phone: r.phone,
+    adminNotes: r.admin_notes ?? "",
+    statusHistory: r.status_history ?? [],
+  }));
 
   let voided = 0;
   for (const r of due) {
@@ -73,5 +88,5 @@ export async function GET(req: NextRequest) {
     voided++;
   }
 
-  return NextResponse.json({ checked: requests.length, due: due.length, voided });
+  return NextResponse.json({ due: due.length, voided });
 }

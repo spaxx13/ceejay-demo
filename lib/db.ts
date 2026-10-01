@@ -52,7 +52,21 @@ function getPool(): Pool {
   if (!g.__ceejayPool) {
     const connectionString = (process.env.POSTGRES_URL ?? "").split("?")[0];
     if (!connectionString) throw new Error("POSTGRES_URL is not set");
-    g.__ceejayPool = new Pool({ connectionString, ssl: { rejectUnauthorized: false } });
+    // Serverless-friendly limits: a few connections per instance released
+    // quickly when idle (Supabase's free tier has a small connection
+    // budget shared by every warm Vercel instance), and hard caps on how
+    // long we wait for a connection or a single query — so a saturated or
+    // unreachable database fails fast with an error instead of every page
+    // hanging until the browser gives up ("This page couldn't load").
+    g.__ceejayPool = new Pool({
+      connectionString,
+      ssl: { rejectUnauthorized: false },
+      max: 5,
+      idleTimeoutMillis: 10_000,
+      connectionTimeoutMillis: 10_000,
+      query_timeout: 30_000,
+      statement_timeout: 30_000,
+    });
   }
   return g.__ceejayPool;
 }
@@ -380,7 +394,7 @@ function mapRequest(r: RequestRow): HomeServiceRequest {
   return {
     id: r.id, reference: r.reference, customerId: r.customer_id, customerName: r.customer_name, phone: r.phone, email: r.email,
     deviceBrandId: r.device_brand_id, deviceModelId: r.device_model_id, deviceOther: r.device_other, serviceTypeId: r.service_type_id,
-    issueDescription: r.issue_description, photoDataUrl: r.photo_data_url, street: r.street, landmark: r.landmark, province: r.province, city: r.city, barangay: r.barangay,
+    issueDescription: r.issue_description, photoDataUrl: r.photo_data_url ?? null, street: r.street, landmark: r.landmark, province: r.province, city: r.city, barangay: r.barangay,
     lat: r.lat, lng: r.lng, preferredDatetime: toDateStr(r.preferred_datetime),
     statusId: r.status_id, assignedTechnicianId: r.assigned_technician_id, autoAssigned: r.auto_assigned, branchId: r.branch_id, queueBranchId: r.queue_branch_id, adminNotes: r.admin_notes,
     createdAt: toIso(r.created_at), statusHistory: r.status_history ?? [], customFields: r.custom_fields ?? {},
@@ -395,10 +409,10 @@ function mapRequest(r: RequestRow): HomeServiceRequest {
     pickupStartedAt: toIsoOrNull(r.pickup_started_at), pickedUpAt: toIsoOrNull(r.picked_up_at), headingToShopAt: toIsoOrNull(r.heading_to_shop_at),
     receivedAtShopAt: toIsoOrNull(r.received_at_shop_at),
     outForDeliveryAt: toIsoOrNull(r.out_for_delivery_at), deliveredAt: toIsoOrNull(r.delivered_at),
-    pickupSignatureDataUrl: r.pickup_signature_data_url, deliverySignatureDataUrl: r.delivery_signature_data_url,
+    pickupSignatureDataUrl: r.pickup_signature_data_url ?? null, deliverySignatureDataUrl: r.delivery_signature_data_url ?? null,
     riderLat: r.rider_lat === null ? null : Number(r.rider_lat), riderLng: r.rider_lng === null ? null : Number(r.rider_lng),
     riderLocationUpdatedAt: toIsoOrNull(r.rider_location_updated_at),
-    pickupPhotoDataUrl: r.pickup_photo_data_url, deliveredBranchId: r.delivered_branch_id,
+    pickupPhotoDataUrl: r.pickup_photo_data_url ?? null, deliveredBranchId: r.delivered_branch_id,
     pickupRiderAcceptedAt: toIsoOrNull(r.pickup_rider_accepted_at), deliveryRiderAcceptedAt: toIsoOrNull(r.delivery_rider_accepted_at),
     pickupConditionChecklist: r.pickup_condition_checklist ?? null, pickupPhotos: r.pickup_photos ?? null,
     pickupSecuritySeal: r.pickup_security_seal,
@@ -741,15 +755,24 @@ function mapWalkInRequest(r: WalkInRequestRow): WalkInRequest {
   return {
     id: r.id, reference: r.reference, customerId: r.customer_id, name: r.name, phone: r.phone, email: r.email, branchId: r.branch_id,
     deviceBrandId: r.device_brand_id, deviceModelId: r.device_model_id, deviceOther: r.device_other, serviceTypeId: r.service_type_id,
-    issueDescription: r.issue_description, photoDataUrl: r.photo_data_url, preferredDate: r.preferred_date ? toDateStr(r.preferred_date) : null,
+    issueDescription: r.issue_description, photoDataUrl: r.photo_data_url ?? null, preferredDate: r.preferred_date ? toDateStr(r.preferred_date) : null,
     statusId: r.status_id, deletedAt: toIsoOrNull(r.deleted_at), createdAt: toIso(r.created_at),
   };
 }
+// Same egress reasoning as getRequests(): the inline issue photo stays out
+// of list reads (null on the mapped object) and comes with getWalkInRequestById.
+const WALKIN_LIGHT_COLUMNS =
+  "id, reference, customer_id, name, phone, email, branch_id, device_brand_id, device_model_id, device_other, service_type_id, " +
+  "issue_description, preferred_date, status_id, deleted_at, created_at";
 export async function getWalkInRequests() {
-  return (await query<WalkInRequestRow>("select * from walkin_requests where deleted_at is null order by created_at desc")).map(mapWalkInRequest);
+  return (await query<WalkInRequestRow>(`select ${WALKIN_LIGHT_COLUMNS} from walkin_requests where deleted_at is null order by created_at desc`)).map(
+    mapWalkInRequest
+  );
 }
 export async function getDeletedWalkInRequests() {
-  return (await query<WalkInRequestRow>("select * from walkin_requests where deleted_at is not null order by deleted_at desc")).map(mapWalkInRequest);
+  return (
+    await query<WalkInRequestRow>(`select ${WALKIN_LIGHT_COLUMNS} from walkin_requests where deleted_at is not null order by deleted_at desc`)
+  ).map(mapWalkInRequest);
 }
 export async function getWalkInRequestById(id: string) {
   const row = await queryOne<WalkInRequestRow>("select * from walkin_requests where id = $1", [id]);
@@ -774,14 +797,51 @@ export async function getDeletedServiceFeeWaivers() {
   );
 }
 
+// Photos and signatures are stored inline as base64 data URLs, so a
+// `select *` over every request drags megabytes of images out of Postgres
+// on every admin/technician page view and every cron run — that was the
+// bulk of the Supabase egress bill. List reads leave these columns out
+// (they come back null on the mapped object); detail reads
+// (getRequestById & co.) still return everything, and the technician job
+// list fetches its customers' photos separately via getRequestPhotos().
+const REQUEST_HEAVY_COLUMNS = new Set([
+  "photo_data_url",
+  "pickup_photo_data_url",
+  "pickup_photos",
+  "pickup_signature_data_url",
+  "delivery_signature_data_url",
+]);
+let requestLightColumnsCache: string | null = null;
+async function requestLightColumns() {
+  if (!requestLightColumnsCache) {
+    const cols = await query<{ column_name: string }>(
+      "select column_name from information_schema.columns where table_schema='public' and table_name='home_service_requests' order by ordinal_position"
+    );
+    requestLightColumnsCache = cols
+      .map((c) => c.column_name)
+      .filter((c) => !REQUEST_HEAVY_COLUMNS.has(c))
+      .map((c) => `"${c}"`)
+      .join(", ");
+  }
+  return requestLightColumnsCache;
+}
 export async function getRequests() {
-  return (await query<RequestRow>("select * from home_service_requests where deleted_at is null order by created_at desc")).map(mapRequest);
+  const cols = await requestLightColumns();
+  return (await query<RequestRow>(`select ${cols} from home_service_requests where deleted_at is null order by created_at desc`)).map(mapRequest);
 }
 // Trashed requests — hidden from getRequests() and every list/report built
 // on it, but still fetchable here so the Trash page can list them and offer
 // Restore / Delete Permanently.
 export async function getDeletedRequests() {
-  return (await query<RequestRow>("select * from home_service_requests where deleted_at is not null order by deleted_at desc")).map(mapRequest);
+  const cols = await requestLightColumns();
+  return (await query<RequestRow>(`select ${cols} from home_service_requests where deleted_at is not null order by deleted_at desc`)).map(mapRequest);
+}
+// The customer's issue photo for a handful of requests (the technician's
+// own jobs) — the one list view that shows it.
+export async function getRequestPhotos(ids: string[]): Promise<Map<string, string | null>> {
+  if (ids.length === 0) return new Map();
+  const rows = await query<{ id: string; photo_data_url: string | null }>("select id, photo_data_url from home_service_requests where id = any($1)", [ids]);
+  return new Map(rows.map((r) => [r.id, r.photo_data_url]));
 }
 export async function getRequestById(id: string) {
   const row = await queryOne<RequestRow>("select * from home_service_requests where id = $1", [id]);
@@ -1059,13 +1119,26 @@ function mapManualChecklist(r: ManualChecklistRow): ManualChecklist {
     agreedToTerms: r.agreed_to_terms, warrantyCoverage: r.warranty_coverage ?? "",
     cost: Number(r.cost ?? 0), partsCost: Number(r.parts_cost ?? 0), laborCost: Number(r.labor_cost ?? 0), otherExpenses: Number(r.other_expenses ?? 0),
     technicianName: r.technician_name ?? "",
-    receiptPhotoDataUrl: r.receipt_photo_data_url,
-    customerSignatureDataUrl: r.customer_signature_data_url, staffSignatureDataUrl: r.staff_signature_data_url,
+    receiptPhotoDataUrl: r.receipt_photo_data_url ?? null,
+    customerSignatureDataUrl: r.customer_signature_data_url ?? null, staffSignatureDataUrl: r.staff_signature_data_url ?? null,
     completedAt: toIsoOrNull(r.completed_at), sentToCustomerAt: toIsoOrNull(r.sent_to_customer_at), createdAt: toIso(r.created_at),
   };
 }
+// List reads leave the signatures/receipt photo out (null on the mapped
+// object) — same egress reasoning as getRequests(). Anything that renders
+// or emails them uses getManualChecklistsForRecord() for that one ticket.
+const MANUAL_CHECKLIST_LIGHT_COLUMNS =
+  "id, manual_record_id, phase, items, summary_notes, agreed_to_terms, warranty_coverage, cost, parts_cost, labor_cost, other_expenses, " +
+  "technician_name, completed_at, sent_to_customer_at, created_at";
 export async function getManualChecklists() {
-  return (await query<ManualChecklistRow>("select * from manual_checklists order by created_at desc")).map(mapManualChecklist);
+  return (await query<ManualChecklistRow>(`select ${MANUAL_CHECKLIST_LIGHT_COLUMNS} from manual_checklists order by created_at desc`)).map(
+    mapManualChecklist
+  );
+}
+export async function getManualChecklistsForRecord(manualRecordId: string) {
+  return (await query<ManualChecklistRow>("select * from manual_checklists where manual_record_id=$1 order by created_at desc", [manualRecordId])).map(
+    mapManualChecklist
+  );
 }
 
 // Derives a manual repair ticket's workflow status the same way
