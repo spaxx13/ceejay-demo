@@ -74,6 +74,12 @@ export async function GET() {
         onTheWay: isOnTheWayStatus(status?.label),
         hasPreAgreement: agreements.some((a) => a.requestId === r.id && a.phase === "pre_repair"),
         hasPostAgreement: agreements.some((a) => a.requestId === r.id && a.phase === "post_repair"),
+        // Pickup & Delivery jobs at the shop get the Unboxing Video and
+        // Repair Update buttons on the web board (TechnicianBoard.tsx).
+        fulfillmentMode: r.fulfillmentMode,
+        receivedAtShopAt: r.receivedAtShopAt,
+        hasUnboxingVideo: !!r.unboxingVideoPath,
+        unboxingVideoSent: !!r.unboxingVideoPublishedAt,
         customFieldEntries: Object.entries(r.customFields)
           .map(([key, value]) => ({ label: customFormFields.find((f) => f.key === key)?.label, value }))
           .filter((e): e is { label: string; value: string | boolean } => !!e.label),

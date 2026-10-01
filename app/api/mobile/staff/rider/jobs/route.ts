@@ -107,11 +107,17 @@ export async function GET() {
   const [allRequests, allBranches, rider, lookups] = await Promise.all([getRequests(), getBranches(), getRiderById(riderId), getLookups()]);
   const statusLabel = (r: HomeServiceRequest) => lookups.find((l) => l.id === r.statusId)?.label;
   const byCreated = (a: HomeServiceRequest, b: HomeServiceRequest) => (a.createdAt < b.createdAt ? -1 : 1);
+  // The "Bring the device to" branch — looked up across all branches (not
+  // just active ones), the same as app/rider/page.tsx.
+  const destination = (r: HomeServiceRequest) => {
+    const b = r.deliveredBranchId ? allBranches.find((x) => x.id === r.deliveredBranchId) : null;
+    return b ? { id: b.id, name: b.name, address: b.address, contactNumber: b.contactNumber } : null;
+  };
 
   const pickups = allRequests
     .filter((r) => r.fulfillmentMode === "pickup_delivery" && r.pickupRiderId === riderId && !r.receivedAtShopAt)
     .sort(byCreated)
-    .map((r) => jobDTO(r, "pickup", statusLabel(r)));
+    .map((r) => ({ ...jobDTO(r, "pickup", statusLabel(r)), destinationBranch: destination(r) }));
   const deliveries = allRequests
     .filter((r) => r.fulfillmentMode === "pickup_delivery" && r.deliveryRiderId === riderId && !r.deliveredAt)
     .sort(byCreated)
@@ -122,7 +128,8 @@ export async function GET() {
       ok: true,
       riderName: rider?.name ?? user.name,
       onDuty: rider?.onDuty ?? false,
-      branches: allBranches.filter((b) => b.active).map((b) => ({ id: b.id, name: b.name })),
+      // address/contactNumber feed the "Bring the device to" box on a picked-up job.
+      branches: allBranches.filter((b) => b.active).map((b) => ({ id: b.id, name: b.name, address: b.address, contactNumber: b.contactNumber })),
       pickups,
       deliveries,
       pickupStatusOptions: PICKUP_STATUS_OPTIONS,
