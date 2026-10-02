@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
+import { waitUntil } from "@vercel/functions";
 import bcrypt from "bcryptjs";
 import {
   OTP_GATE_ENABLED,
@@ -4256,37 +4257,7 @@ export async function submitChecklist(_prev: SubmitChecklistResult | undefined, 
       const postNotes = str(formData, "summaryNotes");
       const lookups = await getLookups();
       const serviceType = lookups.find((l) => l.id === req.serviceTypeId);
-
-      let emailNote = "no email on file — receipt not emailed";
-      if (req.email) {
-        try {
-          await sendRepairReceiptEmail(req.email, {
-            customerName: req.customerName,
-            reference: req.reference,
-            serviceDate: now.slice(0, 10),
-            deviceLabel,
-            natureOfRepair: [serviceType?.label, req.issueDescription].filter(Boolean).join(" — "),
-            warrantyCoverage,
-            postNotes,
-            repairCost: cost,
-            serviceFee: laborCost, // parts/material cost is internal-only, not part of this figure
-            technicianName,
-            preItems: preAgreement?.items ?? [],
-            postItems: items,
-            preCustomerSignature: preAgreement?.customerSignatureDataUrl ?? null,
-            preTechnicianSignature: preAgreement?.technicianSignatureDataUrl ?? null,
-            postCustomerSignature: customerSignatureDataUrl,
-            postTechnicianSignature: technicianSignatureDataUrl,
-            receiptPhoto: receiptPhotoDataUrl,
-            photoLabel: "Photo of Device",
-          });
-          await query("update service_agreements set sent_to_customer_at=$1 where id=$2", [now, agreementId]);
-          if (preAgreement) await query("update service_agreements set sent_to_customer_at=$1 where id=$2", [now, preAgreement.id]);
-          emailNote = `receipt emailed to ${req.email}`;
-        } catch (err) {
-          emailNote = `receipt email failed to send to ${req.email} (${err instanceof Error ? err.message : "unknown error"})`;
-        }
-      }
+      const completedReq = req;
 
       const completedStatus = lookups.find((l) => l.kind === "request_status" && l.label === "Completed");
       if (completedStatus && req.statusId !== completedStatus.id) {
@@ -4297,21 +4268,65 @@ export async function submitChecklist(_prev: SubmitChecklistResult | undefined, 
       await logActivity(
         "home_service_request",
         req.id,
-        `Post-repair checklist ${reference} completed by ${technicianName} — case auto-marked Completed. Pre-repair (${preAgreement?.reference ?? "—"}) and post-repair (${reference}) checklists — ${emailNote}`,
+        `Post-repair checklist ${reference} completed by ${technicianName} — case auto-marked Completed. Pre-repair (${preAgreement?.reference ?? "—"}) and post-repair (${reference}) checklists.`,
         technicianName
-      );
-      await notifyAdmins(
-        "checklist_completed",
-        req.id,
-        `${technicianName} completed the post-repair checklist for ${req.reference} (${req.customerName}) — case marked Completed${
-          req.fulfillmentMode === "pickup_delivery" ? " and Ready for Delivery: assign a delivery rider in Admin > Pickup & Delivery" : ""
-        }. ${emailNote}.`
       );
       if (req.fulfillmentMode === "pickup_delivery") {
         revalidatePath("/admin/pickup-delivery");
         revalidatePath(`/admin/pickup-delivery/${req.id}`);
         revalidatePath(`/technician/requests/${req.id}/updates`);
       }
+
+      // The receipt PDF (embedding up to 5 images: pre/post signatures + the
+      // device photo) and the outbound email call are the slow, network-
+      // dependent part of finishing a job. The checklist itself is already
+      // safely saved above by the time this runs — making the technician's
+      // phone hold a stable connection through this part too, on a mobile
+      // signal in the field, risks the request timing out or the connection
+      // dropping mid-upload (which surfaces as a blank "page couldn't load"
+      // crash, not a clean error). Deferred to run after the response
+      // instead of blocking it; see also submitManualChecklist below.
+      waitUntil(
+        (async () => {
+          let emailNote = "no email on file — receipt not emailed";
+          if (completedReq.email) {
+            try {
+              await sendRepairReceiptEmail(completedReq.email, {
+                customerName: completedReq.customerName,
+                reference: completedReq.reference,
+                serviceDate: now.slice(0, 10),
+                deviceLabel,
+                natureOfRepair: [serviceType?.label, completedReq.issueDescription].filter(Boolean).join(" — "),
+                warrantyCoverage,
+                postNotes,
+                repairCost: cost,
+                serviceFee: laborCost, // parts/material cost is internal-only, not part of this figure
+                technicianName,
+                preItems: preAgreement?.items ?? [],
+                postItems: items,
+                preCustomerSignature: preAgreement?.customerSignatureDataUrl ?? null,
+                preTechnicianSignature: preAgreement?.technicianSignatureDataUrl ?? null,
+                postCustomerSignature: customerSignatureDataUrl,
+                postTechnicianSignature: technicianSignatureDataUrl,
+                receiptPhoto: receiptPhotoDataUrl,
+                photoLabel: "Photo of Device",
+              });
+              await query("update service_agreements set sent_to_customer_at=$1 where id=$2", [now, agreementId]);
+              if (preAgreement) await query("update service_agreements set sent_to_customer_at=$1 where id=$2", [now, preAgreement.id]);
+              emailNote = `receipt emailed to ${completedReq.email}`;
+            } catch (err) {
+              emailNote = `receipt email failed to send to ${completedReq.email} (${err instanceof Error ? err.message : "unknown error"})`;
+            }
+          }
+          await notifyAdmins(
+            "checklist_completed",
+            completedReq.id,
+            `${technicianName} completed the post-repair checklist for ${completedReq.reference} (${completedReq.customerName}) — case marked Completed${
+              completedReq.fulfillmentMode === "pickup_delivery" ? " and Ready for Delivery: assign a delivery rider in Admin > Pickup & Delivery" : ""
+            }. ${emailNote}.`
+          );
+        })()
+      );
     }
     revalidatePath("/technician");
     revalidatePath("/admin/requests");
@@ -4754,42 +4769,53 @@ export async function submitManualChecklist(
     [manualRecordId, phase, JSON.stringify(items), summaryNotes, agreedToTerms, warrantyCoverage, cost, partsCost, laborCost, otherExpenses, user!.name, receiptPhotoDataUrl, customerSignatureDataUrl, staffSignatureDataUrl]
   );
 
-  let emailNote = "no email on file — receipt not emailed";
+  const actorName = user!.name;
   if (phase === "post_repair") {
-    if (record.customerEmail) {
-      try {
-        // Deliberately reuses sendRepairReceiptEmail/generateRepairReceiptPdf —
-        // the exact same invoice a normal Home Service/POS booking produces
-        // once completed, not a lookalike template. See
-        // lib/receiptPdf.ts's note above generateQuotationPdf.
-        await sendRepairReceiptEmail(record.customerEmail, {
-          customerName: record.customerName,
-          reference: record.reference,
-          serviceDate: new Date().toISOString().slice(0, 10),
-          deviceLabel: record.deviceLabel,
-          natureOfRepair: record.issueDescription,
-          warrantyCoverage,
-          postNotes: summaryNotes,
-          repairCost: cost,
-          serviceFee: laborCost, // parts/material cost and other expenses are internal-only, never included here
-          technicianName: user!.name,
-          preItems: preChecklist?.items ?? [],
-          postItems: items,
-          preCustomerSignature: preChecklist?.customerSignatureDataUrl ?? null,
-          preTechnicianSignature: preChecklist?.staffSignatureDataUrl ?? null,
-          postCustomerSignature: customerSignatureDataUrl,
-          postTechnicianSignature: staffSignatureDataUrl,
-          receiptPhoto: receiptPhotoDataUrl,
-        });
-        await query("update manual_checklists set sent_to_customer_at=now() where id=$1", [created!.id]);
-        emailNote = `receipt emailed to ${record.customerEmail}`;
-      } catch (err) {
-        emailNote = `receipt email failed to send to ${record.customerEmail} (${err instanceof Error ? err.message : "unknown error"})`;
-      }
-    }
-    await logActivity("manual_checklist", record.id, `Manual repair ticket ${record.reference} post-repair checklist completed by ${user!.name} — ${emailNote}`, user!.name);
+    await logActivity("manual_checklist", record.id, `Manual repair ticket ${record.reference} post-repair checklist completed by ${actorName}.`, actorName);
+
+    // See the matching comment in submitChecklist above — the receipt
+    // PDF/email is the slow, network-dependent part, deferred so a
+    // technician's spotty mobile connection only has to hold up for the
+    // (already-done, above) checklist save, not this too.
+    waitUntil(
+      (async () => {
+        let emailNote = "no email on file — receipt not emailed";
+        if (record.customerEmail) {
+          try {
+            // Deliberately reuses sendRepairReceiptEmail/generateRepairReceiptPdf —
+            // the exact same invoice a normal Home Service/POS booking produces
+            // once completed, not a lookalike template. See
+            // lib/receiptPdf.ts's note above generateQuotationPdf.
+            await sendRepairReceiptEmail(record.customerEmail, {
+              customerName: record.customerName,
+              reference: record.reference,
+              serviceDate: new Date().toISOString().slice(0, 10),
+              deviceLabel: record.deviceLabel,
+              natureOfRepair: record.issueDescription,
+              warrantyCoverage,
+              postNotes: summaryNotes,
+              repairCost: cost,
+              serviceFee: laborCost, // parts/material cost and other expenses are internal-only, never included here
+              technicianName: actorName,
+              preItems: preChecklist?.items ?? [],
+              postItems: items,
+              preCustomerSignature: preChecklist?.customerSignatureDataUrl ?? null,
+              preTechnicianSignature: preChecklist?.staffSignatureDataUrl ?? null,
+              postCustomerSignature: customerSignatureDataUrl,
+              postTechnicianSignature: staffSignatureDataUrl,
+              receiptPhoto: receiptPhotoDataUrl,
+            });
+            await query("update manual_checklists set sent_to_customer_at=now() where id=$1", [created!.id]);
+            emailNote = `receipt emailed to ${record.customerEmail}`;
+          } catch (err) {
+            emailNote = `receipt email failed to send to ${record.customerEmail} (${err instanceof Error ? err.message : "unknown error"})`;
+          }
+          await logActivity("manual_checklist", record.id, `Manual repair ticket ${record.reference} receipt — ${emailNote}`, actorName);
+        }
+      })()
+    );
   } else {
-    await logActivity("manual_checklist", record.id, `Manual repair ticket ${record.reference} pre-repair checklist completed by ${user!.name}`, user!.name);
+    await logActivity("manual_checklist", record.id, `Manual repair ticket ${record.reference} pre-repair checklist completed by ${actorName}`, actorName);
   }
 
   revalidatePath("/admin/manual-checklists");
