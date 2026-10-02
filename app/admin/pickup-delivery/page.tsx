@@ -6,7 +6,7 @@ import {
   getLookups,
   getRequestExceptions,
   getBranches,
-  canManageHomeServiceRequests,
+  canManagePickupDelivery,
   canDeleteHomeServiceRequests,
   isBranchHidden,
   pickupDeliveryStage,
@@ -26,7 +26,7 @@ import DeleteButton from "@/components/DeleteButton";
 // look across both admin request lists.
 export default async function PickupDeliveryPage({ searchParams }: { searchParams: Promise<{ stage?: string }> }) {
   const user = await getCurrentUser();
-  if (!canManageHomeServiceRequests(user)) redirect("/admin");
+  if (!canManagePickupDelivery(user)) redirect("/admin");
   const sp = await searchParams;
 
   const [allRequests, riders, lookups, exceptions, branches] = await Promise.all([

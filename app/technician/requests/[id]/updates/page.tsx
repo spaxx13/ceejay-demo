@@ -6,7 +6,7 @@ import {
   getRequestUpdates,
   getLookups,
   getServiceAgreementsForRequest,
-  canManageHomeServiceRequests,
+  canManagePickupDelivery,
   pickupDeliveryStage,
 } from "@/lib/db";
 import { technicianUpdateStatus } from "@/lib/actions";
@@ -18,7 +18,7 @@ import RequestUpdatesList from "@/components/RequestUpdatesList";
 // /track, and delete their own posts. Linked from the technician board.
 export default async function TechnicianUpdatesPage({ params }: { params: Promise<{ id: string }> }) {
   const user = await getCurrentUser();
-  if (!user || (user.role !== "technician" && !canManageHomeServiceRequests(user))) redirect("/login");
+  if (!user || (user.role !== "technician" && !canManagePickupDelivery(user))) redirect("/login");
 
   const { id } = await params;
   const [req, updates, lookups, agreements] = await Promise.all([
@@ -28,7 +28,7 @@ export default async function TechnicianUpdatesPage({ params }: { params: Promis
     getServiceAgreementsForRequest(id),
   ]);
   if (!req || req.fulfillmentMode !== "pickup_delivery") notFound();
-  const isAdmin = canManageHomeServiceRequests(user);
+  const isAdmin = canManagePickupDelivery(user);
   const deletableIds = updates.filter((u) => isAdmin || u.postedByUserId === user.id).map((u) => u.id);
 
   // "What's next" — the same steps the technician board offers, in order,

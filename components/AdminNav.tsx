@@ -15,6 +15,7 @@ const NAV_GROUPS: {
     ownerOnly?: boolean;
     requestsGated?: boolean;
     walkinsGated?: boolean;
+    pickupDeliveryGated?: boolean;
     crmGated?: boolean;
     repairPricingGated?: boolean;
   }[];
@@ -24,7 +25,7 @@ const NAV_GROUPS: {
     label: "Operations",
     links: [
       { href: "/admin/requests", label: "Home Service Requests", requestsGated: true },
-      { href: "/admin/pickup-delivery", label: "Pickup & Delivery", requestsGated: true },
+      { href: "/admin/pickup-delivery", label: "Pickup & Delivery", pickupDeliveryGated: true },
       { href: "/admin/walk-ins", label: "Walk-In Registrations", walkinsGated: true },
       { href: "/admin/pos", label: "POS" },
       { href: "/admin/manual-checklists", label: "Manual Checklist & Receipt" },
@@ -63,6 +64,7 @@ export default function AdminNav({
   role,
   canManageRequests = true,
   canManageWalkIns = true,
+  canManagePickupDelivery = true,
   canAccessCrm = true,
   canManageRepairPricing = true,
   unreadCount = 0,
@@ -72,6 +74,7 @@ export default function AdminNav({
   role: string;
   canManageRequests?: boolean;
   canManageWalkIns?: boolean;
+  canManagePickupDelivery?: boolean;
   canAccessCrm?: boolean;
   canManageRepairPricing?: boolean;
   unreadCount?: number;
@@ -91,6 +94,7 @@ export default function AdminNav({
             .filter((l) => !l.ownerOnly || role === "owner_admin")
             .filter((l) => !l.requestsGated || canManageRequests)
             .filter((l) => !l.walkinsGated || canManageWalkIns)
+            .filter((l) => !l.pickupDeliveryGated || canManagePickupDelivery)
             .filter((l) => !l.crmGated || canAccessCrm)
             .filter((l) => !l.repairPricingGated || canManageRepairPricing)
             .map((l) => {

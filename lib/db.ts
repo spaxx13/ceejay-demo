@@ -111,6 +111,7 @@ type UserRow = {
   can_view_all_branches: boolean;
   can_access_crm: boolean;
   can_manage_walkins: boolean;
+  can_manage_pickup_delivery: boolean | null | undefined;
   can_waive_service_fee: boolean;
   can_manage_repair_pricing: boolean;
   can_edit_repair_price: boolean;
@@ -132,6 +133,9 @@ function mapUser(r: UserRow): User {
     canViewAllBranches: r.can_view_all_branches,
     canAccessCrm: r.can_access_crm,
     canManageWalkIns: r.can_manage_walkins,
+    // `?? false` so the column missing (migration 0086 not applied yet)
+    // reads as "no access", never as a crash or an accidental grant.
+    canManagePickupDelivery: r.can_manage_pickup_delivery ?? false,
     canWaiveServiceFee: r.can_waive_service_fee,
     canManageRepairPricing: r.can_manage_repair_pricing,
     canEditRepairPrice: r.can_edit_repair_price,
@@ -240,6 +244,17 @@ export function canAccessCrm(user: Pick<User, "role" | "canAccessCrm"> | null) {
 export function canManageWalkIns(user: Pick<User, "role" | "canManageWalkIns"> | null) {
   if (!user) return false;
   return user.role === "owner_admin" || (user.role === "branch_admin" && user.canManageWalkIns);
+}
+
+// True when this account is allowed to access/manage Pickup & Delivery —
+// the admin section, its job pages, rider assignment, unboxing/updates
+// moderation, the staff preview of the booking form, and the Pickup &
+// Delivery sales report. Owner admins always can; branch admins need the
+// canManagePickupDelivery flag (off by default), independent of
+// canManageRequests, so the owner picks exactly who sees it.
+export function canManagePickupDelivery(user: Pick<User, "role" | "canManagePickupDelivery"> | null) {
+  if (!user) return false;
+  return user.role === "owner_admin" || (user.role === "branch_admin" && user.canManagePickupDelivery);
 }
 
 // True when this account is allowed to waive a Home Service request's

@@ -1,5 +1,7 @@
 import Link from "next/link";
-import { getServiceAgreements, getRequests, getTechnicians, pickupDeliverySalesByTechnician, sumHomeServiceSales } from "@/lib/db";
+import { redirect } from "next/navigation";
+import { getServiceAgreements, getRequests, getTechnicians, pickupDeliverySalesByTechnician, sumHomeServiceSales, canManagePickupDelivery } from "@/lib/db";
+import { getCurrentUser } from "@/lib/auth";
 import SalesTabs from "@/components/SalesTabs";
 
 const peso = (n: number) => `₱${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -10,6 +12,8 @@ const peso = (n: number) => `₱${n.toLocaleString(undefined, { minimumFractionD
 // the Home Service tab, and an on-site home service job never appears here,
 // so the two revenue streams stay completely separate.
 export default async function PickupDeliverySalesPage({ searchParams }: { searchParams: Promise<{ from?: string; to?: string }> }) {
+  // Same dial as Admin > Pickup & Delivery — the owner picks who sees it.
+  if (!canManagePickupDelivery(await getCurrentUser())) redirect("/admin/sales");
   const sp = await searchParams;
   const [agreements, requests, technicians] = await Promise.all([getServiceAgreements(), getRequests(), getTechnicians()]);
 

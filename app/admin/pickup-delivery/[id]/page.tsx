@@ -8,7 +8,7 @@ import {
   getLookups,
   getRequestExceptions,
   getRequestUpdates,
-  canManageHomeServiceRequests,
+  canManagePickupDelivery,
   isBranchHidden,
   pickupDeliveryStage,
   PICKUP_DELIVERY_STAGE_LABELS,
@@ -72,7 +72,7 @@ function RiderAssignForm({
 
 export default async function PickupDeliveryDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const user = await getCurrentUser();
-  if (!canManageHomeServiceRequests(user)) redirect("/admin");
+  if (!canManagePickupDelivery(user)) redirect("/admin");
 
   const { id } = await params;
   const [req, riders, technicians, branches, lookups, exceptions] = await Promise.all([

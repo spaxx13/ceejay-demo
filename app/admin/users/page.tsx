@@ -22,6 +22,7 @@ export default async function UsersPage() {
     canViewAllBranches: u.canViewAllBranches,
     canAccessCrm: u.canAccessCrm,
     canManageWalkIns: u.canManageWalkIns,
+    canManagePickupDelivery: u.canManagePickupDelivery,
     canWaiveServiceFee: u.canWaiveServiceFee,
     canManageRepairPricing: u.canManageRepairPricing,
     canEditRepairPrice: u.canEditRepairPrice,
