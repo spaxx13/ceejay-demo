@@ -13,6 +13,7 @@ export type User = {
   canViewAllBranches: boolean; // whether this account can see combined "All Branches" sales figures (branch_admin scoping) — false means own branch(es) only
   canAccessCrm: boolean; // whether this account can access the CRM (leads/customers) section (branch_admin scoping) — owner_admin always can regardless
   canManageWalkIns: boolean; // whether this account can access/manage Walk-In Registrations (branch_admin scoping) — independent of canManageRequests, defaults to false for new/existing branch admins
+  canManagePickupDelivery: boolean; // whether this account can access/manage Pickup & Delivery (branch_admin scoping) — independent of canManageRequests, defaults to false; owner_admin always can
   canWaiveServiceFee: boolean; // whether this account can waive a Home Service request's visit fee (branch_admin scoping) — independent of canManageRequests, defaults to false
   canManageRepairPricing: boolean; // whether this account can access Repair Pricing (branch_admin scoping) — independent of every other flag, defaults to false
   canEditRepairPrice: boolean; // whether this account can edit the Repair Price/Parts Cost on a completed job's Revenue Split card (branch_admin scoping) — independent of every other flag, defaults to false; technicians always use their own separately capped edit flow regardless

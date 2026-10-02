@@ -20,6 +20,7 @@ type UserRow = {
   canViewAllBranches: boolean;
   canAccessCrm: boolean;
   canManageWalkIns: boolean;
+  canManagePickupDelivery: boolean;
   canWaiveServiceFee: boolean;
   canManageRepairPricing: boolean;
   canEditRepairPrice: boolean;
@@ -389,6 +390,24 @@ export default function UserManager({
               <p className="text-[11px] text-slate-400">
                 Off by default — independent of &quot;Can Manage Requests&quot; above, so this account can have one without the other. Check
                 this to let it view/manage Walk-In pre-registrations.
+              </p>
+            </div>
+          )}
+          {role === "branch_admin" && (
+            <div className="space-y-1.5">
+              <label className="flex items-center gap-1.5 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  name="canManagePickupDelivery"
+                  defaultChecked={editing?.canManagePickupDelivery ?? false}
+                  className="h-4 w-4 rounded border-slate-300"
+                />
+                Can access Pickup &amp; Delivery
+              </label>
+              <p className="text-[11px] text-slate-400">
+                Off by default — independent of &quot;Can Manage Requests&quot; above. Check this to let the account see Admin &gt; Pickup &amp;
+                Delivery, open its jobs, assign riders and technicians, moderate unboxing videos and repair updates, use the staff preview of
+                the booking form, and view Sales &gt; Pickup &amp; Delivery. Owner admins always have this.
               </p>
             </div>
           )}

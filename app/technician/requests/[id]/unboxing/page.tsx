@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
-import { getRequestById, getBranches, canManageHomeServiceRequests } from "@/lib/db";
+import { getRequestById, getBranches, canManagePickupDelivery } from "@/lib/db";
 import { getUnboxingVideoUrl } from "@/lib/storage";
 import UnboxingVideoRecorder from "@/components/UnboxingVideoRecorder";
 import UnboxingVideoReview from "@/components/UnboxingVideoReview";
@@ -11,7 +11,7 @@ import UnboxingVideoReview from "@/components/UnboxingVideoReview";
 // see on /track. Linked from the technician board's job card.
 export default async function TechnicianUnboxingPage({ params }: { params: Promise<{ id: string }> }) {
   const user = await getCurrentUser();
-  if (!user || (user.role !== "technician" && !canManageHomeServiceRequests(user))) redirect("/login");
+  if (!user || (user.role !== "technician" && !canManagePickupDelivery(user))) redirect("/login");
 
   const { id } = await params;
   const [req, branches] = await Promise.all([getRequestById(id), getBranches()]);
@@ -46,8 +46,8 @@ export default async function TechnicianUnboxingPage({ params }: { params: Promi
               recordedBy={req.unboxingVideoRecordedBy}
               recordedAt={req.unboxingVideoRecordedAt}
               publishedAt={req.unboxingVideoPublishedAt}
-              canDelete={canManageHomeServiceRequests(user) || !req.unboxingVideoPublishedAt}
-              canUnpublish={canManageHomeServiceRequests(user)}
+              canDelete={canManagePickupDelivery(user) || !req.unboxingVideoPublishedAt}
+              canUnpublish={canManagePickupDelivery(user)}
             />
           )}
           <UnboxingVideoRecorder requestId={req.id} existing={!!req.unboxingVideoPath} />

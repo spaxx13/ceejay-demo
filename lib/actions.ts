@@ -54,6 +54,7 @@ import {
   canDeleteHomeServiceRequests,
   canAccessCrm,
   canManageWalkIns,
+  canManagePickupDelivery,
   canWaiveServiceFee,
   canManageRepairPricing,
   canEditRepairPrice,
@@ -220,6 +221,7 @@ export async function createUser(formData: FormData) {
   const canViewAllBranches = role === "branch_admin" ? formData.get("canViewAllBranches") === "on" : true;
   const canAccessCrmFlag = role === "branch_admin" ? formData.get("canAccessCrm") === "on" : true;
   const canManageWalkInsFlag = role === "branch_admin" ? formData.get("canManageWalkIns") === "on" : true;
+  const canManagePickupDeliveryFlag = role === "branch_admin" ? formData.get("canManagePickupDelivery") === "on" : true;
   const canWaiveServiceFeeFlag = role === "branch_admin" ? formData.get("canWaiveServiceFee") === "on" : true;
   const canManageRepairPricingFlag = role === "branch_admin" ? formData.get("canManageRepairPricing") === "on" : true;
   const canEditRepairPriceFlag = role === "branch_admin" ? formData.get("canEditRepairPrice") === "on" : true;
@@ -247,7 +249,7 @@ export async function createUser(formData: FormData) {
 
   const passwordHash = await bcrypt.hash(password, 10);
   const created = await queryOne<{ id: string }>(
-    "insert into users (name, email, password_hash, role, technician_id, rider_id, assigned_branch_ids, can_manage_requests, can_delete_requests, can_view_all_branches, can_access_crm, can_manage_walkins, can_waive_service_fee, can_manage_repair_pricing, can_edit_repair_price, can_manage_manual_checklists, phone) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) returning id",
+    "insert into users (name, email, password_hash, role, technician_id, rider_id, assigned_branch_ids, can_manage_requests, can_delete_requests, can_view_all_branches, can_access_crm, can_manage_walkins, can_waive_service_fee, can_manage_repair_pricing, can_edit_repair_price, can_manage_manual_checklists, phone, can_manage_pickup_delivery) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) returning id",
     [
       name,
       email,
@@ -266,6 +268,7 @@ export async function createUser(formData: FormData) {
       canEditRepairPriceFlag,
       canManageManualChecklistsFlag,
       phone,
+      canManagePickupDeliveryFlag,
     ]
   );
   await logActivity("user", created!.id, `${actor.name} created staff account "${name}" (${email}, ${role})`, actor.name);
@@ -300,6 +303,7 @@ export async function updateUser(formData: FormData) {
   const canViewAllBranches = role === "branch_admin" ? formData.get("canViewAllBranches") === "on" : true;
   const canAccessCrmFlag = role === "branch_admin" ? formData.get("canAccessCrm") === "on" : true;
   const canManageWalkInsFlag = role === "branch_admin" ? formData.get("canManageWalkIns") === "on" : true;
+  const canManagePickupDeliveryFlag = role === "branch_admin" ? formData.get("canManagePickupDelivery") === "on" : true;
   const canWaiveServiceFeeFlag = role === "branch_admin" ? formData.get("canWaiveServiceFee") === "on" : true;
   const canManageRepairPricingFlag = role === "branch_admin" ? formData.get("canManageRepairPricing") === "on" : true;
   const canEditRepairPriceFlag = role === "branch_admin" ? formData.get("canEditRepairPrice") === "on" : true;
@@ -332,7 +336,7 @@ export async function updateUser(formData: FormData) {
   if (password) {
     const passwordHash = await bcrypt.hash(password, 10);
     await query(
-      "update users set name=$1, email=$2, password_hash=$3, role=$4, technician_id=$5, rider_id=$6, assigned_branch_ids=$7, can_manage_requests=$8, can_delete_requests=$9, can_view_all_branches=$10, can_access_crm=$11, can_manage_walkins=$12, can_waive_service_fee=$13, can_manage_repair_pricing=$14, can_edit_repair_price=$15, can_manage_manual_checklists=$16, phone=$17 where id=$18",
+      "update users set name=$1, email=$2, password_hash=$3, role=$4, technician_id=$5, rider_id=$6, assigned_branch_ids=$7, can_manage_requests=$8, can_delete_requests=$9, can_view_all_branches=$10, can_access_crm=$11, can_manage_walkins=$12, can_waive_service_fee=$13, can_manage_repair_pricing=$14, can_edit_repair_price=$15, can_manage_manual_checklists=$16, phone=$17, can_manage_pickup_delivery=$19 where id=$18",
       [
         name,
         email || user.email,
@@ -352,11 +356,12 @@ export async function updateUser(formData: FormData) {
         canManageManualChecklistsFlag,
         phone,
         userId,
+        canManagePickupDeliveryFlag,
       ]
     );
   } else {
     await query(
-      "update users set name=$1, email=$2, role=$3, technician_id=$4, rider_id=$5, assigned_branch_ids=$6, can_manage_requests=$7, can_delete_requests=$8, can_view_all_branches=$9, can_access_crm=$10, can_manage_walkins=$11, can_waive_service_fee=$12, can_manage_repair_pricing=$13, can_edit_repair_price=$14, can_manage_manual_checklists=$15, phone=$16 where id=$17",
+      "update users set name=$1, email=$2, role=$3, technician_id=$4, rider_id=$5, assigned_branch_ids=$6, can_manage_requests=$7, can_delete_requests=$8, can_view_all_branches=$9, can_access_crm=$10, can_manage_walkins=$11, can_waive_service_fee=$12, can_manage_repair_pricing=$13, can_edit_repair_price=$14, can_manage_manual_checklists=$15, phone=$16, can_manage_pickup_delivery=$18 where id=$17",
       [
         name,
         email || user.email,
@@ -375,6 +380,7 @@ export async function updateUser(formData: FormData) {
         canManageManualChecklistsFlag,
         phone,
         userId,
+        canManagePickupDeliveryFlag,
       ]
     );
   }
@@ -727,7 +733,7 @@ export async function deleteRider(formData: FormData): Promise<{ ok: true } | { 
 // per how Ceejay wants dispatch to work for now.
 export async function assignPickupRider(formData: FormData) {
   const user = await getCurrentUser();
-  if (!canManageHomeServiceRequests(user)) return;
+  if (!canManagePickupDelivery(user)) return;
 
   const requestId = str(formData, "requestId");
   const riderId = str(formData, "riderId");
@@ -762,7 +768,7 @@ const DELIVERY_NOT_READY_STAGES = new Set<PickupDeliveryStage>([
 
 export async function assignDeliveryRider(formData: FormData) {
   const user = await getCurrentUser();
-  if (!canManageHomeServiceRequests(user)) return;
+  if (!canManagePickupDelivery(user)) return;
 
   const requestId = str(formData, "requestId");
   const riderId = str(formData, "riderId");
@@ -1113,7 +1119,7 @@ export type UnboxingUploadTarget = { ok: true; uploadUrl: string; path: string }
 export type UnboxingSaveResult = { ok: true } | { ok: false; error: string };
 
 function canRecordUnboxing(user: Awaited<ReturnType<typeof getCurrentUser>>) {
-  return !!user && (user.role === "technician" || canManageHomeServiceRequests(user));
+  return !!user && (user.role === "technician" || canManagePickupDelivery(user));
 }
 
 export async function createUnboxingUploadUrl(requestId: string, contentType: string): Promise<UnboxingUploadTarget> {
@@ -1205,7 +1211,7 @@ export async function publishUnboxingVideo(formData: FormData) {
 // gotten a push/email about is a corrective action, not routine review.
 export async function unpublishUnboxingVideo(formData: FormData) {
   const user = await getCurrentUser();
-  if (!canManageHomeServiceRequests(user)) return;
+  if (!canManagePickupDelivery(user)) return;
   const requestId = str(formData, "id");
   const req = await getRequestById(requestId);
   if (!req?.unboxingVideoPath || !req.unboxingVideoPublishedAt) return;
@@ -1222,7 +1228,7 @@ export async function deleteUnboxingVideo(formData: FormData) {
   const requestId = str(formData, "id");
   const req = await getRequestById(requestId);
   if (!req?.unboxingVideoPath) return;
-  const isAdmin = canManageHomeServiceRequests(user);
+  const isAdmin = canManagePickupDelivery(user);
   const isTechnicianOnDraft = !!user && user.role === "technician" && !req.unboxingVideoPublishedAt;
   if (!isAdmin && !isTechnicianOnDraft) return;
   try {
@@ -1318,7 +1324,7 @@ export async function deleteRequestUpdate(formData: FormData) {
   const user = await getCurrentUser();
   const update = await getRequestUpdateById(str(formData, "id"));
   if (!update) return;
-  const isAdmin = canManageHomeServiceRequests(user);
+  const isAdmin = canManagePickupDelivery(user);
   const isOwnPost = !!user && user.role === "technician" && update.postedByUserId === user.id;
   if (!isAdmin && !isOwnPost) return;
   for (const m of update.media) {
@@ -1366,7 +1372,7 @@ export async function reportRequestException(_prev: ReportExceptionResult | unde
   if (!req || req.fulfillmentMode !== "pickup_delivery") return { ok: false, error: "Request not found." };
 
   const isAssignedRider = user.role === "rider" && !!user.riderId && (req.pickupRiderId === user.riderId || req.deliveryRiderId === user.riderId);
-  const isStaff = canManageHomeServiceRequests(user);
+  const isStaff = canManagePickupDelivery(user);
   if (!isAssignedRider && !isStaff) return { ok: false, error: "You don't have access to report an issue on this job." };
 
   await query(
@@ -1421,7 +1427,7 @@ export async function reportRequestException(_prev: ReportExceptionResult | unde
 // record of what happened, not a status the request is "in").
 export async function resolveRequestException(formData: FormData) {
   const user = await getCurrentUser();
-  if (!canManageHomeServiceRequests(user)) return;
+  if (!canManagePickupDelivery(user)) return;
   const exceptionId = str(formData, "exceptionId");
   const resolved = await queryOne<{ request_id: string; kind: string }>(
     "update request_exceptions set resolved_at=now(), resolved_by=$1 where id=$2 and resolved_at is null returning request_id, kind",
@@ -2261,7 +2267,7 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
   // be accepted as pickup_delivery too.
   const requestedFulfillmentMode = str(formData, "fulfillmentMode");
   const fromMobileApp = str(formData, "channel") === "mobile";
-  const staffAdmin = canManageHomeServiceRequests(await getCurrentUser());
+  const staffAdmin = canManagePickupDelivery(await getCurrentUser());
   const pickupDeliveryAllowed = PICKUP_DELIVERY_PUBLIC_ENABLED || (fromMobileApp && PICKUP_DELIVERY_MOBILE_ENABLED) || staffAdmin;
   const fulfillmentMode: "on_site" | "pickup_delivery" =
     requestedFulfillmentMode === "pickup_delivery" && pickupDeliveryAllowed ? "pickup_delivery" : "on_site";
@@ -3344,6 +3350,7 @@ export async function reassignRequest(formData: FormData) {
   const technicianId = str(formData, "technicianId") || null;
   const req = await getRequestById(requestId);
   if (!req) return;
+  if (req.fulfillmentMode === "pickup_delivery" && !canManagePickupDelivery(user)) return;
 
   const technicians = await getTechnicians();
   const tech = technicianId ? technicians.find((t) => t.id === technicianId) : null;
@@ -3436,6 +3443,7 @@ export async function changeRequestStatus(formData: FormData) {
   const lookups = await getLookups();
   const status = lookups.find((l) => l.id === statusId);
   if (!req || !status) return;
+  if (req.fulfillmentMode === "pickup_delivery" && !canManagePickupDelivery(user)) return;
   const statusHistory = [...req.statusHistory, { statusId, at: new Date().toISOString() }];
   const cancelled = status.label === "Cancelled";
   if (cancelled) {
@@ -3490,6 +3498,8 @@ export async function deleteHomeServiceRequest(formData: FormData) {
 
   const requestId = str(formData, "id");
   const req = await getRequestById(requestId);
+  // A Pickup & Delivery job also needs the Pickup & Delivery section access.
+  if (req?.fulfillmentMode === "pickup_delivery" && !canManagePickupDelivery(actor)) return;
   await query("update home_service_requests set deleted_at=now() where id=$1", [requestId]);
   await logActivity("home_service_request", requestId, `${actor!.name} moved ${req?.reference ?? requestId} to Trash`, actor!.name);
   revalidatePath("/admin/requests");
@@ -3541,6 +3551,8 @@ export async function updateRequestNotes(formData: FormData) {
   if (!canManageHomeServiceRequests(user)) return;
   const requestId = str(formData, "id");
   const notes = str(formData, "adminNotes");
+  const target = await getRequestById(requestId);
+  if (target?.fulfillmentMode === "pickup_delivery" && !canManagePickupDelivery(user)) return;
   await query("update home_service_requests set admin_notes=$1 where id=$2", [notes, requestId]);
   await logActivity("home_service_request", requestId, `${user!.name} updated the admin notes`, user!.name);
   revalidatePath(`/admin/requests/${requestId}`);

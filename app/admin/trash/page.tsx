@@ -10,6 +10,7 @@ import {
   canManageWalkIns,
   canWaiveServiceFee,
   canManageHomeServiceRequests,
+  canManagePickupDelivery,
   isBranchHidden,
 } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
@@ -69,7 +70,9 @@ export default async function TrashPage({ searchParams }: { searchParams: Promis
     canWalkIns ? getDeletedWalkInRequests() : Promise.resolve([]),
     canWaivers ? getDeletedServiceFeeWaivers() : Promise.resolve([]),
   ]);
-  const deletedRequests = deletedRequestsRaw.filter((r) => !isBranchHidden(user, r.queueBranchId));
+  // Trashed Pickup & Delivery jobs only show to accounts with that section.
+  const pdAccess = canManagePickupDelivery(user);
+  const deletedRequests = deletedRequestsRaw.filter((r) => !isBranchHidden(user, r.queueBranchId) && (pdAccess || r.fulfillmentMode !== "pickup_delivery"));
   const deletedRecords = deletedRecordsRaw.filter((r) => !isBranchHidden(user, r.branchId));
   const deletedWalkIns = deletedWalkInsRaw.filter((r) => !isBranchHidden(user, r.branchId));
   const deletedWaivers = deletedWaiversRaw.filter((r) => !isBranchHidden(user, r.queueBranchId));

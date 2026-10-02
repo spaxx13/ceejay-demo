@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getLookups, getDeviceModels, getRequestFormContent, getCustomFormFields, getBranches, canManageHomeServiceRequests } from "@/lib/db";
+import { getLookups, getDeviceModels, getRequestFormContent, getCustomFormFields, getBranches, canManagePickupDelivery } from "@/lib/db";
 import { PICKUP_DELIVERY_PUBLIC_ENABLED, PICKUP_DELIVERY_SKIP_OTP } from "@/lib/config";
 import { getCurrentUser } from "@/lib/auth";
 import HomeServiceForm from "@/components/HomeServiceForm";
@@ -19,7 +19,7 @@ export default async function PickupDeliveryPage() {
   // (same session cookie as /admin) still gets the real form here so the
   // flow can be tested on the live site — the public keeps seeing "Coming
   // Soon". submitHomeServiceRequest applies the same exception server-side.
-  const staffPreview = !PICKUP_DELIVERY_PUBLIC_ENABLED && canManageHomeServiceRequests(await getCurrentUser());
+  const staffPreview = !PICKUP_DELIVERY_PUBLIC_ENABLED && canManagePickupDelivery(await getCurrentUser());
   if (!PICKUP_DELIVERY_PUBLIC_ENABLED && !staffPreview) {
     return (
       <main className="grid-bg px-4 py-16 sm:px-6">
@@ -93,7 +93,7 @@ export default async function PickupDeliveryPage() {
       <div className="mx-auto max-w-xl space-y-6">
         {staffPreview && (
           <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-center text-xs text-amber-800">
-            Staff preview — you can see this because you&apos;re logged in as an admin. Visitors still see &quot;Coming Soon&quot; until
+            Staff preview — you can see this because you&apos;re logged in as an admin with Pickup &amp; Delivery access. Visitors still see &quot;Coming Soon&quot; until
             NEXT_PUBLIC_PICKUP_DELIVERY_ENABLED is turned on. Test bookings from here skip SMS verification and the QR Ph fee.
           </p>
         )}
