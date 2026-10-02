@@ -61,7 +61,13 @@ export default function SignaturePad({ name, label }: { name: string; label: str
   // tab — clientWidth/clientHeight can read 0 at mount time, permanently
   // leaving the bitmap at 0px wide with no later recovery otherwise.
   function ensureSized(canvas: HTMLCanvasElement) {
-    const ratio = window.devicePixelRatio || 1;
+    // Capped at 2x even on 3x-DPR phones — full screen mode stretches this
+    // canvas to nearly the whole viewport, and a 3x backing store at that
+    // size is large enough to crash the WebKit renderer on some devices
+    // (surfacing as a blank "This page couldn't load" right as the
+    // just-finished stroke gets rasterized into the export). A signature
+    // doesn't need retina-for-photos sharpness to stay legible at 2x.
+    const ratio = Math.min(window.devicePixelRatio || 1, 2);
     const targetWidth = Math.round(canvas.clientWidth * ratio);
     const targetHeight = Math.round(canvas.clientHeight * ratio);
     if (targetWidth === 0 || targetHeight === 0) return false;
