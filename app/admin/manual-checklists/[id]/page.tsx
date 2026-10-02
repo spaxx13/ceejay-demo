@@ -131,7 +131,7 @@ export default async function ManualChecklistDetailPage({ params }: { params: Pr
                 {post.sentToCustomerAt
                   ? `Emailed to ${record.customerEmail} on ${formatDateTime(post.sentToCustomerAt)}`
                   : record.customerEmail
-                    ? "Failed to send — see activity log"
+                    ? "Not yet sent — it's sent in the background right after completion, so refresh if you just finished this checklist; otherwise see the activity log or use Resend Receipt below"
                     : "No email on file"}
               </p>
             </div>

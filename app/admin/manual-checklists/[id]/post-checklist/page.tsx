@@ -26,16 +26,28 @@ export default async function ManualPostChecklistPage({ params }: { params: Prom
         // render) would fire on that refresh and skip past the form's own
         // success screen before it's ever seen. sentToCustomerAt is
         // persisted (not the transient action result) so this always shows
-        // the real outcome, whichever render wins that race.
+        // the real outcome, whichever render wins that race — except the
+        // email itself is sent in the background after the response (see
+        // the comment on submitManualChecklist), so the render right after
+        // submission always loses that race by design: sentToCustomerAt is
+        // never set yet at this exact moment, even on a send that's about
+        // to succeed. Don't claim it failed on that normal, expected case —
+        // only the ticket page (checked moments later) reflects the real
+        // outcome.
         <div className="card space-y-3 text-center">
           <p className="text-3xl">✅</p>
           <h2 className="text-lg font-semibold text-slate-800">Post-repair checklist completed</h2>
           <p className="text-sm text-slate-400">
-            {post.sentToCustomerAt
-              ? <>Receipt emailed to <span className="text-slate-600">{record.customerEmail}</span>.</>
-              : record.customerEmail
-                ? "The receipt email couldn't be sent — check the ticket's activity log."
-                : "No email on file — no receipt was sent."}
+            {post.sentToCustomerAt ? (
+              <>Receipt emailed to <span className="text-slate-600">{record.customerEmail}</span>.</>
+            ) : record.customerEmail ? (
+              <>
+                Sending the receipt to <span className="text-slate-600">{record.customerEmail}</span> now — check the ticket page in a
+                moment to confirm, or use Resend Receipt there if it doesn&apos;t arrive.
+              </>
+            ) : (
+              "No email on file — no receipt was sent."
+            )}
           </p>
           <Link href={`/admin/manual-checklists/${id}`} className="btn-primary inline-block">
             Back to Ticket
