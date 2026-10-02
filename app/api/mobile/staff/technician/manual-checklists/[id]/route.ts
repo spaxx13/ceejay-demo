@@ -17,6 +17,10 @@ function checklistDTO(c: ManualChecklist) {
     summaryNotes: c.summaryNotes,
     agreedToTerms: c.agreedToTerms,
     warrantyCoverage: c.warrantyCoverage,
+    cost: c.cost,
+    laborCost: c.laborCost,
+    partsCost: c.partsCost,
+    otherExpenses: c.otherExpenses,
     receiptPhotoDataUrl: c.receiptPhotoDataUrl,
     customerSignatureDataUrl: c.customerSignatureDataUrl,
     staffSignatureDataUrl: c.staffSignatureDataUrl,
@@ -46,7 +50,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       ok: true,
       record: {
         id: record.id, reference: record.reference, customerName: record.customerName, customerPhone: record.customerPhone,
-        customerEmail: record.customerEmail, deviceLabel: record.deviceLabel, createdAt: record.createdAt,
+        customerEmail: record.customerEmail, deviceLabel: record.deviceLabel, issueDescription: record.issueDescription, createdAt: record.createdAt,
         status: getManualRecordStatus(record, checklists),
       },
       pre: pre ? checklistDTO(pre) : null,
@@ -63,7 +67,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 // the Post-Repair half of a manual ticket (terms, warranty, signatures,
 // optional receipt photo, receipt email). JSON keys: phase, result_<key>,
 // notes_<key>, summaryNotes, customerSignature, staffSignature,
-// agreedToTerms, warrantyCoverage, receiptPhotoDataUrl. manualRecordId
+// agreedToTerms, warrantyCoverage, cost, partsCost, laborCost,
+// otherExpenses, receiptPhotoDataUrl. manualRecordId
 // comes from the URL.
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;

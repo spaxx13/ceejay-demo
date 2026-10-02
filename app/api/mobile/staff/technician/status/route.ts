@@ -27,8 +27,18 @@ export async function POST(req: NextRequest) {
   if (!request || request.assignedTechnicianId !== user.technicianId) {
     return NextResponse.json({ ok: false, error: "This job isn't assigned to you." }, { status: 403 });
   }
-  if (!lookups.some((l) => l.id === statusId && l.kind === "request_status")) {
+  const status = lookups.find((l) => l.id === statusId && l.kind === "request_status");
+  if (!status) {
     return NextResponse.json({ ok: false, error: "Unknown status." }, { status: 400 });
+  }
+  // Same restriction technicianUpdateStatus enforces silently: "Pending
+  // Confirmation" is a booking-side state and "Completed" only comes from
+  // submitting the Post-Repair checklist.
+  if (statusId !== request.statusId && (status.label === "Pending Confirmation" || status.label === "Completed")) {
+    return NextResponse.json(
+      { ok: false, error: status.label === "Completed" ? "Submit the Post-Repair Checklist to complete this job." : "Technicians can't set this status." },
+      { status: 400 },
+    );
   }
 
   const fd = new FormData();

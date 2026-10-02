@@ -3,6 +3,7 @@ import { CHECKLIST_TEMPLATE, SERVICE_AGREEMENT_TERMS } from "@/lib/checklist";
 import { MAX_PRICE_EDITS } from "@/lib/config";
 import { getCurrentUser } from "@/lib/auth";
 import { getRequestById, getLookups, getDeviceModels, getServiceAgreementsForRequest } from "@/lib/db";
+import { requestServiceFee } from "@/lib/homeServiceFees";
 import type { ServiceAgreement } from "@/lib/types";
 
 // Everything the checklist screens need for one job, mirroring
@@ -65,6 +66,12 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
         email: request.email,
         deviceLabel,
         address,
+        // Same props the web page passes ChecklistForm: the booking's visit
+        // fee (added to the Repair Price for the Total Amount) and whether
+        // the customer is there to sign — not for Pickup & Delivery jobs.
+        serviceFee: requestServiceFee(request),
+        customerPresent: request.fulfillmentMode !== "pickup_delivery",
+        fulfillmentMode: request.fulfillmentMode,
       },
       checklistItems: CHECKLIST_TEMPLATE.map((t) => ({ key: t.key, label: t.label, helpText: t.helpText })),
       terms: SERVICE_AGREEMENT_TERMS,
