@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getServiceAgreements } from "@/lib/db";
+import { getServiceAgreements, getRequests } from "@/lib/db";
 import SalesTabs from "@/components/SalesTabs";
 import { formatDate } from "@/lib/format";
 
@@ -7,7 +7,11 @@ const peso = (n: number) => `₱${n.toLocaleString(undefined, { minimumFractionD
 
 export default async function MaterialCostLogPage({ searchParams }: { searchParams: Promise<{ from?: string; to?: string }> }) {
   const sp = await searchParams;
-  const agreements = await getServiceAgreements();
+  const [agreements, requests] = await Promise.all([getServiceAgreements(), getRequests()]);
+  // getRequests() leaves trashed requests out — a checklist whose request
+  // isn't in that set belongs to a trashed job and stays off this log,
+  // the same way it's excluded from the Sales reports and the POS log.
+  const liveRequestIds = new Set(requests.map((r) => r.id));
 
   // Default to today so the page always opens on the most current sales —
   // an explicit From/To filter (even a partial one) overrides this.
@@ -22,7 +26,7 @@ export default async function MaterialCostLogPage({ searchParams }: { searchPara
   // customer, but kept visible here so it's easy to review even though it
   // no longer appears on the customer-facing checklist summary or receipt.
   const entries = agreements
-    .filter((a) => a.phase === "post_repair" && a.requestId && a.partsCost > 0 && inRange(a.completedAt.slice(0, 10)))
+    .filter((a) => a.phase === "post_repair" && a.requestId && liveRequestIds.has(a.requestId) && a.partsCost > 0 && inRange(a.completedAt.slice(0, 10)))
     .sort((a, b) => (a.completedAt < b.completedAt ? 1 : -1));
 
   const total = entries.reduce((s, a) => s + a.partsCost, 0);
