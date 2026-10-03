@@ -2779,9 +2779,13 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
     await notifyAdmins(
       "new_request",
       cr.id,
-      needsConfirmation
-        ? `${name || "A customer"} submitted a new Home Service Request ${cr.reference} — awaiting their confirmation.`
-        : `${name || "A customer"} submitted a new Home Service Request ${cr.reference} — now in the Unassigned queue.`
+      fulfillmentMode === "pickup_delivery"
+        ? needsConfirmation
+          ? `${name || "A customer"} submitted a new Pickup & Delivery booking ${cr.reference} — awaiting their confirmation.`
+          : `${name || "A customer"} submitted a new Pickup & Delivery booking ${cr.reference} — assign a pickup rider in Admin > Pickup & Delivery.`
+        : needsConfirmation
+          ? `${name || "A customer"} submitted a new Home Service Request ${cr.reference} — awaiting their confirmation.`
+          : `${name || "A customer"} submitted a new Home Service Request ${cr.reference} — now in the Unassigned queue.`
     );
   }
 

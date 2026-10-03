@@ -1645,13 +1645,21 @@ async function notifyAdminsCore(insertSql: string, insertParams: unknown[], url:
   }
 }
 
+// Where a request's admin detail page lives — Pickup & Delivery jobs have
+// their own section, fully separate from Home Service Requests, so every
+// link/notification/QR must route by fulfillment mode rather than assume
+// /admin/requests.
+export function requestAdminPath(req: Pick<HomeServiceRequest, "id" | "fulfillmentMode">) {
+  return req.fulfillmentMode === "pickup_delivery" ? `/admin/pickup-delivery/${req.id}` : `/admin/requests/${req.id}`;
+}
+
 export async function notifyAdmins(type: Notification["type"], requestId: string, message: string) {
-  await notifyAdminsCore(
-    "insert into notifications (type, request_id, message) values ($1,$2,$3)",
-    [type, requestId, message],
-    `/admin/requests/${requestId}`,
-    message
+  const row = await queryOne<{ fulfillment_mode: HomeServiceRequest["fulfillmentMode"] | null }>(
+    "select fulfillment_mode from home_service_requests where id=$1",
+    [requestId]
   );
+  const url = requestAdminPath({ id: requestId, fulfillmentMode: row?.fulfillment_mode ?? "on_site" });
+  await notifyAdminsCore("insert into notifications (type, request_id, message) values ($1,$2,$3)", [type, requestId, message], url, message);
 }
 
 // Same delivery mechanics as notifyAdmins, pointed at a walkin_requests row

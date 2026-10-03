@@ -1,13 +1,20 @@
 import Link from "next/link";
-import { getNotifications, getRequests, getWalkInRequests } from "@/lib/db";
+import { getNotifications, getRequests, getWalkInRequests, requestAdminPath, canManagePickupDelivery } from "@/lib/db";
+import { getCurrentUser } from "@/lib/auth";
 import { markNotificationRead, markAllNotificationsRead } from "@/lib/actions";
 import { formatDateTime } from "@/lib/format";
 
 const ICON: Record<string, string> = { new_request: "📥", request_in_progress: "🔧", checklist_completed: "✅", new_walkin: "🚶", technician_on_the_way: "🛵" };
 
 export default async function AdminNotificationsPage() {
-  const [allNotifications, requests, walkIns] = await Promise.all([getNotifications(), getRequests(), getWalkInRequests()]);
-  const notifications = [...allNotifications].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+  const [user, allNotifications, requests, walkIns] = await Promise.all([getCurrentUser(), getNotifications(), getRequests(), getWalkInRequests()]);
+  // Pickup & Delivery is its own section — its notifications only show to
+  // accounts that can open that section.
+  const pdAccess = canManagePickupDelivery(user);
+  const pdRequestIds = new Set(requests.filter((r) => r.fulfillmentMode === "pickup_delivery").map((r) => r.id));
+  const notifications = [...allNotifications]
+    .filter((n) => pdAccess || !n.requestId || !pdRequestIds.has(n.requestId))
+    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
   const unreadCount = notifications.filter((n) => !n.readAt).length;
 
   return (
@@ -47,8 +54,8 @@ export default async function AdminNotificationsPage() {
                       {req && (
                         <>
                           {" · "}
-                          <Link href={`/admin/requests/${req.id}`} className="text-blue-500 hover:underline">
-                            View request
+                          <Link href={requestAdminPath(req)} className="text-blue-500 hover:underline">
+                            {req.fulfillmentMode === "pickup_delivery" ? "View Pickup & Delivery job" : "View request"}
                           </Link>
                         </>
                       )}
