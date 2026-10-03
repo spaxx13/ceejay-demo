@@ -44,6 +44,43 @@ const DELIVERY_STATUS_OPTIONS = [
   { value: "delivered", label: "Mark Delivered", needsSignature: true },
 ];
 
+// Where the rider should be driving *right now* for this job — the
+// customer for a pickup that hasn't happened yet and for every delivery,
+// the destination branch once the device is in hand. Carries ready-made
+// deep links so the app's Navigate button never has to work it out.
+export type RiderNavigation = {
+  target: "customer" | "branch";
+  label: string;
+  name: string;
+  address: string;
+  lat: number | null;
+  lng: number | null;
+  googleMapsUrl: string;
+  wazeUrl: string;
+};
+function navigationFor(r: HomeServiceRequest, leg: "pickup" | "delivery", branch: { name: string; address: string; lat: number | null; lng: number | null } | null): RiderNavigation | null {
+  const toBranch = leg === "pickup" && !!r.pickedUpAt && !r.receivedAtShopAt;
+  if (toBranch && !branch) return null; // no destination branch chosen yet — the app shows its branch picker instead
+  const name = toBranch ? `${branch!.name} branch` : r.customerName;
+  const address = toBranch ? branch!.address : [r.street, r.barangay, r.city, r.province].filter(Boolean).join(", ");
+  const lat = toBranch ? branch!.lat : r.lat;
+  const lng = toBranch ? branch!.lng : r.lng;
+  const dest = lat !== null && lng !== null ? `${lat},${lng}` : address;
+  const encoded = encodeURIComponent(dest);
+  return {
+    target: toBranch ? "branch" : "customer",
+    label: toBranch ? "Navigate to branch" : "Navigate to customer",
+    name,
+    address,
+    lat,
+    lng,
+    // comgooglemaps:// goes straight to the route in the Google Maps app;
+    // the app should fall back to this https form if the scheme can't open.
+    googleMapsUrl: `https://maps.google.com/maps?daddr=${encoded}&dirflg=d`,
+    wazeUrl: lat !== null && lng !== null ? `https://waze.com/ul?ll=${lat},${lng}&navigate=yes` : `https://waze.com/ul?q=${encoded}&navigate=yes`,
+  };
+}
+
 function jobDTO(r: HomeServiceRequest, leg: "pickup" | "delivery", statusLabel: string | undefined) {
   const accepted = leg === "pickup" ? !!r.pickupRiderAcceptedAt : !!r.deliveryRiderAcceptedAt;
   const badge = !accepted
@@ -111,17 +148,20 @@ export async function GET() {
   // just active ones), the same as app/rider/page.tsx.
   const destination = (r: HomeServiceRequest) => {
     const b = r.deliveredBranchId ? allBranches.find((x) => x.id === r.deliveredBranchId) : null;
-    return b ? { id: b.id, name: b.name, address: b.address, contactNumber: b.contactNumber } : null;
+    return b ? { id: b.id, name: b.name, address: b.address, contactNumber: b.contactNumber, lat: b.lat, lng: b.lng } : null;
   };
 
   const pickups = allRequests
     .filter((r) => r.fulfillmentMode === "pickup_delivery" && r.pickupRiderId === riderId && !r.receivedAtShopAt)
     .sort(byCreated)
-    .map((r) => ({ ...jobDTO(r, "pickup", statusLabel(r)), destinationBranch: destination(r) }));
+    .map((r) => {
+      const branch = destination(r);
+      return { ...jobDTO(r, "pickup", statusLabel(r)), destinationBranch: branch, navigation: navigationFor(r, "pickup", branch) };
+    });
   const deliveries = allRequests
     .filter((r) => r.fulfillmentMode === "pickup_delivery" && r.deliveryRiderId === riderId && !r.deliveredAt)
     .sort(byCreated)
-    .map((r) => jobDTO(r, "delivery", statusLabel(r)));
+    .map((r) => ({ ...jobDTO(r, "delivery", statusLabel(r)), navigation: navigationFor(r, "delivery", null) }));
 
   return NextResponse.json(
     {
@@ -129,7 +169,7 @@ export async function GET() {
       riderName: rider?.name ?? user.name,
       onDuty: rider?.onDuty ?? false,
       // address/contactNumber feed the "Bring the device to" box on a picked-up job.
-      branches: allBranches.filter((b) => b.active).map((b) => ({ id: b.id, name: b.name, address: b.address, contactNumber: b.contactNumber })),
+      branches: allBranches.filter((b) => b.active).map((b) => ({ id: b.id, name: b.name, address: b.address, contactNumber: b.contactNumber, lat: b.lat, lng: b.lng })),
       pickups,
       deliveries,
       pickupStatusOptions: PICKUP_STATUS_OPTIONS,
