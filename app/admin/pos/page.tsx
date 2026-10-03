@@ -61,7 +61,10 @@ export default async function PosPage({ searchParams }: { searchParams: Promise<
   // so this page is a single log of every paid job, POS or home service.
   const requestById = new Map(requests.map((req) => [req.id, req]));
   const homeServiceRows: UnifiedRow[] = agreements
-    .filter((a) => a.phase === "post_repair" && a.requestId)
+    // getRequests() leaves trashed requests out, so a checklist whose
+    // request is no longer in that set belongs to a trashed (or deleted)
+    // job — it disappears from this log the same way it does from Sales.
+    .filter((a) => a.phase === "post_repair" && a.requestId && requestById.has(a.requestId))
     .map((a) => ({ a, branchId: homeServiceBranchId(a.technicianId, a.branchId, technicians) }))
     .filter(({ branchId }) => !isBranchHidden(user, branchId))
     .map(({ a, branchId }) => {
