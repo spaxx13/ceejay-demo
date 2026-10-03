@@ -338,7 +338,7 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
             )}
             {req.backHousingColor && (
               <>
-                <dt className="text-slate-400">Back Housing Color</dt>
+                <dt className="text-slate-400">Back Glass Color</dt>
                 <dd className="text-slate-800">{req.backHousingColor}</dd>
               </>
             )}

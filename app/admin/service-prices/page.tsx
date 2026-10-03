@@ -6,6 +6,7 @@ import { saveServicePrices, createDeviceModel } from "@/lib/actions";
 const COLUMNS = [
   { field: "battery", label: "Battery" },
   { field: "backhousing", label: "Backhousing" },
+  { field: "back_glass", label: "Back Glass" },
   { field: "back_camera", label: "Back Camera" },
   { field: "front_camera", label: "Front Camera" },
   { field: "camera_lens", label: "Camera Lens" },
@@ -29,6 +30,7 @@ export default async function ServicePricesPage() {
   const cellValue = (modelId: string, field: (typeof COLUMNS)[number]["field"]) => {
     if (field === "battery") return priceFor(modelId, "battery", "");
     if (field === "backhousing") return priceFor(modelId, "backhousing", "");
+    if (field === "back_glass") return priceFor(modelId, "back_glass", "");
     if (field === "back_camera") return priceFor(modelId, "back_camera", "");
     if (field === "front_camera") return priceFor(modelId, "front_camera", "");
     if (field === "camera_lens") return priceFor(modelId, "camera_lens", "");
@@ -45,8 +47,8 @@ export default async function ServicePricesPage() {
         <p className="mt-1 text-sm text-slate-400">
           Sets the repair cost used to compute the automatic quotation emailed to a customer after they submit a Home Service Request.
           Leave a cell blank if you don&apos;t have a price for it yet — the quotation will say the exact cost will be confirmed by the
-          technician upon inspection instead of showing a number. &quot;Backhousing&quot; covers both Backhousing service type labels;
-          &quot;Back Camera&quot; covers both Camera service type labels — one price applies to both.
+          technician upon inspection instead of showing a number. &quot;Backhousing&quot; is the whole-shell replacement; &quot;Back Glass&quot; is the
+          rear glass only; &quot;Back Camera&quot; covers both Camera service type labels — one price applies to both.
         </p>
       </div>
 

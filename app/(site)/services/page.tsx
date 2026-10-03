@@ -11,14 +11,16 @@ const DESCRIPTIONS: Record<string, string> = {
   "Logic board problem": "Component-level diagnosis and repair for logic board issues — no power, short circuits, or boot failures.",
   "Camera": "Blurry photos, autofocus issues, or a cracked camera lens fixed with a genuine replacement module.",
   "Backhousing(Whole shell including backglass)": "Full back housing replacement, including the rear glass — for a cracked back or a damaged frame.",
+  "Back Glass": "Cracked rear glass replaced on its own, in your device's colour — without changing the whole housing.",
 };
 
 const FALLBACK = "Professional service to get your device back to perfect condition, backed by our technicians.";
 
 // Kept selectable on the Home Service request form (they're not in that
 // form's own exclusion list), but not shown here on the public Services
-// page — they're near-duplicates of "Camera" and "Backhousing(...)" above,
-// which already cover the in-branch/general listing.
+// page — near-duplicates of "Camera" and "Backhousing(...)" above, which
+// already cover the in-branch/general listing. ("Back Housing (whole
+// shell)" is the pre-migration-0087 label of "Back Glass", which does show.)
 const HIDDEN_FROM_PUBLIC = new Set(["Camera replacement", "Back Housing (whole shell)"]);
 
 export default async function ServicesPage() {

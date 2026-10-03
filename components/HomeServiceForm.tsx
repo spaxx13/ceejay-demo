@@ -835,10 +835,10 @@ export default function HomeServiceForm({
                 </select>
               </div>
             )}
-            {selectedServiceType?.label === "Back Housing (whole shell)" && (
+            {(selectedServiceType?.label === "Back Glass" || selectedServiceType?.label === "Back Housing (whole shell)") && (
               <div className="space-y-1.5">
                 <label className="text-xs font-medium text-slate-500">
-                  Back Housing Color <span className="text-red-600">*</span>
+                  Back Glass Color <span className="text-red-600">*</span>
                 </label>
                 <input name={`backHousingColor_${index}`} required className="input" placeholder="e.g. Space Gray, Midnight Green" />
               </div>
