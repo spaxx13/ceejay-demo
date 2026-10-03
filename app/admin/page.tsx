@@ -18,6 +18,7 @@ import {
   sumHomeServiceSales,
   homeServiceBusinessExpenses,
   canManageHomeServiceRequests,
+  requestAdminPath,
   canViewAllBranchSales,
   isBranchHidden,
 } from "@/lib/db";
@@ -254,7 +255,7 @@ export default async function AdminDashboard() {
               return (
                 <tr key={r.id} className="border-b border-slate-200 last:border-0">
                   <td className="py-2.5 pr-3">
-                    <Link href={`/admin/requests/${r.id}`} className="font-mono text-xs text-blue-300 hover:underline">
+                    <Link href={requestAdminPath(r)} className="font-mono text-xs text-blue-300 hover:underline">
                       {r.reference}
                     </Link>
                   </td>

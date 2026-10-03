@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { getLeadById, getCustomerById, getLookups, getActivity, getRequests, getDeletedRequests, getRepairRecords, getUsers, getServiceAgreements, getRepairRecordStatus, getBranches, isBranchHidden, canAccessCrm, getConversation } from "@/lib/db";
+import { getLeadById, getCustomerById, getLookups, getActivity, getRequests, getDeletedRequests, getRepairRecords, getUsers, getServiceAgreements, getRepairRecordStatus, getBranches, isBranchHidden, canAccessCrm, getConversation, requestAdminPath } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import StatusBadge from "@/components/StatusBadge";
 import ConversationThread from "@/components/ConversationThread";
@@ -211,7 +211,7 @@ export default async function CrmDetailPage({ params }: { params: Promise<{ id: 
               return (
                 <li key={r.id} className="flex items-center justify-between border-b border-slate-200 pb-2 last:border-0">
                   <div>
-                    <Link href={`/admin/requests/${r.id}`} className="font-mono text-xs text-blue-300 hover:underline">
+                    <Link href={requestAdminPath(r)} className="font-mono text-xs text-blue-300 hover:underline">
                       {r.reference}
                     </Link>
                     <p className="text-xs text-slate-400">{formatDate(r.createdAt)}</p>

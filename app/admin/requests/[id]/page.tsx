@@ -105,6 +105,9 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
   const { id } = await params;
   const req = await getRequestById(id);
   if (!req) notFound();
+  // Pickup & Delivery jobs live in their own section — an old link, QR or
+  // notification pointing here goes to the right page instead.
+  if (req.fulfillmentMode === "pickup_delivery") redirect(`/admin/pickup-delivery/${req.id}`);
   // Same queue scoping as the list page — a branch admin assigned to only
   // one queue's backend branch can't open the other queue's request even by
   // guessing/bookmarking its URL directly.

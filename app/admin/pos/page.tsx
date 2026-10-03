@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getRepairRecords, getServiceAgreements, getRepairRecordStatus, getBranches, getRequests, getTechnicians, isBranchHidden, homeServiceBranchId } from "@/lib/db";
+import { getRepairRecords, getServiceAgreements, getRepairRecordStatus, getBranches, getRequests, getTechnicians, isBranchHidden, homeServiceBranchId, requestAdminPath } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { formatDateTime } from "@/lib/format";
 import PopupLink from "@/components/PopupLink";
@@ -79,7 +79,7 @@ export default async function PosPage({ searchParams }: { searchParams: Promise<
         date: a.completedAt.slice(0, 10),
         createdAt: a.completedAt,
         resumable: false,
-        viewHref: req ? `/admin/requests/${req.id}` : "/admin/requests",
+        viewHref: req ? requestAdminPath(req) : "/admin/requests",
       };
     });
 

@@ -92,8 +92,8 @@ function jobDTO(r: HomeServiceRequest, leg: "pickup" | "delivery", statusLabel: 
     deliveredAt: r.deliveredAt,
     deliveredBranchId: r.deliveredBranchId,
     pickupSecuritySeal: r.pickupSecuritySeal,
-    // Package label — the same admin-detail link JobQrCode encodes.
-    qrUrl: `${SITE_URL}/admin/requests/${r.id}`,
+    // Package label — the same Pickup & Delivery job link JobQrCode encodes.
+    qrUrl: `${SITE_URL}/admin/pickup-delivery/${r.id}`,
   };
 }
 
