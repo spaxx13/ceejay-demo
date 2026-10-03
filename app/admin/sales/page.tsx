@@ -7,6 +7,7 @@ import {
   getServiceAgreements,
   getRequests,
   homeServiceSalesByTechnician,
+  pickupDeliverySalesByTechnician,
   sumHomeServiceSales,
   homeServiceBusinessExpenses,
   isBranchHidden,
@@ -267,6 +268,16 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
       allTechnicians
     );
     const homeService = sumHomeServiceSales(homeServiceTechnicians);
+    // Pickup & Delivery for this branch — the repair happens at this branch
+    // (the checklist's branch), so its 30/70 split lands here too, kept in
+    // its own section so it never mixes with Home Service.
+    const pickupDeliveryTechnicians = pickupDeliverySalesByTechnician(
+      visibleAgreements.filter((a) => a.branchId === r.branchId),
+      inRange,
+      requests,
+      allTechnicians
+    );
+    const pickupDelivery = sumHomeServiceSales(pickupDeliveryTechnicians);
 
     return {
       ...r,
@@ -282,6 +293,8 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
       businessShareNet: remaining - businessExpenses,
       homeServiceTechnicians,
       homeService,
+      pickupDeliveryTechnicians,
+      pickupDelivery,
     };
   });
   const grandNetProfitBeforeSharing = grandTotal.netProfit - totalNetProfitExpenses;
@@ -314,13 +327,18 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
   // twice.
   const homeServiceExpenses = homeServiceBusinessExpenses(expenses, inRange, homeServiceQueueBranchIds);
   const grandHomeServiceNet = grandHomeService.companyShare - homeServiceExpenses;
+  // Pickup & Delivery, all branches — same 30/70 split; it has no expense
+  // bucket of its own (business expenses are logged per branch or under
+  // Home Service), so its net is its company share.
+  const grandPickupDelivery = sumHomeServiceSales(pickupDeliverySalesByTechnician(visibleAgreements, inRange, requests, technicians));
+  const grandPickupDeliveryNet = grandPickupDelivery.companyShare;
 
   // The one true bottom-line figure — what the business actually keeps
   // across every revenue stream (every branch's POS/walk-in business share,
   // already net of all expenses, plus Home Service's own business share,
   // also net of its expenses) — since the two waterfalls above are never
   // otherwise added together anywhere on this page.
-  const grandTotalBusinessShare = grandBusinessShareNet + grandHomeServiceNet;
+  const grandTotalBusinessShare = grandBusinessShareNet + grandHomeServiceNet + grandPickupDeliveryNet;
 
   // Home Service technicians are usually tied only to the backend "Home
   // Service" queue branch(es) (near/far), not a real addressed branch — so
@@ -337,8 +355,23 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
       technicians
     );
     const homeService = sumHomeServiceSales(homeServiceTechnicians);
+    const pickupDeliveryTechnicians = pickupDeliverySalesByTechnician(
+      visibleAgreements.filter((a) => a.branchId === b.id),
+      inRange,
+      requests,
+      technicians
+    );
+    const pickupDelivery = sumHomeServiceSales(pickupDeliveryTechnicians);
     const businessExpenses = homeServiceBusinessExpenses(expenses, inRange, [b.id]);
-    return { branch: b, homeServiceTechnicians, homeService, businessExpenses, businessShareNet: homeService.companyShare - businessExpenses };
+    return {
+      branch: b,
+      homeServiceTechnicians,
+      homeService,
+      pickupDeliveryTechnicians,
+      pickupDelivery,
+      businessExpenses,
+      businessShareNet: homeService.companyShare + pickupDelivery.companyShare - businessExpenses,
+    };
   });
 
   return (
@@ -718,6 +751,10 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
                 )}
               </div>
 
+              <div className="space-y-2 border-t border-slate-200 pt-4">
+                <ModeSalesBlock title="Pickup & Delivery" noun="Pickup & Delivery" totals={r.pickupDelivery} technicians={r.pickupDeliveryTechnicians} />
+              </div>
+
               <div className="flex flex-wrap gap-2">
                 {branchEntry && (
                   <Link href={`/admin/pos?branch=${branchEntry.id}`} className="btn-secondary inline-block !px-3 !py-1 text-xs">
@@ -729,12 +766,17 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
                     View Home Service Records
                   </Link>
                 )}
+                {r.pickupDelivery.count > 0 && (
+                  <Link href="/admin/sales/pickup-delivery" className="btn-secondary inline-block !px-3 !py-1 text-xs">
+                    View Pickup &amp; Delivery Records
+                  </Link>
+                )}
               </div>
             </div>
           );
         })}
 
-        {queueHomeServiceCards.map(({ branch, homeServiceTechnicians, homeService, businessExpenses, businessShareNet }) => (
+        {queueHomeServiceCards.map(({ branch, homeServiceTechnicians, homeService, pickupDeliveryTechnicians, pickupDelivery, businessExpenses, businessShareNet }) => (
           <div key={branch.id} className="card space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex flex-wrap items-center gap-2">
@@ -816,6 +858,14 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
                   View Home Service Records
                 </Link>
               </>
+            )}
+            {pickupDelivery.count > 0 && (
+              <div className="space-y-2 border-t border-slate-200 pt-3">
+                <ModeSalesBlock title="Pickup & Delivery" noun="Pickup & Delivery" totals={pickupDelivery} technicians={pickupDeliveryTechnicians} />
+                <Link href="/admin/sales/pickup-delivery" className="btn-secondary inline-block !px-3 !py-1 text-xs">
+                  View Pickup &amp; Delivery Records
+                </Link>
+              </div>
             )}
           </div>
         ))}
@@ -926,6 +976,40 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
               </>
             )}
 
+            {grandPickupDelivery.count > 0 && (
+              <>
+                <h4 className="pt-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Pickup &amp; Delivery — All Branches Combined</h4>
+                <table className="w-full text-left text-sm">
+                  <tbody>
+                    <tr className="border-b border-slate-100">
+                      <td className="py-2 pr-3 text-slate-600">Total Amount ({grandPickupDelivery.count} jobs)</td>
+                      <td className="py-2 pr-3 text-right text-slate-800">{peso(grandPickupDelivery.totalAmount)}</td>
+                    </tr>
+                    <tr className="border-b border-slate-100">
+                      <td className="py-2 pr-3 text-slate-600">− Parts/Material Cost</td>
+                      <td className="py-2 pr-3 text-right text-red-700">−{peso(grandPickupDelivery.partsCost)}</td>
+                    </tr>
+                    <tr className="border-b border-slate-200">
+                      <td className="py-2 pr-3 font-semibold text-slate-800">= Net Amount</td>
+                      <td className="py-2 pr-3 text-right font-semibold text-green-700">{peso(grandPickupDelivery.netAmount)}</td>
+                    </tr>
+                    <tr className="border-b border-slate-100">
+                      <td className="py-2 pr-3 pl-5 text-slate-500">Technician Share (70%)</td>
+                      <td className="py-2 pr-3 text-right text-amber-700">{peso(grandPickupDelivery.technicianShare)}</td>
+                    </tr>
+                    <tr>
+                      <td className="pt-2 pr-3 pl-5 font-semibold text-slate-900">Company Share (30%) = Business Share (Net)</td>
+                      <td className="pt-2 pr-3 text-right">
+                        <span className="inline-block rounded-md border-2 border-blue-300 bg-blue-50 px-2.5 py-1 text-base font-bold text-blue-900">
+                          {peso(grandPickupDeliveryNet)}
+                        </span>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </>
+            )}
+
             <div className="mt-1 space-y-2 border-t-2 border-slate-300 pt-3">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Breakdown — after every expense and share is deducted</p>
               <ul className="space-y-1 text-sm">
@@ -939,6 +1023,10 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
                   <span className="text-slate-600">Home Service</span>
                   <span className="font-medium text-slate-800">{peso(grandHomeServiceNet)}</span>
                 </li>
+                <li className="flex items-center justify-between gap-2">
+                  <span className="text-slate-600">Pickup &amp; Delivery</span>
+                  <span className="font-medium text-slate-800">{peso(grandPickupDeliveryNet)}</span>
+                </li>
               </ul>
               <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 pt-2">
                 <p className="text-sm font-bold text-slate-900">Grand Total Business Share (Net)</p>
@@ -951,5 +1039,91 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
         )}
       </div>
     </div>
+  );
+}
+
+// One service mode's 30/70 breakdown for a branch card — the same rows the
+// Home Service section renders inline above, reused for Pickup & Delivery
+// so the two modes read identically but stay separate.
+function ModeSalesBlock({
+  title,
+  noun,
+  totals,
+  technicians,
+}: {
+  title: string;
+  noun: string;
+  totals: ReturnType<typeof sumHomeServiceSales>;
+  technicians: ReturnType<typeof pickupDeliverySalesByTechnician>;
+}) {
+  return (
+    <>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h4 className="text-sm font-semibold text-slate-800">{title}</h4>
+        <span className="rounded-full border border-slate-300 bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-700">
+          {totals.count} job{totals.count === 1 ? "" : "s"} completed
+        </span>
+      </div>
+      {totals.count === 0 ? (
+        <p className="text-sm text-slate-400">No {noun} jobs completed in this range.</p>
+      ) : (
+        <>
+          <table className="w-full text-left text-sm">
+            <tbody>
+              <tr className="border-b border-slate-100">
+                <td className="py-2 pr-3 text-slate-600">Total Amount</td>
+                <td className="py-2 pr-3 text-right text-slate-800">{peso(totals.totalAmount)}</td>
+              </tr>
+              <tr className="border-b border-slate-100">
+                <td className="py-2 pr-3 text-slate-600">− Parts/Material Cost</td>
+                <td className="py-2 pr-3 text-right text-red-700">−{peso(totals.partsCost)}</td>
+              </tr>
+              <tr className="border-b border-slate-200">
+                <td className="py-2 pr-3 font-semibold text-slate-800">= Net Amount</td>
+                <td className="py-2 pr-3 text-right font-semibold text-green-700">{peso(totals.netAmount)}</td>
+              </tr>
+              <tr className="border-b border-slate-100">
+                <td className="py-2 pr-3 pl-5 text-slate-500">Technician Share (70%)</td>
+                <td className="py-2 pr-3 text-right text-amber-700">{peso(totals.technicianShare)}</td>
+              </tr>
+              <tr>
+                <td className="py-2 pr-3 pl-5 font-semibold text-slate-700">Company Share (30%)</td>
+                <td className="py-2 pr-3 text-right">
+                  <span className="inline-block rounded-md border-2 border-green-300 bg-green-50 px-2.5 py-1 text-base font-bold text-green-900">
+                    {peso(totals.companyShare)}
+                  </span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          {technicians.length > 0 && (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="border-b border-slate-200 uppercase tracking-wide text-slate-400">
+                    <th className="pb-1.5 pr-3 font-medium">Technician</th>
+                    <th className="pb-1.5 pr-3 font-medium">Jobs</th>
+                    <th className="pb-1.5 pr-3 font-medium">Total Amount</th>
+                    <th className="pb-1.5 pr-3 font-medium">Technician Share</th>
+                    <th className="pb-1.5 font-medium">Company Share</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {technicians.map((t) => (
+                    <tr key={t.name} className={`border-b border-slate-100 last:border-0 ${t.name === "Unassigned" ? "opacity-60" : ""}`}>
+                      <td className="py-1.5 pr-3 text-slate-700">{t.name}</td>
+                      <td className="py-1.5 pr-3 text-slate-500">{t.count}</td>
+                      <td className="py-1.5 pr-3 text-slate-800">{peso(t.totalAmount)}</td>
+                      <td className="py-1.5 pr-3 text-amber-700">{peso(t.technicianShare)}</td>
+                      <td className="py-1.5 text-green-700">{peso(t.companyShare)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+    </>
   );
 }
