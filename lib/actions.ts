@@ -64,6 +64,7 @@ import {
   getManualChecklists,
   getManualChecklistsForRecord,
   isBranchHidden,
+  isPickupDeliveryJobHidden,
   getIcloudCheckById,
   createIcloudCheck,
   markIcloudCheckPaymentPending,
@@ -4507,7 +4508,8 @@ export async function updateAgreementPriceAdmin(
 
   const req = await getRequestById(agreement.requestId);
   if (!req) return { ok: false, error: "Request not found." };
-  if (isBranchHidden(user, req.queueBranchId)) return { ok: false, error: "You don't have access to this request." };
+  const hidden = req.fulfillmentMode === "pickup_delivery" ? isPickupDeliveryJobHidden(user, req) : isBranchHidden(user, req.queueBranchId);
+  if (hidden) return { ok: false, error: "You don't have access to this request." };
 
   const cost = Math.max(0, Number(str(formData, "cost")) || 0);
   const laborCost = requestServiceFee(req);

@@ -8,7 +8,7 @@ import {
   getBranches,
   canManagePickupDelivery,
   canDeleteHomeServiceRequests,
-  isBranchHidden,
+  isPickupDeliveryJobHidden,
   pickupDeliveryStage,
   PICKUP_DELIVERY_STAGE_LABELS,
   type PickupDeliveryStage,
@@ -50,7 +50,7 @@ export default async function PickupDeliveryPage({ searchParams }: { searchParam
     .filter(
       (r) =>
         r.fulfillmentMode === "pickup_delivery" &&
-        !isBranchHidden(user, r.queueBranchId) &&
+        !isPickupDeliveryJobHidden(user, r) &&
         (!r.downpaymentRequired || r.downpaymentStatus === "paid")
     )
     .map((r) => {
@@ -78,7 +78,7 @@ export default async function PickupDeliveryPage({ searchParams }: { searchParam
 
   const jobsByStage = sp.stage ? jobs.filter((j) => j.stage === sp.stage) : jobs;
 
-  const pickupDeliveryRequests = allRequests.filter((r) => r.fulfillmentMode === "pickup_delivery" && !isBranchHidden(user, r.queueBranchId));
+  const pickupDeliveryRequests = allRequests.filter((r) => r.fulfillmentMode === "pickup_delivery" && !isPickupDeliveryJobHidden(user, r));
   const openIssues = exceptions
     .filter((e) => !e.resolvedAt)
     .flatMap((e) => {

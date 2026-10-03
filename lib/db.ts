@@ -159,6 +159,20 @@ export function isBranchHidden(user: Pick<User, "assignedBranchIds"> | null, bra
   return !user.assignedBranchIds.includes(branchId);
 }
 
+// Branch scoping for a Pickup & Delivery job. These are repaired at a
+// physical branch, so a branch-restricted admin sees the jobs headed to
+// their branch(es): the confirmed destination once picked up, else the
+// branch recommended at booking. A job with neither yet (no pins) stays
+// visible to everyone with Pickup & Delivery access. The request's
+// queue_branch_id is the Home Service queue bucket and is irrelevant here —
+// scoping by it hid every P&D job from branch admins.
+export function isPickupDeliveryJobHidden(
+  user: Pick<User, "assignedBranchIds"> | null,
+  req: Pick<HomeServiceRequest, "deliveredBranchId" | "pickupDeliveryNearestBranchId">
+) {
+  return isBranchHidden(user, req.deliveredBranchId ?? req.pickupDeliveryNearestBranchId ?? null);
+}
+
 // True when this account is allowed to access/manage Home Service Requests.
 // Owner admins always can; branch admins are scoped by canManageRequests.
 export function canManageHomeServiceRequests(user: Pick<User, "role" | "canManageRequests"> | null) {
