@@ -1089,6 +1089,15 @@ export async function riderUpdateDeliveryStatus(_prev: RiderStatusResult | undef
           `/track?reference=${encodeURIComponent(req.reference)}&phone=${encodeURIComponent(req.phone)}`,
         ).catch(() => {});
       }
+      // Same courtesy as the pickup leg: an email with the live-tracking
+      // link so the customer knows the repaired device is heading back.
+      if (req.email && emailConfigured()) {
+        try {
+          await sendTrackingLinkEmail(req.email, { customerName: req.customerName, reference: req.reference, phone: req.phone, stage: "out_for_delivery" });
+        } catch {
+          // Best-effort — never blocks the rider's status update.
+        }
+      }
       break;
     }
     case "delivered":
@@ -1099,6 +1108,13 @@ export async function riderUpdateDeliveryStatus(_prev: RiderStatusResult | undef
       ]);
       await logActivity("home_service_request", requestId, `Delivered by rider ${user.name}`, user.name);
       await notifyAdmins("request_in_progress", requestId, `${user.name} delivered ${req.reference} (${req.customerName}) to the customer.`);
+      if (req.email && emailConfigured()) {
+        try {
+          await sendTrackingLinkEmail(req.email, { customerName: req.customerName, reference: req.reference, phone: req.phone, stage: "delivered" });
+        } catch {
+          // Best-effort — never blocks the rider's status update.
+        }
+      }
       break;
     default:
       return { ok: false, error: "Invalid status." };

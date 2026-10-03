@@ -456,7 +456,12 @@ export async function sendCancellationEmail(to: string, opts: { customerName: st
 // now rather than needing two different URLs.
 export async function sendTrackingLinkEmail(
   to: string,
-  opts: { customerName: string; reference: string; phone: string; stage: "heading_to_pickup" | "heading_to_shop" | "unboxing_ready" | "repair_update" }
+  opts: {
+    customerName: string;
+    reference: string;
+    phone: string;
+    stage: "heading_to_pickup" | "heading_to_shop" | "unboxing_ready" | "repair_update" | "out_for_delivery" | "delivered";
+  }
 ) {
   const client = getClient();
   const trackingUrl = `${SITE_URL}/track?reference=${encodeURIComponent(opts.reference)}&phone=${encodeURIComponent(opts.phone)}`;
@@ -476,6 +481,14 @@ export async function sendTrackingLinkEmail(
     repair_update: {
       heading: "New update on your repair",
       body: "Our technician posted an update on your repair — notes and photos/videos of your device as the work progresses. See it on the tracking page below.",
+    },
+    out_for_delivery: {
+      heading: "Your repaired device is on its way back to you!",
+      body: "Your repair is done and a rider is now on the way to deliver your device back to your address. You can follow their live location on the tracking page below. Please have a valid ID and your booking reference ready — the rider will only release the device to you or a person you authorized.",
+    },
+    delivered: {
+      heading: "Your device has been delivered",
+      body: "Our rider has handed your repaired device back to you. Thank you for choosing Ceejay Cellphone Repair Shop! If anything doesn't look right, reply to this email or contact the branch right away.",
     },
   }[opts.stage];
   const heading = copy.heading;
