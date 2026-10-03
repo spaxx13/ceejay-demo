@@ -10,7 +10,7 @@ const peso = (n: number) => `₱${n.toLocaleString(undefined, { minimumFractionD
 
 type UnifiedRow = {
   id: string;
-  kind: "pos" | "home_service";
+  kind: "pos" | "home_service" | "pickup_delivery";
   reference: string;
   branchId: string | null;
   customerName: string;
@@ -68,7 +68,8 @@ export default async function PosPage({ searchParams }: { searchParams: Promise<
       const req = a.requestId ? requestById.get(a.requestId) : undefined;
       return {
         id: a.id,
-        kind: "home_service" as const,
+        // Pickup & Delivery is its own service mode — never labelled Home Service.
+        kind: (req?.fulfillmentMode === "pickup_delivery" ? "pickup_delivery" : "home_service") as "home_service" | "pickup_delivery",
         reference: req?.reference ?? a.reference,
         branchId,
         customerName: a.customerName,
@@ -113,7 +114,7 @@ export default async function PosPage({ searchParams }: { searchParams: Promise<
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-slate-900">Repair Records</h1>
-          <p className="mt-1 text-sm text-slate-400">A simple log of customers, their devices, reported problems, and repairs performed — POS walk-ins and completed home service jobs.</p>
+          <p className="mt-1 text-sm text-slate-400">A simple log of customers, their devices, reported problems, and repairs performed — POS walk-ins and completed Home Service and Pickup &amp; Delivery jobs.</p>
         </div>
         <PopupLink href="/admin/pos/new" className="btn-primary">
           + New Record
@@ -176,6 +177,7 @@ export default async function PosPage({ searchParams }: { searchParams: Promise<
                 <p className="font-mono text-xs text-blue-300">
                   {r.reference}
                   {r.kind === "home_service" && <span className="ml-1.5 badge border border-blue-200 bg-blue-50 text-blue-500">Home Service</span>}
+                  {r.kind === "pickup_delivery" && <span className="ml-1.5 badge border border-violet-200 bg-violet-50 text-violet-600">Pickup &amp; Delivery</span>}
                 </p>
                 <p className="mt-0.5 text-sm font-medium text-slate-800">{r.customerName}</p>
               </div>
@@ -250,6 +252,7 @@ export default async function PosPage({ searchParams }: { searchParams: Promise<
                 <td className="py-3 pr-3 font-mono text-xs text-blue-300">
                   {r.reference}
                   {r.kind === "home_service" && <span className="ml-1.5 badge border border-blue-200 bg-blue-50 text-blue-500">Home Service</span>}
+                  {r.kind === "pickup_delivery" && <span className="ml-1.5 badge border border-violet-200 bg-violet-50 text-violet-600">Pickup &amp; Delivery</span>}
                 </td>
                 <td className="py-3 pr-3 text-slate-500">{branchName(r.branchId)}</td>
                 <td className="py-3 pr-3 text-slate-800">{r.customerName}</td>
