@@ -4,7 +4,7 @@
 // — bump VERSION whenever the wording changes, so each booking records
 // which text the customer actually agreed to
 // (home_service_requests.pickup_delivery_agreement_version).
-export const PICKUP_DELIVERY_AGREEMENT_VERSION = "2026-10-01.4";
+export const PICKUP_DELIVERY_AGREEMENT_VERSION = "2026-10-03.1";
 
 export const PICKUP_DELIVERY_AGREEMENT_TERMS: { title: string; body: string }[] = [
   {
@@ -24,8 +24,16 @@ export const PICKUP_DELIVERY_AGREEMENT_TERMS: { title: string; body: string }[] 
     body: "When the device reaches the shop, our technician records an unboxing/inspection video which you can view on your tracking page — this is our shared record of how the device arrived.",
   },
   {
+    title: "Remove your SIM card & accessories before pickup",
+    body: "Before the rider arrives, remove your SIM card, memory card, case, screen protector and any accessories. The rider takes the device only. Ceejay Cellphone Repair Shop is not responsible for any SIM card, memory card or accessory left in or with the device, including any charges made on a SIM that was not removed.",
+  },
+  {
     title: "Your data",
     body: "Please back up your device before pickup. Ceejay Cellphone Repair Shop is not liable for loss of data, and you are responsible for removing locks or providing passcodes needed to test the device (Face ID/Touch ID can be re-enrolled after repair).",
+  },
+  {
+    title: "No guarantee that every repair will succeed",
+    body: "We will do our best, but not every device can be repaired and we do not promise a 100% successful repair. This is especially true for logic board problems, water-damaged units, devices that will not power on, and devices previously opened or repaired elsewhere, where the fault may be worse than it first appears or further damage may already exist. If a repair cannot be completed, or the device does not survive a logic board or water damage repair attempt, the device is delivered back to you in its current condition; only the Booking, Diagnostic & Delivery Fee applies and no repair cost is charged for the unsuccessful work. By booking a logic board or water damage repair, you accept this risk.",
   },
   {
     title: "Transit",
