@@ -3376,14 +3376,22 @@ export async function markIcloudRefundNeeded(formData: FormData) {
 // that state would be wrong even though the rest of the booking is moving.
 const CASCADE_EXCLUDED_STATUSES = new Set(["In Progress", "Completed", "Cancelled"]);
 
+// Who may act on a request from the admin side: Pickup & Delivery jobs need
+// the Pickup & Delivery section (and nothing else — a P&D-only admin must
+// be able to assign the technician, set status and add notes on them);
+// Home Service requests need the Home Service Requests section.
+function canManageRequestAdmin(user: Awaited<ReturnType<typeof getCurrentUser>>, req: Pick<HomeServiceRequest, "fulfillmentMode">) {
+  return req.fulfillmentMode === "pickup_delivery" ? canManagePickupDelivery(user) : canManageHomeServiceRequests(user);
+}
+
 export async function reassignRequest(formData: FormData) {
   const user = await getCurrentUser();
-  if (!canManageHomeServiceRequests(user)) return;
+  if (!canManageHomeServiceRequests(user) && !canManagePickupDelivery(user)) return;
   const requestId = str(formData, "id");
   const technicianId = str(formData, "technicianId") || null;
   const req = await getRequestById(requestId);
   if (!req) return;
-  if (req.fulfillmentMode === "pickup_delivery" && !canManagePickupDelivery(user)) return;
+  if (!canManageRequestAdmin(user, req)) return;
 
   const technicians = await getTechnicians();
   const tech = technicianId ? technicians.find((t) => t.id === technicianId) : null;
@@ -3469,14 +3477,14 @@ export async function reassignRequest(formData: FormData) {
 
 export async function changeRequestStatus(formData: FormData) {
   const user = await getCurrentUser();
-  if (!canManageHomeServiceRequests(user)) return;
+  if (!canManageHomeServiceRequests(user) && !canManagePickupDelivery(user)) return;
   const requestId = str(formData, "id");
   const statusId = str(formData, "statusId");
   const req = await getRequestById(requestId);
   const lookups = await getLookups();
   const status = lookups.find((l) => l.id === statusId);
   if (!req || !status) return;
-  if (req.fulfillmentMode === "pickup_delivery" && !canManagePickupDelivery(user)) return;
+  if (!canManageRequestAdmin(user, req)) return;
   const statusHistory = [...req.statusHistory, { statusId, at: new Date().toISOString() }];
   const cancelled = status.label === "Cancelled";
   if (cancelled) {
@@ -3581,11 +3589,11 @@ export async function permanentlyDeleteHomeServiceRequest(formData: FormData) {
 
 export async function updateRequestNotes(formData: FormData) {
   const user = await getCurrentUser();
-  if (!canManageHomeServiceRequests(user)) return;
+  if (!canManageHomeServiceRequests(user) && !canManagePickupDelivery(user)) return;
   const requestId = str(formData, "id");
   const notes = str(formData, "adminNotes");
   const target = await getRequestById(requestId);
-  if (target?.fulfillmentMode === "pickup_delivery" && !canManagePickupDelivery(user)) return;
+  if (!target || !canManageRequestAdmin(user, target)) return;
   await query("update home_service_requests set admin_notes=$1 where id=$2", [notes, requestId]);
   await logActivity("home_service_request", requestId, `${user!.name} updated the admin notes`, user!.name);
   revalidatePath(`/admin/requests/${requestId}`);
