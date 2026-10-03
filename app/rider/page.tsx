@@ -15,6 +15,7 @@ import RiderStatusUpdateForm from "@/components/RiderStatusUpdateForm";
 import RiderLocationReporter from "@/components/RiderLocationReporter";
 import RiderBranchRedirectForm from "@/components/RiderBranchRedirectForm";
 import RiderAcceptDeclineForm from "@/components/RiderAcceptDeclineForm";
+import NavigateButtons from "@/components/NavigateButtons";
 import RiderOnDutyToggle from "@/components/RiderOnDutyToggle";
 import JobQrCode from "@/components/JobQrCode";
 import ReportExceptionForm from "@/components/ReportExceptionForm";
@@ -42,14 +43,10 @@ export default async function RiderPage() {
   ]);
   const branches = allBranches.filter((b) => b.active).map((b) => ({ id: b.id, name: b.name }));
   const branchById = (id: string | null) => (id ? allBranches.find((b) => b.id === id) ?? null : null);
-  // "Navigate" links open the phone's Google Maps app (or the website) in
-  // driving mode, straight to the customer's pinned spot when they dropped
-  // one on the booking form — a typed address alone can land on the wrong
-  // nearby building. Same for the destination branch and its Exact Pin.
-  const mapsUrl = (lat: number | null, lng: number | null, address: string) =>
-    lat !== null && lng !== null
-      ? `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=driving`
-      : `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(address)}&travelmode=driving`;
+  // NavigateButtons opens turn-by-turn directions straight to the
+  // customer's pinned spot when they dropped one on the booking form — a
+  // typed address alone can land on the wrong nearby building. Same for the
+  // destination branch and its Exact Pin.
   const customerAddress = (r: { street: string; barangay: string; city: string; province: string }) =>
     [r.street, r.barangay, r.city, r.province].filter(Boolean).join(", ");
   // The pickup leg isn't done until the device is actually at the shop, not
@@ -112,21 +109,12 @@ export default async function RiderPage() {
               </p>
               {r.landmark && <p className="text-xs text-slate-400">Landmark: {r.landmark}</p>}
               <p className="text-sm text-slate-600">{r.deviceOther || "Device not specified"}</p>
-              <div className="flex flex-wrap gap-2">
-                <a
-                  href={mapsUrl(r.lat, r.lng, customerAddress(r))}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="btn-primary inline-block !px-3 !py-1.5 text-xs"
-                >
-                  📍 Navigate in Google Maps{r.lat !== null && r.lng !== null ? "" : " (address only — no pin)"}
+              <NavigateButtons lat={r.lat} lng={r.lng} address={customerAddress(r)} label="Navigate to customer" />
+              {r.phone && (
+                <a href={`tel:${r.phone}`} className="btn-secondary inline-block !px-3 !py-1.5 text-xs">
+                  Call {r.phone}
                 </a>
-                {r.phone && (
-                  <a href={`tel:${r.phone}`} className="btn-secondary inline-block !px-3 !py-1.5 text-xs">
-                    Call {r.phone}
-                  </a>
-                )}
-              </div>
+              )}
               {!r.pickupRiderAcceptedAt ? (
                 <RiderAcceptDeclineForm requestId={r.id} onAccept={riderAcceptPickup} onDecline={riderDeclinePickup} />
               ) : (
@@ -152,21 +140,12 @@ export default async function RiderPage() {
                           <>
                             <p className="text-base font-bold text-slate-900">{dest.name} branch</p>
                             {dest.address && <p className="text-sm text-slate-600">{dest.address}</p>}
-                            <div className="flex flex-wrap items-center gap-2">
-                              <a
-                                href={mapsUrl(dest.lat, dest.lng, dest.address)}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="btn-primary inline-block !px-3 !py-1.5 text-xs"
-                              >
-                                📍 Navigate to branch
+                            <NavigateButtons lat={dest.lat} lng={dest.lng} address={dest.address} label="Navigate to branch" />
+                            {dest.contactNumber && (
+                              <a href={`tel:${dest.contactNumber}`} className="inline-block text-xs text-blue-600 hover:underline">
+                                Call branch {dest.contactNumber}
                               </a>
-                              {dest.contactNumber && (
-                                <a href={`tel:${dest.contactNumber}`} className="inline-block text-xs text-blue-600 hover:underline">
-                                  Call branch {dest.contactNumber}
-                                </a>
-                              )}
-                            </div>
+                            )}
                           </>
                         ) : (
                           <p className="text-sm text-amber-700">Not set yet — choose below, or we&apos;ll pick the nearest branch when you start the trip.</p>
@@ -217,21 +196,12 @@ export default async function RiderPage() {
               </p>
               {r.landmark && <p className="text-xs text-slate-400">Landmark: {r.landmark}</p>}
               <p className="text-sm text-slate-600">{r.deviceOther || "Device not specified"} — repaired, ready for delivery</p>
-              <div className="flex flex-wrap gap-2">
-                <a
-                  href={mapsUrl(r.lat, r.lng, customerAddress(r))}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="btn-primary inline-block !px-3 !py-1.5 text-xs"
-                >
-                  📍 Navigate in Google Maps{r.lat !== null && r.lng !== null ? "" : " (address only — no pin)"}
+              <NavigateButtons lat={r.lat} lng={r.lng} address={customerAddress(r)} label="Navigate to customer" />
+              {r.phone && (
+                <a href={`tel:${r.phone}`} className="btn-secondary inline-block !px-3 !py-1.5 text-xs">
+                  Call {r.phone}
                 </a>
-                {r.phone && (
-                  <a href={`tel:${r.phone}`} className="btn-secondary inline-block !px-3 !py-1.5 text-xs">
-                    Call {r.phone}
-                  </a>
-                )}
-              </div>
+              )}
               {!r.deliveryRiderAcceptedAt ? (
                 <RiderAcceptDeclineForm requestId={r.id} onAccept={riderAcceptDelivery} onDecline={riderDeclineDelivery} />
               ) : (
