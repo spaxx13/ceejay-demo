@@ -9,7 +9,7 @@ import {
   getRequestExceptions,
   getRequestUpdates,
   canManagePickupDelivery,
-  isBranchHidden,
+  isPickupDeliveryJobHidden,
   pickupDeliveryStage,
   PICKUP_DELIVERY_STAGE_LABELS,
 } from "@/lib/db";
@@ -92,7 +92,7 @@ export default async function PickupDeliveryDetailPage({ params }: { params: Pro
     getLookups(),
     getRequestExceptions(),
   ]);
-  if (!req || req.fulfillmentMode !== "pickup_delivery" || isBranchHidden(user, req.queueBranchId)) notFound();
+  if (!req || req.fulfillmentMode !== "pickup_delivery" || isPickupDeliveryJobHidden(user, req)) notFound();
 
   const statuses = lookups.filter((l) => l.kind === "request_status");
   const statusLabel = statuses.find((s) => s.id === req.statusId)?.label;
