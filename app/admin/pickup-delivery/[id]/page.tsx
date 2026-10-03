@@ -20,7 +20,7 @@ import UnboxingVideoRecorder from "@/components/UnboxingVideoRecorder";
 import UnboxingVideoReview from "@/components/UnboxingVideoReview";
 import RequestUpdateComposer from "@/components/RequestUpdateComposer";
 import RequestUpdatesList from "@/components/RequestUpdatesList";
-import { formatDateTime } from "@/lib/format";
+import { formatDateTime, formatDate } from "@/lib/format";
 import StatusBadge from "@/components/StatusBadge";
 import JobQrCode from "@/components/JobQrCode";
 import ReportExceptionForm from "@/components/ReportExceptionForm";
@@ -169,8 +169,10 @@ export default async function PickupDeliveryDetailPage({ params }: { params: Pro
             </span>
             <span className="text-slate-400">Landmark</span>
             <span className="text-right text-slate-600">{req.landmark || "—"}</span>
-            <span className="text-slate-400">Preferred Date</span>
-            <span className="text-right text-slate-600">{req.preferredDatetime ? formatDateTime(req.preferredDatetime) : "—"}</span>
+            <span className="text-slate-400">Preferred Pickup Date</span>
+            {/* The booking form only asks for a date — rendering it with a
+                time showed a meaningless "8:00:00 AM" (midnight UTC in PH time). */}
+            <span className="text-right text-slate-600">{req.preferredDatetime ? formatDate(req.preferredDatetime) : "—"}</span>
             <span className="text-slate-400">Distance / Fee</span>
             <span className="text-right text-slate-600">
               {req.pickupDeliveryFeePesos !== null
