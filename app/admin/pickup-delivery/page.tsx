@@ -67,6 +67,10 @@ export default async function PickupDeliveryPage({ searchParams }: { searchParam
         province: r.province,
         stage,
         riderName: deliveryRider?.name ?? pickupRider?.name ?? null,
+        // Confirmed destination once picked up; until then the nearest
+        // branch recommended at booking.
+        branchName: branches.find((b) => b.id === r.deliveredBranchId)?.name ?? null,
+        recommendedBranchName: branches.find((b) => b.id === r.pickupDeliveryNearestBranchId)?.name ?? null,
         createdAt: r.createdAt,
       };
     })
@@ -162,6 +166,10 @@ export default async function PickupDeliveryPage({ searchParams }: { searchParam
               <span className="text-right text-slate-600">{[j.city, j.province].filter(Boolean).join(", ") || "—"}</span>
               <span className="text-slate-400">Rider</span>
               <span className={j.riderName ? "text-right text-slate-600" : "text-right text-amber-700"}>{j.riderName ?? "Unassigned"}</span>
+              <span className="text-slate-400">Branch</span>
+              <span className="text-right text-slate-600">
+                {j.branchName ?? (j.recommendedBranchName ? <span className="text-blue-700">{j.recommendedBranchName} (recommended)</span> : "—")}
+              </span>
             </div>
             <div className="flex gap-1.5 pt-1">
               <Link href={`/admin/pickup-delivery/${j.id}`} className="btn-secondary flex-1 text-center !py-1.5 text-xs">
@@ -191,6 +199,7 @@ export default async function PickupDeliveryPage({ searchParams }: { searchParam
               <th className="pb-2 pr-3">Device</th>
               <th className="pb-2 pr-3">Location</th>
               <th className="pb-2 pr-3">Rider</th>
+              <th className="pb-2 pr-3">Branch</th>
               <th className="pb-2 pr-3">Stage</th>
               <th className="pb-2">Actions</th>
             </tr>
@@ -198,7 +207,7 @@ export default async function PickupDeliveryPage({ searchParams }: { searchParam
           <tbody>
             {jobsByStage.length === 0 && (
               <tr>
-                <td colSpan={7} className="py-6 text-center text-slate-400">
+                <td colSpan={8} className="py-6 text-center text-slate-400">
                   No jobs match.
                 </td>
               </tr>
@@ -211,6 +220,9 @@ export default async function PickupDeliveryPage({ searchParams }: { searchParam
                 <td className="py-3 pr-3 text-slate-500">{[j.city, j.province].filter(Boolean).join(", ") || "—"}</td>
                 <td className="py-3 pr-3 text-slate-500">
                   {j.riderName ?? <span className="text-amber-700">Unassigned</span>}
+                </td>
+                <td className="py-3 pr-3 text-slate-500">
+                  {j.branchName ?? (j.recommendedBranchName ? <span className="text-blue-700">{j.recommendedBranchName} (recommended)</span> : "—")}
                 </td>
                 <td className="py-3 pr-3">
                   <Link href={qs(j.stage)}>

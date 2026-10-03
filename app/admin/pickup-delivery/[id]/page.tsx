@@ -24,7 +24,8 @@ import { formatDateTime, formatDate } from "@/lib/format";
 import StatusBadge from "@/components/StatusBadge";
 import JobQrCode from "@/components/JobQrCode";
 import ReportExceptionForm from "@/components/ReportExceptionForm";
-import { REQUEST_EXCEPTION_LABELS } from "@/lib/types";
+import { REQUEST_EXCEPTION_LABELS, type Branch } from "@/lib/types";
+import { pickupDeliveryQuote } from "@/lib/homeServiceFees";
 
 // One job's full detail — the same information Admin > Home Service
 // Requests puts on its own "View" page, so a Pickup & Delivery job looks
@@ -70,6 +71,14 @@ function RiderAssignForm({
   );
 }
 
+// Nearest pinned, active, physical branch to the customer's pin — the same
+// rule pickupDeliveryQuote() uses for the fee — for bookings made before
+// the nearest branch was stored on the request.
+function pickupDeliveryQuoteBranch(req: { lat: number | null; lng: number | null }, branches: Branch[]): Branch | undefined {
+  const q = pickupDeliveryQuote({ lat: req.lat, lng: req.lng }, branches.filter((b) => b.active && b.address));
+  return q ? branches.find((b) => b.id === q.branchId) : undefined;
+}
+
 export default async function PickupDeliveryDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const user = await getCurrentUser();
   if (!canManagePickupDelivery(user)) redirect("/admin");
@@ -92,6 +101,13 @@ export default async function PickupDeliveryDetailPage({ params }: { params: Pro
   const pickupRider = riders.find((r) => r.id === req.pickupRiderId);
   const deliveryRider = riders.find((r) => r.id === req.deliveryRiderId);
   const deliveredBranch = branches.find((b) => b.id === req.deliveredBranchId);
+  // Where the unit should go: the nearest branch computed at booking
+  // (pickup_delivery_nearest_branch_id), recomputed from pins for older
+  // bookings that predate it. Shown prominently so the admin sees it the
+  // moment a booking lands, before any rider has picked up.
+  const recommendedBranch =
+    branches.find((b) => b.id === req.pickupDeliveryNearestBranchId) ??
+    pickupDeliveryQuoteBranch(req, branches);
   const activeRiders = riders.filter((r) => r.active).map((r) => ({ id: r.id, name: r.name, onDuty: r.onDuty }));
   // Same branch-scoped technician pool as the Home Service Requests detail
   // page, scoped to wherever this job's device actually ends up (once the
@@ -173,10 +189,16 @@ export default async function PickupDeliveryDetailPage({ params }: { params: Pro
             {/* The booking form only asks for a date — rendering it with a
                 time showed a meaningless "8:00:00 AM" (midnight UTC in PH time). */}
             <span className="text-right text-slate-600">{req.preferredDatetime ? formatDate(req.preferredDatetime) : "—"}</span>
+            <span className="text-slate-400">Recommended Branch</span>
+            <span className={recommendedBranch ? "text-right font-semibold text-blue-700" : "text-right text-amber-700"}>
+              {recommendedBranch
+                ? `${recommendedBranch.name}${req.pickupDeliveryDistanceKm !== null ? ` (~${req.pickupDeliveryDistanceKm} km)` : ""}`
+                : "Can't compute — set the branch Exact Pins in Settings > Branches"}
+            </span>
             <span className="text-slate-400">Distance / Fee</span>
             <span className="text-right text-slate-600">
               {req.pickupDeliveryFeePesos !== null
-                ? `${req.pickupDeliveryDistanceKm !== null ? `~${req.pickupDeliveryDistanceKm} km from ${branches.find((b) => b.id === req.pickupDeliveryNearestBranchId)?.name ?? "nearest branch"} → ` : ""}₱${req.pickupDeliveryFeePesos.toLocaleString()}`
+                ? `${req.pickupDeliveryDistanceKm !== null ? `~${req.pickupDeliveryDistanceKm} km → ` : ""}₱${req.pickupDeliveryFeePesos.toLocaleString()}`
                 : "—"}
             </span>
             <span className="text-slate-400">P&amp;D Agreement</span>
@@ -209,12 +231,16 @@ export default async function PickupDeliveryDetailPage({ params }: { params: Pro
                 <span className="text-right font-mono text-slate-600">{req.pickupSecuritySeal}</span>
               </>
             )}
-            {deliveredBranch && (
-              <>
-                <span className="text-slate-400">Destination Branch</span>
-                <span className="text-right text-slate-600">{deliveredBranch.name}</span>
-              </>
-            )}
+            <span className="text-slate-400">Destination Branch</span>
+            <span className="text-right text-slate-600">
+              {deliveredBranch ? (
+                deliveredBranch.name
+              ) : recommendedBranch ? (
+                <span className="text-slate-400">{recommendedBranch.name} (recommended — set when the rider marks Picked Up)</span>
+              ) : (
+                "—"
+              )}
+            </span>
           </div>
         </div>
       </div>
