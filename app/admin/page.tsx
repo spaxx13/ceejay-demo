@@ -20,6 +20,7 @@ import {
   canManageHomeServiceRequests,
   requestAdminPath,
   canViewAllBranchSales,
+  canViewBranchSales,
   isBranchHidden,
 } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
@@ -120,6 +121,7 @@ export default async function AdminDashboard() {
 
   const recent = [...requests].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)).slice(0, 6);
   const requestsAccess = canManageHomeServiceRequests(user);
+  const salesAccess = canViewBranchSales(user);
 
   // Same source and scoping as Branch/Daily Sales — POS repair records only,
   // excluding cancelled jobs and anything outside this account's branches —
@@ -152,8 +154,8 @@ export default async function AdminDashboard() {
 
   const stats = [
     { label: "Today's Repairs", value: todayRecords.length, href: "/admin/pos" },
-    { label: "Today's Total", value: `₱${todayTotal.toLocaleString()}`, href: "/admin/pos" },
-    { label: "Business Share (Net)", value: peso(businessShareNetToday), href: "/admin/sales", positive: true, businessShareGated: true },
+    { label: "Today's Total", value: `₱${todayTotal.toLocaleString()}`, href: "/admin/pos", salesGated: true },
+    { label: "Business Share (Net)", value: peso(businessShareNetToday), href: "/admin/sales", positive: true, businessShareGated: true, salesGated: true },
     { label: "Pending Tickets", value: pendingTickets, href: "/admin/pos?status=pending", warn: pendingTickets > 0 },
     { label: "Home Service Requests", value: totalRequests, href: "/admin/requests", requestsGated: true },
     { label: "Unassigned Queue", value: unassigned.length, href: "/admin/requests?unassigned=1", warn: unassigned.length > 0, requestsGated: true },
@@ -162,7 +164,9 @@ export default async function AdminDashboard() {
     { label: "Active Technicians", value: activeTechs, href: "/admin/technicians", ownerOnly: true },
     { label: "Leads", value: totalLeads, href: "/admin/crm" },
     { label: "Customers", value: totalCustomers, href: "/admin/crm" },
-  ].filter((s) => (!s.requestsGated || requestsAccess) && (!s.businessShareGated || canViewAllBranchSales(user)));
+  ].filter(
+    (s) => (!s.requestsGated || requestsAccess) && (!s.businessShareGated || canViewAllBranchSales(user)) && (!s.salesGated || salesAccess)
+  );
 
   return (
     <div className="space-y-6">
@@ -199,6 +203,7 @@ export default async function AdminDashboard() {
         </Link>
       )}
 
+      {salesAccess && (
       <div className="card">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <div>
@@ -224,6 +229,7 @@ export default async function AdminDashboard() {
           View full daily breakdown →
         </Link>
       </div>
+      )}
 
       {requestsAccess && (
       <div className="card overflow-x-auto">

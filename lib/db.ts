@@ -109,6 +109,7 @@ type UserRow = {
   can_manage_requests: boolean;
   can_delete_requests: boolean;
   can_view_all_branches: boolean;
+  can_view_sales: boolean | null | undefined;
   can_access_crm: boolean;
   can_manage_walkins: boolean;
   can_manage_pickup_delivery: boolean | null | undefined;
@@ -131,6 +132,9 @@ function mapUser(r: UserRow): User {
     canManageRequests: r.can_manage_requests,
     canDeleteRequests: r.can_delete_requests,
     canViewAllBranches: r.can_view_all_branches,
+    // `?? true` so the column missing (migration 0088 not applied yet) keeps
+    // today's behaviour — everyone still sees Branch Sales.
+    canViewSales: r.can_view_sales ?? true,
     canAccessCrm: r.can_access_crm,
     canManageWalkIns: r.can_manage_walkins,
     // `?? false` so the column missing (migration 0086 not applied yet)
@@ -239,6 +243,15 @@ export function canonicalTechnicianName(rawName: string, technicians: Pick<Techn
 // Branch Sales (the aggregate stat cards, All-Branches summary, and Owner
 // Deductions). Owner admins always can; branch admins are scoped by
 // canViewAllBranches and otherwise only see their own branch card(s).
+// True when this account may open Branch Sales at all (every Sales tab) and
+// see the Dashboard's income cards / sales trend. Owner admins always can;
+// branch admins unless the owner unticked "Can access Branch Sales" — e.g.
+// a Pickup & Delivery-only admin who shouldn't see branch income.
+export function canViewBranchSales(user: Pick<User, "role" | "canViewSales"> | null) {
+  if (!user) return false;
+  return user.role === "owner_admin" || (user.role === "branch_admin" && user.canViewSales);
+}
+
 export function canViewAllBranchSales(user: Pick<User, "role" | "canViewAllBranches"> | null) {
   if (!user) return false;
   return user.role === "owner_admin" || (user.role === "branch_admin" && user.canViewAllBranches);
