@@ -12,6 +12,9 @@ export function priceCategoryForServiceType(serviceTypeLabel: string): PriceCate
   if (serviceTypeLabel === "Backhousing(Whole shell including backglass)" || serviceTypeLabel === "Back Housing (whole shell)") {
     return "backhousing";
   }
+  // Rear glass only (renamed from "Back Housing (whole shell)" in migration
+  // 0087) — its own price list, separate from the whole-housing one.
+  if (serviceTypeLabel === "Back Glass") return "back_glass";
   if (serviceTypeLabel === "Camera" || serviceTypeLabel === "Back camera replacement") return "back_camera";
   if (serviceTypeLabel === "Front Camera") return "front_camera";
   if (serviceTypeLabel === "Camera Lens") return "camera_lens";

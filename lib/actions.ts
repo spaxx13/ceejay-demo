@@ -1568,6 +1568,7 @@ export async function deleteDeviceModel(formData: FormData) {
 const PRICE_CELLS = [
   { category: "battery", quality: "", field: "battery" },
   { category: "backhousing", quality: "", field: "backhousing" },
+  { category: "back_glass", quality: "", field: "back_glass" },
   { category: "back_camera", quality: "", field: "back_camera" },
   { category: "front_camera", quality: "", field: "front_camera" },
   { category: "camera_lens", quality: "", field: "camera_lens" },
@@ -2246,6 +2247,11 @@ export type SubmitResult =
 // display order) so this reads the same regardless of how fields are
 // arranged — only whether each one is active/required, from the
 // custom_form_fields table, changes what's enforced.
+// Service types that need the customer to name the colour they want
+// (the rear glass comes in device colours). "Back Housing (whole shell)" is
+// the pre-migration-0087 label, kept so an un-migrated lookup still works.
+const BACK_GLASS_LABELS = new Set(["Back Glass", "Back Housing (whole shell)"]);
+
 export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, formData: FormData): Promise<SubmitResult> {
   // Which queue this lands in — set by which of the two duplicated forms the
   // customer came from (app/(site)/request/page.tsx), never guessed from
@@ -2485,7 +2491,7 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
     if (selectedServiceType?.label === "Screen Repair" && screenQuality !== "original" && screenQuality !== "high_quality") {
       return { ok: false, error: `Please choose Original or High Quality for the screen repair.${n}` };
     }
-    if (selectedServiceType?.label === "Back Housing (whole shell)" && !backHousingColor) {
+    if (BACK_GLASS_LABELS.has(selectedServiceType?.label ?? "") && !backHousingColor) {
       return { ok: false, error: `Please specify the back housing color you want.${n}` };
     }
 
@@ -2536,7 +2542,7 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
       issueDescription,
       photoDataUrl,
       screenQuality: selectedServiceType?.label === "Screen Repair" ? screenQuality : "",
-      backHousingColor: selectedServiceType?.label === "Back Housing (whole shell)" ? backHousingColor : "",
+      backHousingColor: BACK_GLASS_LABELS.has(selectedServiceType?.label ?? "") ? backHousingColor : "",
     });
   }
 

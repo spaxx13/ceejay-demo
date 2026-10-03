@@ -254,6 +254,7 @@ export type DeviceModel = {
 export type PriceCategory =
   | "battery"
   | "backhousing"
+  | "back_glass"
   | "back_camera"
   | "front_camera"
   | "camera_lens"
@@ -359,7 +360,7 @@ export type HomeServiceRequest = {
   vlogConsent: boolean;
   vlogBlurPreference: "blurred" | "not_blurred" | ""; // only meaningful when vlogConsent is true
   screenQuality: "original" | "high_quality" | ""; // only meaningful/required when the chosen service type is "Screen Repair"
-  backHousingColor: string; // only meaningful/required when the chosen service type is "Back Housing (whole shell)"
+  backHousingColor: string; // only meaningful/required when the chosen service type is "Back Glass" (formerly "Back Housing (whole shell)")
   reminderSentAt: string | null; // set once the daily appointment-reminder cron has texted this customer
   confirmationToken: string | null; // null when no email was captured to send the confirm link to
   confirmationExpiresAt: string | null; // BOOKING_CONFIRMATION_WINDOW_MINUTES after submission — the void-unconfirmed-requests cron cancels the request once this passes with confirmedAt still null
