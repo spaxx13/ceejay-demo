@@ -40,9 +40,13 @@ export const SUNDAY_ONLY_PROVINCES = new Set(["Pampanga", "Laguna", "Batangas"])
 // service booking (real /request form) or a Home Service quote (/quote).
 // They're still listed on the public Services page and the in-branch
 // POS/checklist flow, just not bookable/quotable as a home service.
+//
+// "Back Glass" (glass-only, needs a separation machine) is excluded here in
+// favor of "Backglass (Whole Shell Including Glass)" — the simpler
+// whole-shell swap technicians can actually do on-site.
 export const EXCLUDED_FROM_HOME_SERVICE = new Set([
   "Camera",
-  "Backhousing(Whole shell including backglass)",
+  "Back Glass",
   "Logic board problem",
   "Charging Port",
   "Front Camera",

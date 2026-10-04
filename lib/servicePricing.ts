@@ -9,7 +9,7 @@ import type { PriceCategory, ServicePrice } from "./types";
 // the service_prices table) are what's editable.
 export function priceCategoryForServiceType(serviceTypeLabel: string): PriceCategory | null {
   if (serviceTypeLabel === "Battery Replacement") return "battery";
-  if (serviceTypeLabel === "Backhousing(Whole shell including backglass)" || serviceTypeLabel === "Back Housing (whole shell)") {
+  if (serviceTypeLabel === "Backglass (Whole Shell Including Glass)" || serviceTypeLabel === "Back Housing (whole shell)") {
     return "backhousing";
   }
   // Rear glass only (renamed from "Back Housing (whole shell)" in migration

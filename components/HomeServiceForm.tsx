@@ -835,7 +835,9 @@ export default function HomeServiceForm({
                 </select>
               </div>
             )}
-            {(selectedServiceType?.label === "Back Glass" || selectedServiceType?.label === "Back Housing (whole shell)") && (
+            {(selectedServiceType?.label === "Back Glass" ||
+              selectedServiceType?.label === "Back Housing (whole shell)" ||
+              selectedServiceType?.label === "Backglass (Whole Shell Including Glass)") && (
               <div className="space-y-1.5">
                 <label className="text-xs font-medium text-slate-500">
                   Back Glass Color <span className="text-red-600">*</span>
