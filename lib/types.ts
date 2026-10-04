@@ -10,6 +10,7 @@ export type User = {
   assignedBranchIds: string[]; // branches this account is allowed to access (branch_admin scoping) — empty means no restriction, sees all
   canManageRequests: boolean; // whether this account can access/manage Home Service Requests (branch_admin scoping)
   canDeleteRequests: boolean; // whether this account can permanently delete Home Service Requests (branch_admin scoping) — owner_admin always can regardless
+  canViewSales: boolean; // whether this account can open Branch Sales at all and see the Dashboard's income cards (branch_admin scoping) — defaults to true; owner_admin always can
   canViewAllBranches: boolean; // whether this account can see combined "All Branches" sales figures (branch_admin scoping) — false means own branch(es) only
   canAccessCrm: boolean; // whether this account can access the CRM (leads/customers) section (branch_admin scoping) — owner_admin always can regardless
   canManageWalkIns: boolean; // whether this account can access/manage Walk-In Registrations (branch_admin scoping) — independent of canManageRequests, defaults to false for new/existing branch admins

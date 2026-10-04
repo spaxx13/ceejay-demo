@@ -18,6 +18,7 @@ type UserRow = {
   canManageRequests: boolean;
   canDeleteRequests: boolean;
   canViewAllBranches: boolean;
+  canViewSales: boolean;
   canAccessCrm: boolean;
   canManageWalkIns: boolean;
   canManagePickupDelivery: boolean;
@@ -340,6 +341,23 @@ export default function UserManager({
               <p className="text-[11px] text-slate-400">
                 Off by default. Separate from &quot;Can Manage Requests&quot; above — this specifically allows the irreversible Delete Request
                 action, not just reassigning/updating status.
+              </p>
+            </div>
+          )}
+          {role === "branch_admin" && (
+            <div className="space-y-1.5">
+              <label className="flex items-center gap-1.5 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  name="canViewSales"
+                  defaultChecked={editing?.canViewSales ?? true}
+                  className="h-4 w-4 rounded border-slate-300"
+                />
+                Can access Branch Sales
+              </label>
+              <p className="text-[11px] text-slate-400">
+                On by default. Uncheck to hide Branch Sales (every Sales tab) and the Dashboard&apos;s income cards and sales trend from this
+                account entirely — e.g. for an admin who should only handle Pickup &amp; Delivery and never see branch income.
               </p>
             </div>
           )}

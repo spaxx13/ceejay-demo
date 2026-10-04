@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
-import { getNotifications, canManageHomeServiceRequests, canManageWalkIns, canManagePickupDelivery, canAccessCrm, canManageRepairPricing } from "@/lib/db";
+import { getNotifications, canManageHomeServiceRequests, canManageWalkIns, canManagePickupDelivery, canViewBranchSales, canAccessCrm, canManageRepairPricing } from "@/lib/db";
 import AdminNav from "@/components/AdminNav";
 import PwaNotificationBar from "@/components/PwaNotificationBar";
 import AppBadgeSync from "@/components/AppBadgeSync";
@@ -27,6 +27,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           canManageRequests={canManageHomeServiceRequests(user)}
           canManageWalkIns={canManageWalkIns(user)}
           canManagePickupDelivery={canManagePickupDelivery(user)}
+          canViewSales={canViewBranchSales(user)}
           canAccessCrm={canAccessCrm(user)}
           canManageRepairPricing={canManageRepairPricing(user)}
           unreadCount={unreadCount}
