@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { getRepairRecords, getServiceAgreements, getRepairRecordStatus, getBranches, getRequests, getTechnicians, isBranchHidden, homeServiceBranchId, requestAdminPath } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
-import { formatDateTime } from "@/lib/format";
+import { formatDateTime, todayDateStr, toManilaDateStr } from "@/lib/format";
 import PopupLink from "@/components/PopupLink";
 import DeleteButton from "@/components/DeleteButton";
 import { deleteRepairRecord } from "@/lib/actions";
@@ -80,7 +80,9 @@ export default async function PosPage({ searchParams }: { searchParams: Promise<
         technicianName: a.technicianName,
         cost: a.cost + a.laborCost,
         status: "completed" as const,
-        date: a.completedAt.slice(0, 10),
+        // toManilaDateStr, not a raw .slice(0, 10) — see the matching note
+        // in lib/db.ts's salesByTechnicianForMode.
+        date: toManilaDateStr(a.completedAt),
         createdAt: a.completedAt,
         resumable: false,
         viewHref: req ? requestAdminPath(req) : "/admin/requests",
@@ -107,7 +109,7 @@ export default async function PosPage({ searchParams }: { searchParams: Promise<
   }
   records.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayDateStr();
   const todayRows = allRows.filter((r) => r.date === today);
   const todayTotal = todayRows.filter((r) => r.status !== "cancelled").reduce((sum, r) => sum + r.cost, 0);
   const pendingCount = allRows.filter((r) => r.status === "pending").length;

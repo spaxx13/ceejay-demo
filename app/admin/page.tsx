@@ -27,7 +27,7 @@ import { getCurrentUser } from "@/lib/auth";
 import StatusBadge from "@/components/StatusBadge";
 import SalesTrendChart from "@/components/SalesTrendChart";
 import CheckInWidget from "@/components/CheckInWidget";
-import { formatDateTime } from "@/lib/format";
+import { formatDateTime, todayDateStr } from "@/lib/format";
 
 const peso = (n: number) => `₱${Math.round(n).toLocaleString()}`;
 
@@ -70,7 +70,7 @@ export default async function AdminDashboard() {
   const pendingVisitStatusId = walkInStatuses.find((s) => s.label === "Pending Visit")?.id;
   const pendingWalkIns = walkIns.filter((r) => r.statusId === pendingVisitStatusId);
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayDateStr();
   const todayRecords = repairRecords.filter((r) => r.serviceDate === today);
   const todayTotal = todayRecords.filter((r) => !r.cancelled).reduce((sum, r) => sum + r.cost, 0);
   const pendingTickets = repairRecords.filter((r) => getRepairRecordStatus(r, agreements) === "pending").length;

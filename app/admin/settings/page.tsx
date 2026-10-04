@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { getBranches, getTechnicians, getRiders, getLookups, getUsers, getLoginLogs, getActivity } from "@/lib/db";
 import { requireRole } from "@/lib/auth";
 import SmsStatusCheck from "@/components/SmsStatusCheck";
+import { todayDateStr, toManilaDateStr } from "@/lib/format";
 
 const GROUPS = [
   {
@@ -54,7 +55,7 @@ export default async function SettingsHubPage() {
     getLoginLogs(),
     getActivity(),
   ]);
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayDateStr();
   const counts: Record<string, number> = {
     "/admin/branches": branches.filter((b) => b.active).length,
     "/admin/technicians": technicians.filter((t) => t.active).length,
@@ -63,8 +64,8 @@ export default async function SettingsHubPage() {
     "/admin/service-types": lookups.filter((l) => l.kind === "service_type" && l.active).length,
     "/admin/statuses": lookups.filter((l) => (l.kind === "lead_status" || l.kind === "request_status") && l.active).length,
     "/admin/users": users.filter((u) => u.active).length,
-    "/admin/login-logs": loginLogs.filter((l) => l.at.slice(0, 10) === today).length,
-    "/admin/activity-log": activity.filter((l) => l.at.slice(0, 10) === today).length,
+    "/admin/login-logs": loginLogs.filter((l) => toManilaDateStr(l.at) === today).length,
+    "/admin/activity-log": activity.filter((l) => toManilaDateStr(l.at) === today).length,
   };
   const countFor = (href: string) => counts[href] ?? null;
 

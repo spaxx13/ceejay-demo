@@ -38,6 +38,16 @@ export function toManilaDateStr(value: string | Date): string {
   return date.toLocaleDateString("en-CA", { timeZone: TIME_ZONE });
 }
 
+// A Date whose UTC getters (getUTCDate/getUTCDay/getUTCMonth/etc.) read back
+// Manila's current wall-clock date/time — for callers that need to do
+// calendar arithmetic (e.g. "this week's Monday") relative to Manila
+// "now", not the server process's own timezone (UTC on Vercel). The
+// Philippines has no DST, so a fixed +8h shift is always correct, unlike
+// Intl-based formatting this is cheap to do in plain arithmetic.
+export function manilaNow(): Date {
+  return new Date(Date.now() + 8 * 60 * 60 * 1000);
+}
+
 // Branches open at 6:00 AM — check-in before that is refused (see checkIn,
 // lib/actions.ts) and the widget hides the form rather than let someone tap
 // a button that will just silently no-op. hourCycle: "h23" is required —
