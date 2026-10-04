@@ -2272,7 +2272,7 @@ export type SubmitResult =
 // Service types that need the customer to name the colour they want
 // (the rear glass comes in device colours). "Back Housing (whole shell)" is
 // the pre-migration-0087 label, kept so an un-migrated lookup still works.
-const BACK_GLASS_LABELS = new Set(["Back Glass", "Back Housing (whole shell)"]);
+const BACK_GLASS_LABELS = new Set(["Back Glass", "Back Housing (whole shell)", "Backglass (Whole Shell Including Glass)"]);
 
 export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, formData: FormData): Promise<SubmitResult> {
   // Which queue this lands in — set by which of the two duplicated forms the

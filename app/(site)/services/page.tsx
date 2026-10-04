@@ -10,7 +10,7 @@ const DESCRIPTIONS: Record<string, string> = {
   "Diagnostic Checkup": "Not sure what's wrong? A full diagnostic pinpoints the issue before you commit to a repair.",
   "Logic board problem": "Component-level diagnosis and repair for logic board issues — no power, short circuits, or boot failures.",
   "Camera": "Blurry photos, autofocus issues, or a cracked camera lens fixed with a genuine replacement module.",
-  "Backhousing(Whole shell including backglass)": "Full back housing replacement, including the rear glass — for a cracked back or a damaged frame.",
+  "Backglass (Whole Shell Including Glass)": "Full back housing replacement, including the rear glass — for a cracked back or a damaged frame.",
   "Back Glass": "Cracked rear glass replaced on its own, in your device's colour — without changing the whole housing.",
 };
 
