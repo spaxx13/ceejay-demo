@@ -107,7 +107,7 @@ import {
   PICKUP_DELIVERY_COVERAGE_LABEL,
 } from "./homeServiceFees";
 import { getRepairQuote } from "./servicePricing";
-import { formatDate, isCheckInOpen } from "./format";
+import { formatDate, isCheckInOpen, todayDateStr, toManilaDateStr } from "./format";
 import { createCheckoutSession as createPaymongoCheckoutSession, paymongoConfigured } from "./paymongo";
 import { confirmBookingRows, type ConfirmBookingResult } from "./paymentProcessing";
 import { checkIcloudStatus } from "./sickw";
@@ -1918,7 +1918,7 @@ export async function createRepairRecordDraft(
   const partsCost = Math.max(0, Number(str(formData, "partsCost")) || 0);
   const laborCost = Math.max(0, Number(str(formData, "laborCost")) || 0);
   const otherExpenses = Math.max(0, Number(str(formData, "otherExpenses")) || 0);
-  const serviceDate = str(formData, "serviceDate") || new Date().toISOString().slice(0, 10);
+  const serviceDate = str(formData, "serviceDate") || todayDateStr();
 
   // The reference number is the highest already-used number for this year,
   // plus one — not a row count, since deleteRepairRecord() can permanently
@@ -3667,7 +3667,7 @@ export async function createExpense(formData: FormData) {
   const technicianName =
     target === "technician_final_total_sales" || target === "owner_total_sales" ? str(formData, "technicianName") || null : null;
   const branchId = str(formData, "branchId") || null;
-  const expenseDate = str(formData, "expenseDate") || new Date().toISOString().slice(0, 10);
+  const expenseDate = str(formData, "expenseDate") || todayDateStr();
   if (!description || amount <= 0 || !target || !branchId) return;
   if (target === "technician_final_total_sales" && !technicianName) return;
 
@@ -4586,7 +4586,7 @@ export async function resendReceiptEmail(_prev: ResendReceiptResult | undefined,
       await sendRepairReceiptEmail(req.email, {
         customerName: req.customerName,
         reference: req.reference,
-        serviceDate: post.completedAt.slice(0, 10),
+        serviceDate: toManilaDateStr(post.completedAt),
         deviceLabel: post.deviceLabel,
         natureOfRepair: [serviceType?.label, req.issueDescription].filter(Boolean).join(" — "),
         warrantyCoverage: post.warrantyCoverage,
@@ -4842,7 +4842,7 @@ export async function submitManualChecklist(
             await sendRepairReceiptEmail(record.customerEmail, {
               customerName: record.customerName,
               reference: record.reference,
-              serviceDate: new Date().toISOString().slice(0, 10),
+              serviceDate: todayDateStr(),
               deviceLabel: record.deviceLabel,
               natureOfRepair: record.issueDescription,
               warrantyCoverage,
@@ -4963,7 +4963,7 @@ export async function resendManualChecklistReceiptEmail(
     await sendRepairReceiptEmail(record.customerEmail, {
       customerName: record.customerName,
       reference: record.reference,
-      serviceDate: post.completedAt?.slice(0, 10) ?? record.createdAt.slice(0, 10),
+      serviceDate: toManilaDateStr(post.completedAt ?? record.createdAt),
       deviceLabel: record.deviceLabel,
       natureOfRepair: record.issueDescription,
       warrantyCoverage: post.warrantyCoverage,

@@ -1,14 +1,22 @@
 import type { HomeServiceRequest, RepairRecord, ServiceAgreement } from "./types";
+import { manilaNow, toManilaDateStr } from "./format";
 
 export type EarningsPeriod = "day" | "week" | "month";
 
 // Resolves a named period (day/week/month, anchored on `today`) to an
 // inclusive [from, to] date range (YYYY-MM-DD), or passes an explicit
 // custom range straight through when one is given.
+//
+// Anchored on manilaNow(), not a plain `new Date()` — the server process
+// itself runs in UTC (Vercel's default), so its own getDate()/getDay()/
+// getMonth() would resolve "today"/"this week"/"this month" against the
+// wrong calendar day for anything before 8:00 AM Manila.
 export function resolveEarningsRange(period: EarningsPeriod, customFrom?: string, customTo?: string): { from: string; to: string } {
   if (customFrom || customTo) return { from: customFrom || customTo!, to: customTo || customFrom! };
 
-  const now = new Date();
+  const now = manilaNow();
+  // now's own UTC getters already read Manila's wall-clock date/time (see
+  // manilaNow) — toISO below reads it back the same way for consistency.
   const toISO = (d: Date) => d.toISOString().slice(0, 10);
 
   if (period === "day") {
@@ -17,17 +25,17 @@ export function resolveEarningsRange(period: EarningsPeriod, customFrom?: string
   }
   if (period === "week") {
     // Monday-start week containing today.
-    const day = now.getDay(); // 0 = Sunday
+    const day = now.getUTCDay(); // 0 = Sunday
     const diffToMonday = (day + 6) % 7;
     const monday = new Date(now);
-    monday.setDate(now.getDate() - diffToMonday);
+    monday.setUTCDate(now.getUTCDate() - diffToMonday);
     const sunday = new Date(monday);
-    sunday.setDate(monday.getDate() + 6);
+    sunday.setUTCDate(monday.getUTCDate() + 6);
     return { from: toISO(monday), to: toISO(sunday) };
   }
   // month
-  const first = new Date(now.getFullYear(), now.getMonth(), 1);
-  const last = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  const first = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+  const last = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0));
   return { from: toISO(first), to: toISO(last) };
 }
 
@@ -130,11 +138,13 @@ export function computeTechnicianEarnings(
     );
 
   const homeServiceJobs = agreements
-    .filter((a) => a.phase === "post_repair" && a.requestId && a.technicianName.trim().toLowerCase() === name && inRange(a.completedAt.slice(0, 10)))
+    // toManilaDateStr, not a raw .slice(0, 10) — see the matching note in
+    // lib/db.ts's salesByTechnicianForMode.
+    .filter((a) => a.phase === "post_repair" && a.requestId && a.technicianName.trim().toLowerCase() === name && inRange(toManilaDateStr(a.completedAt)))
     .map((a) => {
       const source: EarningsJob["source"] = requestById.get(a.requestId!)?.fulfillmentMode === "pickup_delivery" ? "Pickup & Delivery" : "Home Service";
       return toJob(
-        a.id, source, a.reference, a.customerName, a.completedAt.slice(0, 10), a.deviceLabel || "—",
+        a.id, source, a.reference, a.customerName, toManilaDateStr(a.completedAt), a.deviceLabel || "—",
         a.cost, a.laborCost, a.partsCost, a.otherExpenses, sharePercent
       );
     });

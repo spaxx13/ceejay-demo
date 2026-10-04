@@ -10,6 +10,7 @@ import {
   homeServiceBusinessExpenses,
 } from "@/lib/db";
 import SalesTabs from "@/components/SalesTabs";
+import { todayDateStr } from "@/lib/format";
 
 const peso = (n: number) => `₱${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
@@ -23,9 +24,9 @@ export default async function HomeServiceSalesPage({ searchParams }: { searchPar
     getExpenses(),
   ]);
 
-  // Default to today so the page always opens on the most current sales —
-  // an explicit From/To filter (even a partial one) overrides this.
-  const today = new Date().toISOString().slice(0, 10);
+  // Default to today (Manila) so the page always opens on the most current
+  // sales — an explicit From/To filter (even a partial one) overrides this.
+  const today = todayDateStr();
   const hasFilter = !!(sp.from || sp.to);
   const from = hasFilter ? sp.from : today;
   const to = hasFilter ? sp.to : today;

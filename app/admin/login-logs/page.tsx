@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { getLoginLogs } from "@/lib/db";
 import { requireRole } from "@/lib/auth";
 import SettingsTabs from "@/components/SettingsTabs";
-import { formatDateTime } from "@/lib/format";
+import { formatDateTime, todayDateStr, toManilaDateStr } from "@/lib/format";
 import type { Role } from "@/lib/types";
 
 const ROLE_LABELS: Record<Role, string> = {
@@ -21,15 +21,15 @@ export default async function LoginLogsPage({ searchParams }: { searchParams: Pr
 
   let logs = [...allLogs];
   if (sp.role) logs = logs.filter((l) => l.role === sp.role);
-  if (sp.from) logs = logs.filter((l) => l.at.slice(0, 10) >= sp.from!);
-  if (sp.to) logs = logs.filter((l) => l.at.slice(0, 10) <= sp.to!);
+  if (sp.from) logs = logs.filter((l) => toManilaDateStr(l.at) >= sp.from!);
+  if (sp.to) logs = logs.filter((l) => toManilaDateStr(l.at) <= sp.to!);
   if (sp.q) {
     const q = sp.q.toLowerCase();
     logs = logs.filter((l) => l.userName.toLowerCase().includes(q) || l.userEmail.toLowerCase().includes(q));
   }
 
-  const today = new Date().toISOString().slice(0, 10);
-  const todayLogs = allLogs.filter((l) => l.at.slice(0, 10) === today);
+  const today = todayDateStr();
+  const todayLogs = allLogs.filter((l) => toManilaDateStr(l.at) === today);
   const uniqueStaffToday = new Set(todayLogs.map((l) => l.userId ?? l.userEmail)).size;
 
   return (
