@@ -50,6 +50,13 @@ export const EXCLUDED_FROM_HOME_SERVICE = new Set([
   "Reglass",
 ]);
 
+// Repair types the owner doesn't take through Pickup & Delivery — kept off
+// that booking form's dropdown (components/HomeServiceForm.tsx), rejected
+// server-side (submitHomeServiceRequest) and sent to the native app. Still
+// bookable as Home Service / walk-in where applicable. Note "Camera" is
+// the generic entry; "Back camera replacement" / "Front Camera" stay.
+export const EXCLUDED_FROM_PICKUP_DELIVERY = new Set(["Screen Repair", "Battery Replacement", "Camera"]);
+
 // These provinces require a QR Ph down payment (via PayMongo), equal to
 // the service fee, before the booking can be confirmed — see
 // startHomeServiceDownpayment/processHomeServiceDownpayment in

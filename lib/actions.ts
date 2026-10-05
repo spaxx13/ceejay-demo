@@ -104,6 +104,7 @@ import {
   PICKUP_DELIVERY_FEE_MIN_PESOS,
   pickupDeliveryCovers,
   pointInPickupDeliveryCoverage,
+  EXCLUDED_FROM_PICKUP_DELIVERY,
   PICKUP_DELIVERY_COVERAGE_LABEL,
 } from "./homeServiceFees";
 import { getRepairQuote } from "./servicePricing";
@@ -2510,6 +2511,11 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
     if (isRequired("photo") && !photoDataUrl) return { ok: false, error: `${label("photo")} is required.${n}` };
 
     const selectedServiceType = allLookups.find((l) => l.id === serviceTypeId);
+    // Backstop for the dropdown filter: these repair types aren't taken
+    // through Pickup & Delivery (lib/homeServiceFees.ts).
+    if (fulfillmentMode === "pickup_delivery" && selectedServiceType && EXCLUDED_FROM_PICKUP_DELIVERY.has(selectedServiceType.label)) {
+      return { ok: false, error: `${selectedServiceType.label} isn't available through Pickup & Delivery — please book Home Service or visit a branch for it.${n}` };
+    }
     if (selectedServiceType?.label === "Screen Repair" && screenQuality !== "original" && screenQuality !== "high_quality") {
       return { ok: false, error: `Please choose Original or High Quality for the screen repair.${n}` };
     }
