@@ -9,6 +9,7 @@ import {
   SUNDAY_ONLY_PROVINCES,
   DOWNPAYMENT_PROVINCES,
   EXCLUDED_FROM_HOME_SERVICE,
+  EXCLUDED_FROM_PICKUP_DELIVERY,
   pickupDeliveryQuote,
   PICKUP_DELIVERY_FEE_TIER_LABEL,
   PICKUP_DELIVERY_FEE_MIN_PESOS,
@@ -799,7 +800,8 @@ export default function HomeServiceForm({
             </label>
             {mode === "pickup_delivery" ? (
               <FormNotice tone="blue">
-                Since your device comes to the shop either way, every repair service is available — not just the on-site-friendly ones.
+                Your device comes to the shop, so board, port, camera-module and housing repairs are all available here. Screen, battery and
+                general camera repairs aren&apos;t offered through Pickup &amp; Delivery — book Home Service or visit a branch for those.
               </FormNotice>
             ) : (
               <FormNotice>
@@ -816,7 +818,7 @@ export default function HomeServiceForm({
             >
               <option value="">Select service type...</option>
               {serviceTypes
-                .filter((s) => mode === "pickup_delivery" || !EXCLUDED_FROM_HOME_SERVICE.has(s.label))
+                .filter((s) => (mode === "pickup_delivery" ? !EXCLUDED_FROM_PICKUP_DELIVERY.has(s.label) : !EXCLUDED_FROM_HOME_SERVICE.has(s.label)))
                 .map((s) => (
                   <option key={s.id} value={s.id}>
                     {s.label}

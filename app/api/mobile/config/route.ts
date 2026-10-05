@@ -7,6 +7,7 @@ import {
   SUNDAY_ONLY_PROVINCES,
   DOWNPAYMENT_PROVINCES,
   EXCLUDED_FROM_HOME_SERVICE,
+  EXCLUDED_FROM_PICKUP_DELIVERY,
   PICKUP_DELIVERY_FEE_TIERS,
   PICKUP_DELIVERY_FEE_MIN_PESOS,
   PICKUP_DELIVERY_ROAD_FACTOR,
@@ -44,6 +45,9 @@ export async function GET() {
         sundayOnlyProvinces: [...SUNDAY_ONLY_PROVINCES],
         downpaymentProvinces: [...DOWNPAYMENT_PROVINCES],
         excludedFromHomeService: [...EXCLUDED_FROM_HOME_SERVICE],
+        // Service types the Pickup & Delivery form must leave out of its
+        // dropdown (the server rejects them on submit too).
+        excludedFromPickupDelivery: [...EXCLUDED_FROM_PICKUP_DELIVERY],
         // Distance-tiered (lib/homeServiceFees.ts pickupDeliveryQuote):
         // straight-line km from the pickup pin to the nearest pinned branch
         // × roadFactor, then the first tier whose maxKm covers it (null =
