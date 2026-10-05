@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { getServiceAgreements, getRequests, getTechnicians, pickupDeliverySalesByTechnician, sumHomeServiceSales, canManagePickupDelivery } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import SalesTabs from "@/components/SalesTabs";
+import { todayDateStr } from "@/lib/format";
 
 const peso = (n: number) => `₱${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
@@ -17,7 +18,7 @@ export default async function PickupDeliverySalesPage({ searchParams }: { search
   const sp = await searchParams;
   const [agreements, requests, technicians] = await Promise.all([getServiceAgreements(), getRequests(), getTechnicians()]);
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayDateStr();
   const hasFilter = !!(sp.from || sp.to);
   const from = hasFilter ? sp.from : today;
   const to = hasFilter ? sp.to : today;

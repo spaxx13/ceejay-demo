@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { getManualRepairRecordById, getManualChecklistsForRecord, canViewManualRecord } from "@/lib/db";
 import { generateRepairReceiptPdf } from "@/lib/receiptPdf";
+import { toManilaDateStr } from "@/lib/format";
 
 // Regenerates the Manual Checklist & Receipt PDF on the fly, same "never
 // persisted, rebuilt fresh every view" approach as /api/admin/receipt.
@@ -20,7 +21,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   const pdfBytes = await generateRepairReceiptPdf({
     reference: record.reference,
     customerName: record.customerName,
-    serviceDate: post.completedAt?.slice(0, 10) ?? record.createdAt.slice(0, 10),
+    serviceDate: toManilaDateStr(post.completedAt ?? record.createdAt),
     deviceLabel: record.deviceLabel,
     natureOfRepair: record.issueDescription,
     warrantyCoverage: post.warrantyCoverage,

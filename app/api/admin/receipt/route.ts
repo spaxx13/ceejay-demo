@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { getRequestById, getRepairRecordById, getServiceAgreementsForRequest, getServiceAgreementsForRepairRecord, getLookups } from "@/lib/db";
 import { generateRepairReceiptPdf } from "@/lib/receiptPdf";
+import { toManilaDateStr } from "@/lib/format";
 
 // Regenerates the exact same receipt PDF that resendReceiptEmail() emails
 // out, but returns it inline for the admin/technician to view in the
@@ -43,7 +44,7 @@ export async function GET(req: NextRequest) {
     pdfBytes = await generateRepairReceiptPdf({
       customerName: hsr.customerName,
       reference: hsr.reference,
-      serviceDate: post.completedAt.slice(0, 10),
+      serviceDate: toManilaDateStr(post.completedAt),
       deviceLabel: post.deviceLabel,
       natureOfRepair: [serviceType?.label, hsr.issueDescription].filter(Boolean).join(" — "),
       warrantyCoverage: post.warrantyCoverage,

@@ -42,6 +42,7 @@ import { sendPushToUsers } from "./push";
 import { sendPushToTokens } from "./pushNotifications";
 import { sendSms, smsConfigured } from "./sms";
 import { quotedServiceFee } from "./homeServiceFees";
+import { toManilaDateStr } from "./format";
 
 // Single pooled connection, reused across invocations within the same
 // serverless instance (and across all of local dev). Uses the pooled
@@ -1236,7 +1237,10 @@ function salesByTechnicianForMode(
   mode: "on_site" | "pickup_delivery"
 ): HomeServiceSalesRow[] {
   const requestById = new Map(requests.filter((r) => r.fulfillmentMode === mode).map((r) => [r.id, r]));
-  const homeServiceJobs = agreements.filter((a) => a.phase === "post_repair" && a.requestId && inRange(a.completedAt.slice(0, 10)));
+  // toManilaDateStr, not a raw .slice(0, 10) — completedAt is a timestamptz
+  // whose own UTC calendar date silently rolls back a day for anything
+  // completed before 8:00 AM Manila, dropping it out of "today" entirely.
+  const homeServiceJobs = agreements.filter((a) => a.phase === "post_repair" && a.requestId && inRange(toManilaDateStr(a.completedAt)));
 
   type TechTotals = { name: string; count: number; totalAmount: number; partsCost: number; jobs: { deviceLabel: string; amount: number }[] };
   const totals = new Map<string, TechTotals>();

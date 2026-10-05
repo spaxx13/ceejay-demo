@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { getActivity } from "@/lib/db";
 import { requireRole } from "@/lib/auth";
 import SettingsTabs from "@/components/SettingsTabs";
-import { formatDateTime } from "@/lib/format";
+import { formatDateTime, todayDateStr, toManilaDateStr } from "@/lib/format";
 import type { ActivityLog } from "@/lib/types";
 
 const ENTITY_LABELS: Record<ActivityLog["entityType"], string> = {
@@ -46,15 +46,15 @@ export default async function ActivityLogPage({
 
   let logs = [...allLogs];
   if (sp.entityType) logs = logs.filter((l) => l.entityType === sp.entityType);
-  if (sp.from) logs = logs.filter((l) => l.at.slice(0, 10) >= sp.from!);
-  if (sp.to) logs = logs.filter((l) => l.at.slice(0, 10) <= sp.to!);
+  if (sp.from) logs = logs.filter((l) => toManilaDateStr(l.at) >= sp.from!);
+  if (sp.to) logs = logs.filter((l) => toManilaDateStr(l.at) <= sp.to!);
   if (sp.q) {
     const q = sp.q.toLowerCase();
     logs = logs.filter((l) => l.actor.toLowerCase().includes(q) || l.message.toLowerCase().includes(q));
   }
 
-  const today = new Date().toISOString().slice(0, 10);
-  const todayLogs = allLogs.filter((l) => l.at.slice(0, 10) === today);
+  const today = todayDateStr();
+  const todayLogs = allLogs.filter((l) => toManilaDateStr(l.at) === today);
 
   return (
     <div className="space-y-6">

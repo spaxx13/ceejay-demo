@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { getServiceAgreements, getRequests } from "@/lib/db";
 import SalesTabs from "@/components/SalesTabs";
-import { formatDate } from "@/lib/format";
+import { formatDate, todayDateStr, toManilaDateStr } from "@/lib/format";
 
 const peso = (n: number) => `₱${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
@@ -13,9 +13,9 @@ export default async function MaterialCostLogPage({ searchParams }: { searchPara
   // the same way it's excluded from the Sales reports and the POS log.
   const liveRequestIds = new Set(requests.map((r) => r.id));
 
-  // Default to today so the page always opens on the most current sales —
-  // an explicit From/To filter (even a partial one) overrides this.
-  const today = new Date().toISOString().slice(0, 10);
+  // Default to today (Manila) so the page always opens on the most current
+  // sales — an explicit From/To filter (even a partial one) overrides this.
+  const today = todayDateStr();
   const hasFilter = !!(sp.from || sp.to);
   const from = hasFilter ? sp.from : today;
   const to = hasFilter ? sp.to : today;
@@ -25,8 +25,10 @@ export default async function MaterialCostLogPage({ searchParams }: { searchPara
   // on a completed home service job — internal-only, never shown to the
   // customer, but kept visible here so it's easy to review even though it
   // no longer appears on the customer-facing checklist summary or receipt.
+  // toManilaDateStr, not a raw .slice(0, 10) — see the matching note in
+  // lib/db.ts's salesByTechnicianForMode.
   const entries = agreements
-    .filter((a) => a.phase === "post_repair" && a.requestId && liveRequestIds.has(a.requestId) && a.partsCost > 0 && inRange(a.completedAt.slice(0, 10)))
+    .filter((a) => a.phase === "post_repair" && a.requestId && liveRequestIds.has(a.requestId) && a.partsCost > 0 && inRange(toManilaDateStr(a.completedAt)))
     .sort((a, b) => (a.completedAt < b.completedAt ? 1 : -1));
 
   const total = entries.reduce((s, a) => s + a.partsCost, 0);
@@ -82,7 +84,7 @@ export default async function MaterialCostLogPage({ searchParams }: { searchPara
             )}
             {entries.map((a) => (
               <tr key={a.id} className="border-b border-slate-200 last:border-0">
-                <td className="py-3 pr-3 text-slate-500">{formatDate(a.completedAt.slice(0, 10))}</td>
+                <td className="py-3 pr-3 text-slate-500">{formatDate(a.completedAt)}</td>
                 <td className="py-3 pr-3 font-mono text-xs text-blue-300">{a.reference}</td>
                 <td className="py-3 pr-3 text-slate-800">{a.customerName}</td>
                 <td className="py-3 pr-3 text-slate-500">{a.technicianName || "—"}</td>

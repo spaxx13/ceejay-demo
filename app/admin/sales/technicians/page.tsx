@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getRepairRecords, getExpenses, getTechnicians, isBranchHidden, technicianSharePercent, canonicalTechnicianName } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import SalesTabs from "@/components/SalesTabs";
+import { todayDateStr } from "@/lib/format";
 
 const peso = (n: number) => `₱${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const pct = (n: number) => `${n.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`;
@@ -15,9 +16,9 @@ export default async function TechnicianSalesPage({ searchParams }: { searchPara
     getTechnicians(),
   ]);
 
-  // Default to today so the page always opens on the most current sales —
-  // an explicit From/To filter (even a partial one) overrides this.
-  const today = new Date().toISOString().slice(0, 10);
+  // Default to today (Manila) so the page always opens on the most current
+  // sales — an explicit From/To filter (even a partial one) overrides this.
+  const today = todayDateStr();
   const hasFilter = !!(sp.from || sp.to);
   const from = hasFilter ? sp.from : today;
   const to = hasFilter ? sp.to : today;
