@@ -1,10 +1,10 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { getActivity } from "@/lib/db";
+import { getActivity, getRequests, getDeletedRequests, requestAdminPath } from "@/lib/db";
 import { requireRole } from "@/lib/auth";
 import SettingsTabs from "@/components/SettingsTabs";
 import { formatDateTime, todayDateStr, toManilaDateStr } from "@/lib/format";
-import type { ActivityLog } from "@/lib/types";
+import type { ActivityLog, HomeServiceRequest } from "@/lib/types";
 
 const ENTITY_LABELS: Record<ActivityLog["entityType"], string> = {
   customer: "Customer",
@@ -22,6 +22,37 @@ const ENTITY_LABELS: Record<ActivityLog["entityType"], string> = {
   expense: "Expense",
   icloud_check: "iCloud Check",
 };
+
+// Where "View" should take you for each entity type — a record's own
+// detail page when one exists (by id), otherwise just the section that
+// manages it (these are edited inline there, with no separate id page).
+// "catalog" is left unlinked — it covers device brands/models, lookups,
+// repair pricing, and request form fields, which live on different pages
+// with no way to tell which from the entityId alone.
+const ID_PATHS: Partial<Record<ActivityLog["entityType"], (id: string) => string>> = {
+  customer: (id) => `/admin/crm/${id}`,
+  lead: (id) => `/admin/crm/${id}`,
+  walkin_request: (id) => `/admin/walk-ins/${id}`,
+  manual_checklist: (id) => `/admin/manual-checklists/${id}`,
+  repair_record: (id) => `/admin/pos/${id}`,
+};
+const SECTION_PATHS: Partial<Record<ActivityLog["entityType"], string>> = {
+  branch: "/admin/branches",
+  technician: "/admin/technicians",
+  rider: "/admin/riders",
+  user: "/admin/users",
+  site_content: "/admin/site-content",
+  expense: "/admin/sales/expenses",
+  icloud_check: "/admin/tools/icloud-checks",
+};
+
+function pathFor(log: ActivityLog, requestById: Map<string, Pick<HomeServiceRequest, "id" | "fulfillmentMode">>): string | null {
+  if (log.entityType === "home_service_request") {
+    const req = requestById.get(log.entityId);
+    return requestAdminPath({ id: log.entityId, fulfillmentMode: req?.fulfillmentMode ?? "on_site" });
+  }
+  return ID_PATHS[log.entityType]?.(log.entityId) ?? SECTION_PATHS[log.entityType] ?? null;
+}
 
 // Every admin-attributable action across the site, in one place — owner
 // only. Sourced from the same activity_log table each individual record's
@@ -42,7 +73,8 @@ export default async function ActivityLogPage({
   if (!(await requireRole("owner_admin"))) redirect("/admin");
 
   const sp = await searchParams;
-  const allLogs = await getActivity();
+  const [allLogs, requests, deletedRequests] = await Promise.all([getActivity(), getRequests(), getDeletedRequests()]);
+  const requestById = new Map([...requests, ...deletedRequests].map((r) => [r.id, r]));
 
   let logs = [...allLogs];
   if (sp.entityType) logs = logs.filter((l) => l.entityType === sp.entityType);
@@ -117,16 +149,26 @@ export default async function ActivityLogPage({
       {/* Mobile: one card per entry. */}
       <div className="space-y-2 sm:hidden">
         {logs.length === 0 && <p className="card text-center text-sm text-slate-400">No activity recorded for this filter.</p>}
-        {logs.map((l) => (
-          <div key={l.id} className="card space-y-1">
-            <div className="flex items-start justify-between gap-2">
-              <p className="text-sm font-medium text-slate-800">{l.actor}</p>
-              <span className="badge shrink-0 border border-slate-300 bg-slate-100 text-[10px] text-slate-500">{ENTITY_LABELS[l.entityType]}</span>
+        {logs.map((l) => {
+          const path = pathFor(l, requestById);
+          return (
+            <div key={l.id} className="card space-y-1">
+              <div className="flex items-start justify-between gap-2">
+                <p className="text-sm font-medium text-slate-800">{l.actor}</p>
+                <span className="badge shrink-0 border border-slate-300 bg-slate-100 text-[10px] text-slate-500">{ENTITY_LABELS[l.entityType]}</span>
+              </div>
+              <p className="text-sm text-slate-600">{l.message}</p>
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs text-slate-400">{formatDateTime(l.at)}</p>
+                {path && (
+                  <Link href={path} className="text-xs text-blue-300 hover:underline">
+                    View →
+                  </Link>
+                )}
+              </div>
             </div>
-            <p className="text-sm text-slate-600">{l.message}</p>
-            <p className="text-xs text-slate-400">{formatDateTime(l.at)}</p>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* Desktop/tablet: full table. */}
@@ -137,25 +179,36 @@ export default async function ActivityLogPage({
               <th className="pb-2 pr-3">Staff</th>
               <th className="pb-2 pr-3">Area</th>
               <th className="pb-2 pr-3">What Happened</th>
-              <th className="pb-2">Date &amp; Time</th>
+              <th className="pb-2 pr-3">Date &amp; Time</th>
+              <th className="pb-2">&nbsp;</th>
             </tr>
           </thead>
           <tbody>
             {logs.length === 0 && (
               <tr>
-                <td colSpan={4} className="py-6 text-center text-slate-400">
+                <td colSpan={5} className="py-6 text-center text-slate-400">
                   No activity recorded for this filter.
                 </td>
               </tr>
             )}
-            {logs.map((l) => (
-              <tr key={l.id} className="border-b border-slate-200 last:border-0">
-                <td className="py-3 pr-3 font-medium text-slate-800 whitespace-nowrap">{l.actor}</td>
-                <td className="py-3 pr-3 text-slate-500 whitespace-nowrap">{ENTITY_LABELS[l.entityType]}</td>
-                <td className="py-3 pr-3 text-slate-600">{l.message}</td>
-                <td className="py-3 text-slate-500 whitespace-nowrap">{formatDateTime(l.at)}</td>
-              </tr>
-            ))}
+            {logs.map((l) => {
+              const path = pathFor(l, requestById);
+              return (
+                <tr key={l.id} className="border-b border-slate-200 last:border-0">
+                  <td className="py-3 pr-3 font-medium text-slate-800 whitespace-nowrap">{l.actor}</td>
+                  <td className="py-3 pr-3 text-slate-500 whitespace-nowrap">{ENTITY_LABELS[l.entityType]}</td>
+                  <td className="py-3 pr-3 text-slate-600">{l.message}</td>
+                  <td className="py-3 pr-3 text-slate-500 whitespace-nowrap">{formatDateTime(l.at)}</td>
+                  <td className="py-3 whitespace-nowrap">
+                    {path && (
+                      <Link href={path} className="text-xs text-blue-300 hover:underline">
+                        View →
+                      </Link>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
