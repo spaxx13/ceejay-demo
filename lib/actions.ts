@@ -1649,7 +1649,16 @@ export async function saveServicePrices(formData: FormData) {
     }
   }
   if (changedCount > 0) {
-    await logActivity("catalog", "service_prices", `${user!.name} updated Repair Pricing (${changedCount} price${changedCount === 1 ? "" : "s"} changed)`, user!.name);
+    // entity_id is a uuid column — there's no single row this bulk save maps
+    // to, so a fixed nil UUID stands in for "Repair Pricing" as a whole.
+    // (A literal non-UUID string here throws at insert time, since Postgres
+    // validates the column type.)
+    await logActivity(
+      "catalog",
+      "00000000-0000-0000-0000-000000000000",
+      `${user!.name} updated Repair Pricing (${changedCount} price${changedCount === 1 ? "" : "s"} changed)`,
+      user!.name
+    );
   }
   revalidatePath("/admin/service-prices");
 }
