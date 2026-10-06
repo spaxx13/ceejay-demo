@@ -339,6 +339,7 @@ export function canViewManualRecord(
 type BranchRow = {
   id: string; name: string; address: string; contact_number: string; home_service_queue: Branch["homeServiceQueue"]; active: boolean;
   lat: number | string | null; lng: number | string | null;
+  pickup_delivery_share?: number | string | null;
 };
 // lat/lng come back as undefined (not null) when migration 0068 hasn't been
 // applied yet, and Number(undefined) is NaN — which then flows into the
@@ -354,7 +355,36 @@ function mapBranch(r: BranchRow): Branch {
   return {
     id: r.id, name: r.name, address: r.address, contactNumber: r.contact_number, homeServiceQueue: r.home_service_queue, active: r.active,
     lat: finiteOrNull(r.lat), lng: finiteOrNull(r.lng),
+    pickupDeliveryShare: Math.max(0, Math.round(finiteOrNull(r.pickup_delivery_share) ?? 0)),
   };
+}
+
+// Which branch a new Pickup & Delivery booking should be recommended to.
+// With shares set (Admin > Branches), picks the eligible branch furthest
+// below its target proportion of the last 30 days' bookings — so a
+// Cubao 80 / Greenhills 20 split lands at exactly that over time, not just
+// on average. With no shares set, returns null and the caller falls back
+// to the nearest branch.
+export async function pickPickupDeliveryBranchByShare(branches: Branch[]): Promise<Branch | null> {
+  const weighted = branches.filter((b) => b.active && b.address && b.pickupDeliveryShare > 0);
+  if (weighted.length === 0) return null;
+  const totalShare = weighted.reduce((s, b) => s + b.pickupDeliveryShare, 0);
+  const rows = await query<{ branch_id: string; n: number }>(
+    `select pickup_delivery_nearest_branch_id as branch_id, count(*)::int as n
+     from home_service_requests
+     where fulfillment_mode = 'pickup_delivery' and deleted_at is null and created_at > now() - interval '30 days'
+       and pickup_delivery_nearest_branch_id is not null
+     group by pickup_delivery_nearest_branch_id`
+  );
+  const counts = new Map(rows.map((r) => [r.branch_id, r.n]));
+  const total = weighted.reduce((s, b) => s + (counts.get(b.id) ?? 0), 0) + 1; // +1: the booking being placed
+  let best: { b: Branch; deficit: number } | null = null;
+  for (const b of weighted) {
+    const target = (b.pickupDeliveryShare / totalShare) * total;
+    const deficit = target - (counts.get(b.id) ?? 0);
+    if (!best || deficit > best.deficit) best = { b, deficit };
+  }
+  return best?.b ?? null;
 }
 
 type TechnicianRow = {

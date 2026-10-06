@@ -156,6 +156,11 @@ export type Branch = {
   // landmark for informal local place names.
   lat: number | null;
   lng: number | null;
+  // Pickup & Delivery workload share, in percent (Admin > Branches). When
+  // any branch has a share > 0, new bookings are recommended across those
+  // branches in proportion (balanced over the last 30 days) instead of
+  // purely by distance; 0 everywhere = nearest branch.
+  pickupDeliveryShare: number;
 };
 
 export type EmploymentStatus = "full_time" | "part_time" | "contractor";

@@ -105,9 +105,8 @@ export default async function PickupDeliveryDetailPage({ params }: { params: Pro
   // (pickup_delivery_nearest_branch_id), recomputed from pins for older
   // bookings that predate it. Shown prominently so the admin sees it the
   // moment a booking lands, before any rider has picked up.
-  const recommendedBranch =
-    branches.find((b) => b.id === req.pickupDeliveryNearestBranchId) ??
-    pickupDeliveryQuoteBranch(req, branches);
+  const nearestBranch = pickupDeliveryQuoteBranch(req, branches);
+  const recommendedBranch = branches.find((b) => b.id === req.pickupDeliveryNearestBranchId) ?? nearestBranch;
   const activeRiders = riders.filter((r) => r.active).map((r) => ({ id: r.id, name: r.name, onDuty: r.onDuty }));
   // Same branch-scoped technician pool as the Home Service Requests detail
   // page, scoped to wherever this job's device actually ends up (once the
@@ -192,7 +191,13 @@ export default async function PickupDeliveryDetailPage({ params }: { params: Pro
             <span className="text-slate-400">Recommended Branch</span>
             <span className={recommendedBranch ? "text-right font-semibold text-blue-700" : "text-right text-amber-700"}>
               {recommendedBranch
-                ? `${recommendedBranch.name}${req.pickupDeliveryDistanceKm !== null ? ` (~${req.pickupDeliveryDistanceKm} km)` : ""}`
+                ? `${recommendedBranch.name}${
+                    req.pickupDeliveryDistanceKm !== null && nearestBranch?.id === recommendedBranch.id
+                      ? ` (~${req.pickupDeliveryDistanceKm} km)`
+                      : nearestBranch && nearestBranch.id !== recommendedBranch.id
+                        ? ` (by branch share — nearest is ${nearestBranch.name})`
+                        : ""
+                  }`
                 : "Can't compute — set the branch Exact Pins in Settings > Branches"}
             </span>
             <span className="text-slate-400">Distance / Fee</span>

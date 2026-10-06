@@ -28,6 +28,7 @@ import {
   getUsers,
   getTechnicians,
   getBranches,
+  pickPickupDeliveryBranchByShare,
   getRiders,
   getLookups,
   getCustomers,
@@ -437,6 +438,12 @@ export async function deleteUser(formData: FormData) {
 
 // Parses an optional decimal-coordinate field (lat or lng) — blank means
 // "no exact pin set, fall back to geocoding the address text."
+// 0–100 whole percent; blank/invalid = 0 (no share).
+function shareOrZero(fd: FormData, key: string): number {
+  const n = Math.round(Number(str(fd, key)));
+  return Number.isFinite(n) ? Math.min(100, Math.max(0, n)) : 0;
+}
+
 function floatOrNull(fd: FormData, key: string): number | null {
   const raw = str(fd, key);
   if (!raw) return null;
@@ -458,11 +465,12 @@ export async function createBranch(formData: FormData): Promise<BranchSaveResult
   if (!name) return { ok: false, error: "Branch name is required." };
   const lat = floatOrNull(formData, "lat");
   const lng = floatOrNull(formData, "lng");
+  const share = shareOrZero(formData, "pickupDeliveryShare");
   let created: { id: string } | null;
   try {
     created = await queryOne<{ id: string }>(
-      "insert into branches (name, address, contact_number, lat, lng) values ($1,$2,$3,$4,$5) returning id",
-      [name, str(formData, "address"), str(formData, "contactNumber"), lat, lng]
+      "insert into branches (name, address, contact_number, lat, lng, pickup_delivery_share) values ($1,$2,$3,$4,$5,$6) returning id",
+      [name, str(formData, "address"), str(formData, "contactNumber"), lat, lng, share]
     );
   } catch (e) {
     return { ok: false, error: `Couldn't save branch: ${e instanceof Error ? e.message : String(e)}` };
@@ -486,14 +494,16 @@ export async function updateBranch(formData: FormData): Promise<BranchSaveResult
   if (!name) return { ok: false, error: "Branch name is required." };
   const lat = floatOrNull(formData, "lat");
   const lng = floatOrNull(formData, "lng");
+  const share = shareOrZero(formData, "pickupDeliveryShare");
   try {
-    await query("update branches set name=$1, address=$2, contact_number=$3, lat=$4, lng=$5 where id=$6", [
+    await query("update branches set name=$1, address=$2, contact_number=$3, lat=$4, lng=$5, pickup_delivery_share=$7 where id=$6", [
       name,
       str(formData, "address"),
       str(formData, "contactNumber"),
       lat,
       lng,
       branchId,
+      share,
     ]);
   } catch (e) {
     return { ok: false, error: `Couldn't save branch: ${e instanceof Error ? e.message : String(e)}` };
@@ -875,6 +885,10 @@ export async function riderDeclineDelivery(formData: FormData) {
 // the first active physical branch. Null only when no branch has an address.
 async function pickDestinationBranch(req: HomeServiceRequest): Promise<{ id: string; name: string } | null> {
   const physicalBranches = (await getBranches()).filter((b) => b.active && b.address);
+  // The branch recommended at booking (nearest, or the owner's share split)
+  // wins; distance is only the fallback for bookings that predate it.
+  const recommended = req.pickupDeliveryNearestBranchId ? physicalBranches.find((b) => b.id === req.pickupDeliveryNearestBranchId) : null;
+  if (recommended) return { id: recommended.id, name: recommended.name };
   const ranked = physicalBranches
     .filter((b) => b.lat !== null && b.lng !== null && req.lat !== null && req.lng !== null)
     .map((b) => ({ b, d: distanceKm({ lat: req.lat!, lng: req.lng! }, { lat: b.lat!, lng: b.lng! }) }))
@@ -2714,7 +2728,10 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
     }
     await query(
       "update home_service_requests set pickup_delivery_fee_pesos=$1, pickup_delivery_distance_km=$2, pickup_delivery_nearest_branch_id=$3 where id = any($4::uuid[])",
-      [pdFee, pdQuote?.km ?? null, pdQuote?.branchId ?? null, ids]
+      // The fee/distance stay by the nearest branch; the recommended
+      // branch follows the owner's per-branch shares when any are set
+      // (Admin > Branches), else the nearest branch.
+      [pdFee, pdQuote?.km ?? null, (await pickPickupDeliveryBranchByShare(branches))?.id ?? pdQuote?.branchId ?? null, ids]
     );
   }
 

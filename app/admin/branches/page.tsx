@@ -15,6 +15,7 @@ export default async function BranchesPage() {
     active: b.active,
     lat: b.lat,
     lng: b.lng,
+    pickupDeliveryShare: b.pickupDeliveryShare,
   }));
 
   return (
