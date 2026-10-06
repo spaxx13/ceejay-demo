@@ -1,4 +1,5 @@
 import "server-only";
+import { pickupDeliveryShareFor } from "./pickupDeliveryRouting";
 import { Pool, type QueryResultRow } from "pg";
 import type {
   User,
@@ -339,7 +340,6 @@ export function canViewManualRecord(
 type BranchRow = {
   id: string; name: string; address: string; contact_number: string; home_service_queue: Branch["homeServiceQueue"]; active: boolean;
   lat: number | string | null; lng: number | string | null;
-  pickup_delivery_share?: number | string | null;
 };
 // lat/lng come back as undefined (not null) when migration 0068 hasn't been
 // applied yet, and Number(undefined) is NaN — which then flows into the
@@ -355,20 +355,21 @@ function mapBranch(r: BranchRow): Branch {
   return {
     id: r.id, name: r.name, address: r.address, contactNumber: r.contact_number, homeServiceQueue: r.home_service_queue, active: r.active,
     lat: finiteOrNull(r.lat), lng: finiteOrNull(r.lng),
-    pickupDeliveryShare: Math.max(0, Math.round(finiteOrNull(r.pickup_delivery_share) ?? 0)),
   };
 }
 
 // Which branch a new Pickup & Delivery booking should be recommended to.
-// With shares set (Admin > Branches), picks the eligible branch furthest
-// below its target proportion of the last 30 days' bookings — so a
-// Cubao 80 / Greenhills 20 split lands at exactly that over time, not just
-// on average. With no shares set, returns null and the caller falls back
-// to the nearest branch.
+// Uses the owner's code-only share rule (lib/pickupDeliveryRouting.ts):
+// picks the eligible branch furthest below its target proportion of the
+// last 30 days' bookings — so a Cubao 80 / Greenhills 20 split lands at
+// exactly that over time, not just on average. With no shares configured
+// (or none matching an active branch), returns null and the caller falls
+// back to the nearest branch. Nothing about this is shown to admins.
 export async function pickPickupDeliveryBranchByShare(branches: Branch[]): Promise<Branch | null> {
-  const weighted = branches.filter((b) => b.active && b.address && b.pickupDeliveryShare > 0);
+  const shareOf = (b: Branch) => pickupDeliveryShareFor(b.name);
+  const weighted = branches.filter((b) => b.active && b.address && shareOf(b) > 0);
   if (weighted.length === 0) return null;
-  const totalShare = weighted.reduce((s, b) => s + b.pickupDeliveryShare, 0);
+  const totalShare = weighted.reduce((s, b) => s + shareOf(b), 0);
   const rows = await query<{ branch_id: string; n: number }>(
     `select pickup_delivery_nearest_branch_id as branch_id, count(*)::int as n
      from home_service_requests
@@ -380,7 +381,7 @@ export async function pickPickupDeliveryBranchByShare(branches: Branch[]): Promi
   const total = weighted.reduce((s, b) => s + (counts.get(b.id) ?? 0), 0) + 1; // +1: the booking being placed
   let best: { b: Branch; deficit: number } | null = null;
   for (const b of weighted) {
-    const target = (b.pickupDeliveryShare / totalShare) * total;
+    const target = (shareOf(b) / totalShare) * total;
     const deficit = target - (counts.get(b.id) ?? 0);
     if (!best || deficit > best.deficit) best = { b, deficit };
   }

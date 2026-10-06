@@ -192,11 +192,7 @@ export default async function PickupDeliveryDetailPage({ params }: { params: Pro
             <span className={recommendedBranch ? "text-right font-semibold text-blue-700" : "text-right text-amber-700"}>
               {recommendedBranch
                 ? `${recommendedBranch.name}${
-                    req.pickupDeliveryDistanceKm !== null && nearestBranch?.id === recommendedBranch.id
-                      ? ` (~${req.pickupDeliveryDistanceKm} km)`
-                      : nearestBranch && nearestBranch.id !== recommendedBranch.id
-                        ? ` (by branch share — nearest is ${nearestBranch.name})`
-                        : ""
+                    req.pickupDeliveryDistanceKm !== null && nearestBranch?.id === recommendedBranch.id ? ` (~${req.pickupDeliveryDistanceKm} km)` : ""
                   }`
                 : "Can't compute — set the branch Exact Pins in Settings > Branches"}
             </span>

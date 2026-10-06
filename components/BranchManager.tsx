@@ -14,7 +14,6 @@ type Branch = {
   active: boolean;
   lat: number | null;
   lng: number | null;
-  pickupDeliveryShare: number;
 };
 
 function PinBadge({ b }: { b: { lat: number | null; lng: number | null } }) {
@@ -84,24 +83,6 @@ export default function BranchManager({ branches }: { branches: Branch[] }) {
               <label className="text-xs font-medium text-slate-500">Contact Number</label>
               <input name="contactNumber" defaultValue={editing?.contactNumber ?? ""} className="input" placeholder="0917-100-0001" />
             </div>
-          </div>
-          <div className="space-y-1.5">
-            <label className="text-xs font-medium text-slate-500">Pickup &amp; Delivery share (%)</label>
-            <input
-              name="pickupDeliveryShare"
-              type="number"
-              min={0}
-              max={100}
-              step={1}
-              defaultValue={editing?.pickupDeliveryShare ?? 0}
-              className="input w-32"
-              placeholder="0"
-            />
-            <p className="text-[11px] text-slate-400">
-              How many of the new Pickup &amp; Delivery bookings this branch should get, e.g. Cubao 80 and Greenhills 20. Balanced over the
-              last 30 days so the split comes out exactly. Leave every branch at 0 to recommend the nearest branch instead. The fee stays
-              based on the customer&apos;s nearest branch either way.
-            </p>
           </div>
           {GOOGLE_MAPS_KEY ? (
             <MapPinPicker
@@ -183,8 +164,6 @@ export default function BranchManager({ branches }: { branches: Branch[] }) {
               <span className="text-right">
                 <PinBadge b={b} />
               </span>
-              <span className="text-slate-400">P&amp;D Share</span>
-              <span className="text-right text-slate-600">{b.pickupDeliveryShare > 0 ? `${b.pickupDeliveryShare}%` : "—"}</span>
             </div>
             <button className="btn-secondary block w-full !py-1.5 text-xs" onClick={() => setEditingId(b.id)}>
               Edit
@@ -202,7 +181,6 @@ export default function BranchManager({ branches }: { branches: Branch[] }) {
               <th className="pb-2 pr-3">Address</th>
               <th className="pb-2 pr-3">Contact</th>
               <th className="pb-2 pr-3">Map Pin</th>
-              <th className="pb-2 pr-3">P&amp;D Share</th>
               <th className="pb-2 pr-3">Status</th>
               <th className="pb-2">Actions</th>
             </tr>
@@ -210,7 +188,7 @@ export default function BranchManager({ branches }: { branches: Branch[] }) {
           <tbody>
             {branches.length === 0 && (
               <tr>
-                <td colSpan={7} className="py-6 text-center text-slate-400">
+                <td colSpan={6} className="py-6 text-center text-slate-400">
                   No branches yet. Add the first one above.
                 </td>
               </tr>
@@ -223,7 +201,6 @@ export default function BranchManager({ branches }: { branches: Branch[] }) {
                 <td className="py-3 pr-3">
                   <PinBadge b={b} />
                 </td>
-                <td className="py-3 pr-3 text-slate-500">{b.pickupDeliveryShare > 0 ? `${b.pickupDeliveryShare}%` : "—"}</td>
                 <td className="py-3 pr-3">
                   <form action={toggleBranchActive}>
                     <input type="hidden" name="id" value={b.id} />
