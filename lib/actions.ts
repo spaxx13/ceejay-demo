@@ -28,6 +28,7 @@ import {
   getUsers,
   getTechnicians,
   getBranches,
+  pickPickupDeliveryBranchByShare,
   getRiders,
   getLookups,
   getCustomers,
@@ -875,6 +876,10 @@ export async function riderDeclineDelivery(formData: FormData) {
 // the first active physical branch. Null only when no branch has an address.
 async function pickDestinationBranch(req: HomeServiceRequest): Promise<{ id: string; name: string } | null> {
   const physicalBranches = (await getBranches()).filter((b) => b.active && b.address);
+  // The branch recommended at booking (nearest, or the owner's share split)
+  // wins; distance is only the fallback for bookings that predate it.
+  const recommended = req.pickupDeliveryNearestBranchId ? physicalBranches.find((b) => b.id === req.pickupDeliveryNearestBranchId) : null;
+  if (recommended) return { id: recommended.id, name: recommended.name };
   const ranked = physicalBranches
     .filter((b) => b.lat !== null && b.lng !== null && req.lat !== null && req.lng !== null)
     .map((b) => ({ b, d: distanceKm({ lat: req.lat!, lng: req.lng! }, { lat: b.lat!, lng: b.lng! }) }))
@@ -2723,7 +2728,10 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
     }
     await query(
       "update home_service_requests set pickup_delivery_fee_pesos=$1, pickup_delivery_distance_km=$2, pickup_delivery_nearest_branch_id=$3 where id = any($4::uuid[])",
-      [pdFee, pdQuote?.km ?? null, pdQuote?.branchId ?? null, ids]
+      // The fee/distance stay by the nearest branch; the recommended
+      // branch follows the owner's code-only share rule
+      // (lib/pickupDeliveryRouting.ts) when set, else the nearest branch.
+      [pdFee, pdQuote?.km ?? null, (await pickPickupDeliveryBranchByShare(branches))?.id ?? pdQuote?.branchId ?? null, ids]
     );
   }
 

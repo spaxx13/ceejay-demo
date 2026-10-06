@@ -6,7 +6,15 @@ import MapPinPicker from "./MapPinPicker";
 
 const GOOGLE_MAPS_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 
-type Branch = { id: string; name: string; address: string; contactNumber: string; active: boolean; lat: number | null; lng: number | null };
+type Branch = {
+  id: string;
+  name: string;
+  address: string;
+  contactNumber: string;
+  active: boolean;
+  lat: number | null;
+  lng: number | null;
+};
 
 function PinBadge({ b }: { b: { lat: number | null; lng: number | null } }) {
   const pinned = b.lat !== null && b.lng !== null;

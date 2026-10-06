@@ -39,7 +39,18 @@ export async function GET() {
       deviceModels,
       formContent,
       customFields,
-      branches,
+      // Public fields only — the per-branch Pickup & Delivery share is an
+      // internal routing setting and never leaves the admin side.
+      branches: branches.map((b) => ({
+        id: b.id,
+        name: b.name,
+        address: b.address,
+        contactNumber: b.contactNumber,
+        homeServiceQueue: b.homeServiceQueue,
+        active: b.active,
+        lat: b.lat,
+        lng: b.lng,
+      })),
       businessRules: {
         provinceFees: PROVINCE_FEES,
         sundayOnlyProvinces: [...SUNDAY_ONLY_PROVINCES],
