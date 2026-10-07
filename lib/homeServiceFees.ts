@@ -90,8 +90,10 @@ export const PICKUP_DELIVERY_ROAD_FACTOR = 1.3;
 export const PICKUP_DELIVERY_COVERAGE: { provinceKey: string; province: string; cities: string[] | null }[] = [
   { provinceKey: "metro_manila", province: "Metro Manila", cities: null },
   { provinceKey: "rizal", province: "Rizal", cities: ["Cainta", "City of Antipolo", "Taytay"] },
+  { provinceKey: "bulacan", province: "Bulacan", cities: ["City of San Jose Del Monte", "City of Meycauayan", "Marilao"] },
 ];
-export const PICKUP_DELIVERY_COVERAGE_LABEL = "Metro Manila, plus Cainta, Antipolo, and Taytay in Rizal";
+export const PICKUP_DELIVERY_COVERAGE_LABEL =
+  "Metro Manila, plus Cainta, Antipolo, and Taytay in Rizal, and San Jose Del Monte, Meycauayan, and Marilao in Bulacan";
 
 // Rough outline of the same coverage area as a lat/lng polygon, for the
 // map pin: the province/city dropdowns say where the customer *claims* to
@@ -100,8 +102,12 @@ export const PICKUP_DELIVERY_COVERAGE_LABEL = "Metro Manila, plus Cainta, Antipo
 // Valenzuela, around Metro Manila's edge and out east over Antipolo; good
 // to within a km or two, which is all a "clearly outside" guard needs.
 export const PICKUP_DELIVERY_COVERAGE_POLYGON: { lat: number; lng: number }[] = [
-  { lat: 14.78, lng: 120.93 }, // Valenzuela / Caloocan NW
-  { lat: 14.79, lng: 121.06 }, // Caloocan North
+  { lat: 14.79, lng: 120.93 }, // Marilao / Meycauayan NW (Valenzuela border)
+  { lat: 14.79, lng: 120.975 }, // Marilao NE
+  { lat: 14.82, lng: 120.99 }, // San Jose Del Monte west
+  { lat: 14.9, lng: 121.03 }, // San Jose Del Monte north
+  { lat: 14.9, lng: 121.1 }, // San Jose Del Monte north-east
+  { lat: 14.82, lng: 121.13 }, // San Jose Del Monte east
   { lat: 14.76, lng: 121.12 }, // Quezon City NE (La Mesa)
   { lat: 14.73, lng: 121.18 }, // Antipolo north
   { lat: 14.72, lng: 121.3 }, // Antipolo NE
@@ -118,7 +124,7 @@ export const PICKUP_DELIVERY_COVERAGE_POLYGON: { lat: number; lng: number }[] = 
   { lat: 14.7, lng: 120.92 }, // Navotas / Valenzuela coast
 ];
 // Bounding box of the polygon — what the address search is limited to.
-export const PICKUP_DELIVERY_SEARCH_BOUNDS = { south: 14.36, west: 120.92, north: 14.79, east: 121.3 };
+export const PICKUP_DELIVERY_SEARCH_BOUNDS = { south: 14.36, west: 120.92, north: 14.9, east: 121.3 };
 
 export function pointInPickupDeliveryCoverage(lat: number, lng: number): boolean {
   // Standard ray-casting point-in-polygon.

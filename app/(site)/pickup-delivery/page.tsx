@@ -11,7 +11,7 @@ import { PICKUP_DELIVERY_COVERAGE_LABEL } from "@/lib/homeServiceFees";
 // Home Service Requests under the hood), but Pickup & Delivery gets its own
 // entry point and copy rather than a toggle buried inside the on-site form.
 // Coverage is PICKUP_DELIVERY_COVERAGE (lib/homeServiceFees.ts): Metro
-// Manila plus Cainta/Antipolo/Taytay in Rizal — HomeServiceForm trims the
+// Manila plus Cainta/Antipolo/Taytay (Rizal) and San Jose Del Monte/Meycauayan/Marilao (Bulacan) — HomeServiceForm trims the
 // address picker to that whenever mode="pickup_delivery".
 
 export default async function PickupDeliveryPage() {
