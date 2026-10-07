@@ -181,6 +181,21 @@ export async function sendQuotationEmail(
     `
     : "";
 
+  // Pickup & Delivery has no confirmation step or upfront payment any more:
+  // say so plainly, and what happens next.
+  const pdNoUpfrontBlock =
+    pickupDelivery && !opts.downpaymentRequired
+      ? `
+      <div style="margin: 16px 0; padding: 16px; border: 2px solid #0071e3; border-radius: 8px; background: #eff6ff;">
+        <p style="font-size: 14px; font-weight: 700; color: #1e3a8a; margin: 0 0 6px;">✅ Your booking is in — nothing to pay upfront</p>
+        <p style="font-size: 13px; color: #1e3a8a; margin: 0; line-height: 1.5;">
+          We're assigning a rider now and you'll get another email with your tracking link once they're on the way.
+          ${opts.serviceFee !== null ? `Your ${peso(opts.serviceFee)} Booking, Diagnostic &amp; Delivery Fee` : "The Booking, Diagnostic &amp; Delivery Fee"}
+          is paid together with the repair cost when your repaired device is delivered back to you.
+        </p>
+      </div>
+    `
+      : "";
   const downpaymentBlock =
     opts.downpaymentRequired && opts.downpaymentAmount !== null
       ? opts.fulfillmentMode === "pickup_delivery"
@@ -240,6 +255,7 @@ export async function sendQuotationEmail(
         <strong>${escapeHtml(opts.referenceList)}</strong> is attached as a PDF — ${totalLine}.
       </p>
       <ul style="font-size: 13px; padding-left: 18px; margin: 12px 0;">${deviceLines}</ul>
+      ${pdNoUpfrontBlock}
       ${downpaymentBlock}
       ${confirmationBlock}
       ${trackingBlock}

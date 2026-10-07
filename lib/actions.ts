@@ -13,7 +13,6 @@ import {
   ICLOUD_CHECK_PRICE_PESOS,
   PICKUP_DELIVERY_PUBLIC_ENABLED,
   PICKUP_DELIVERY_MOBILE_ENABLED,
-  PICKUP_DELIVERY_SKIP_PAYMENT,
   PICKUP_DELIVERY_SKIP_OTP,
 } from "@/lib/config";
 import { CHECKLIST_TEMPLATE } from "./checklist";
@@ -2466,22 +2465,24 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
   // own confirmation_token (below) needs to be distinct.
   const pendingStatus = requestStatuses.find((s) => s.label === "Pending") ?? requestStatuses[0];
   const pendingConfirmationStatus = requestStatuses.find((s) => s.label === "Pending Confirmation");
-  // Pickup & Delivery always requires its flat Booking + Diagnostic Fee
-  // (distance-tiered, see pickupDeliveryQuote) — same QR Ph down-payment gate as
-  // DOWNPAYMENT_PROVINCES, just always on instead of province-gated.
-  // TEMPORARY: PICKUP_DELIVERY_SKIP_PAYMENT bypasses this (and the email-
-  // confirmation gate below) entirely, straight to "Pending" — see
-  // lib/config.ts for why.
-  const pickupDeliverySkipPayment = (fulfillmentMode === "pickup_delivery" && PICKUP_DELIVERY_SKIP_PAYMENT) || staffPreview;
-  const requiresDownpayment = !pickupDeliverySkipPayment && (DOWNPAYMENT_PROVINCES.has(province) || fulfillmentMode === "pickup_delivery");
+  // Pickup & Delivery has no confirmation phase and no upfront payment:
+  // the booking lands in "Pending" (ready for rider assignment) the moment
+  // it's submitted. Its distance-tiered Booking, Diagnostic & Delivery Fee
+  // (pickupDeliveryQuote) is still recorded on the request and billed with
+  // the repair cost on the final receipt (requestServiceFee → labor_cost),
+  // i.e. paid on delivery. (PICKUP_DELIVERY_SKIP_PAYMENT / staffPreview are
+  // therefore moot for P&D and only kept for the config surface.)
+  const pickupDeliveryDirect = fulfillmentMode === "pickup_delivery";
+  const requiresDownpayment = !pickupDeliveryDirect && DOWNPAYMENT_PROVINCES.has(province);
   const initialStatus =
-    !pickupDeliverySkipPayment && (email || requiresDownpayment) && pendingConfirmationStatus ? pendingConfirmationStatus : pendingStatus;
+    !pickupDeliveryDirect && (email || requiresDownpayment) && pendingConfirmationStatus ? pendingConfirmationStatus : pendingStatus;
   const needsConfirmation = initialStatus.id === pendingConfirmationStatus?.id;
   // Only actually enforceable when needsConfirmation held true above (i.e.
   // a "Pending Confirmation" status exists) — otherwise there's no gate to
   // attach a down payment requirement to at all.
   const downpaymentActive = requiresDownpayment && needsConfirmation;
-  const downpaymentAmount = downpaymentActive ? (fulfillmentMode === "pickup_delivery" ? pdFee : serviceFeeAmount(province, city)) : null;
+  // Only Home Service down-payment provinces reach here (P&D never gates).
+  const downpaymentAmount = downpaymentActive ? serviceFeeAmount(province, city) : null;
   const cancelledStatus = requestStatuses.find((s) => s.label === "Cancelled");
 
   // A customer can book several devices in one submission (the "+ Add
@@ -2770,8 +2771,9 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
 
   let smsNote = "";
   if (phone && smsConfigured()) {
-    const confirmMessage =
-      createdRequests.length > 1
+    const confirmMessage = !needsConfirmation
+      ? `Hi ${name || "there"}, your Ceejay ${fulfillmentMode === "pickup_delivery" ? "Pickup & Delivery booking" : "repair request"} ${referenceList} has been received and is now in queue${fulfillmentMode === "pickup_delivery" ? " for a rider to be assigned — you'll get an email with your tracking link once they're on the way" : ""}.`
+      : createdRequests.length > 1
         ? `Hi ${name || "there"}, your Ceejay repair requests ${referenceList} have been received! Please confirm your booking within ${BOOKING_CONFIRMATION_WINDOW_MINUTES} minutes on the confirmation page shown after you submitted, or it will be automatically cancelled.`
         : `Hi ${name || "there"}, your Ceejay repair request ${referenceList} has been received! Please confirm your booking within ${BOOKING_CONFIRMATION_WINDOW_MINUTES} minutes on the confirmation page shown after you submitted, or it will be automatically cancelled.`;
     try {
