@@ -109,6 +109,16 @@ export default async function PickupDeliveryPage() {
           <p className="mt-2 text-sm text-slate-400">No need to leave home — a rider handles the trip both ways.</p>
           <p className="mt-1 text-xs text-slate-400">Available in {PICKUP_DELIVERY_COVERAGE_LABEL}.</p>
         </div>
+        <div className="rounded-xl border-2 border-amber-300 bg-amber-50 px-4 py-3 text-center">
+          <p className="text-sm font-semibold text-amber-900">📞 Please call us first before booking</p>
+          <p className="mt-1 text-sm text-amber-800">
+            Call{" "}
+            <a href="tel:09566692007" className="font-bold underline">
+              0956 669 2007
+            </a>{" "}
+            so we can confirm your device&apos;s problem and make sure Pickup &amp; Delivery is the right option for it — then book below.
+          </p>
+        </div>
         {fields.length === 0 ? (
           <p className="card text-center text-sm text-slate-400">
             This form has no active fields right now — add or re-enable some from Admin &gt; Settings &gt; Request Form.
