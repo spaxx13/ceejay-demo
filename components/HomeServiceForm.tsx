@@ -20,6 +20,7 @@ import {
   pointInPickupDeliveryCoverage,
   nextSunday,
   minPreferredDateStr,
+  pickupDeliveryMinDateStr,
 } from "@/lib/homeServiceFees";
 import dynamic from "next/dynamic";
 import PhotoUpload from "./PhotoUpload";
@@ -650,11 +651,24 @@ export default function HomeServiceForm({
             <label className="text-xs font-medium text-slate-500">
               {field.label} {asterisk}
             </label>
-            <input type="date" name="preferredDatetime" required={req} min={minPreferredDateStr()} className="input" />
+            {mode === "pickup_delivery" ? (
+              // Next-day earliest, pre-filled with tomorrow — the customer
+              // can still pick a later date.
+              <input
+                type="date"
+                name="preferredDatetime"
+                required={req}
+                min={pickupDeliveryMinDateStr()}
+                defaultValue={pickupDeliveryMinDateStr()}
+                className="input"
+              />
+            ) : (
+              <input type="date" name="preferredDatetime" required={req} min={minPreferredDateStr()} className="input" />
+            )}
             {mode === "pickup_delivery" && (
               <p className="text-xs text-slate-400">
-                Pickup happens sometime within the day you choose — we don&apos;t give a specific time estimate. Our rider will message
-                you once they&apos;re on the way.
+                Earliest pickup is tomorrow — same-day pickup isn&apos;t available. Pickup happens sometime within the day you choose; we
+                don&apos;t give a specific time estimate. Our rider will message you once they&apos;re on the way.
               </p>
             )}
           </div>
