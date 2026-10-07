@@ -107,6 +107,7 @@ import {
   pointInPickupDeliveryCoverage,
   EXCLUDED_FROM_PICKUP_DELIVERY,
   PICKUP_DELIVERY_COVERAGE_LABEL,
+  pickupDeliveryMinDateStr,
 } from "./homeServiceFees";
 import { getRepairQuote } from "./servicePricing";
 import { formatDate, isCheckInOpen, todayDateStr, toManilaDateStr } from "./format";
@@ -2428,6 +2429,10 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
   // Pampanga/Laguna/Batangas only get a home service visit once a week —
   // mirrors the min/step="7" restriction on the client's date picker, but
   // enforced here too since that's only a UI hint, not a real constraint.
+  // Pickup & Delivery: next day at the earliest (mirrors the form's min).
+  if (fulfillmentMode === "pickup_delivery" && preferredDatetime && preferredDatetime.slice(0, 10) < pickupDeliveryMinDateStr()) {
+    return { ok: false, error: "Pickup & Delivery can be booked for tomorrow at the earliest — please choose a later date." };
+  }
   if (SUNDAY_ONLY_PROVINCES.has(province) && preferredDatetime && new Date(preferredDatetime).getUTCDay() !== 0) {
     return { ok: false, error: `${label("datetime")} must be a Sunday for ${province}.` };
   }

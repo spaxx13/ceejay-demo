@@ -213,6 +213,16 @@ export function minPreferredDateStr(): string {
   return localDateStr(d);
 }
 
+// Pickup & Delivery is always booked for the next day at the earliest —
+// riders are dispatched per day, so a same-day pickup is never offered
+// regardless of the time of booking. Shared by the form (min/default date)
+// and the submit action (server-side check).
+export function pickupDeliveryMinDateStr(): string {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  return localDateStr(d);
+}
+
 // The actual flat fee (in pesos) for a given province/city, or null if the
 // province isn't in PROVINCE_FEES at all.
 export function serviceFeeAmount(province: string, city: string): number | null {
