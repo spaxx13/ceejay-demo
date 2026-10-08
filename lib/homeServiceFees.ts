@@ -151,6 +151,11 @@ export const PICKUP_DELIVERY_FEE_TIERS: { maxKm: number | null; fee: number }[] 
   { maxKm: 30, fee: 1400 },
   { maxKm: null, fee: 1600 },
 ];
+// The QR Ph down payment a Pickup & Delivery customer pays to confirm the
+// booking — a flat amount, no matter the distance tier. The rest of the
+// Booking, Diagnostic & Delivery Fee (fee − this) is paid together with the
+// repair cost when the device is delivered back.
+export const PICKUP_DELIVERY_DOWNPAYMENT_PESOS = 100;
 export const PICKUP_DELIVERY_FEE_MIN_PESOS = PICKUP_DELIVERY_FEE_TIERS[0].fee;
 export const PICKUP_DELIVERY_FEE_MAX_PESOS = PICKUP_DELIVERY_FEE_TIERS[PICKUP_DELIVERY_FEE_TIERS.length - 1].fee;
 export const PICKUP_DELIVERY_FEE_TIER_LABEL =
@@ -252,8 +257,13 @@ export function quotedServiceFee(req: {
   downpaymentAmount?: number | null;
 }): number {
   // The distance-tiered fee computed at booking; older bookings (before
-  // the column existed) only have the amount they paid, or the base tier.
-  if (req.fulfillmentMode === "pickup_delivery") return req.pickupDeliveryFeePesos ?? req.downpaymentAmount ?? PICKUP_DELIVERY_FEE_MIN_PESOS;
+  // the column existed) paid the whole flat fee upfront, so their down
+  // payment is the fee — but a flat down payment (PICKUP_DELIVERY_
+  // DOWNPAYMENT_PESOS) is not, so only trust it when it's above that.
+  if (req.fulfillmentMode === "pickup_delivery") {
+    const legacy = req.downpaymentAmount && req.downpaymentAmount > PICKUP_DELIVERY_DOWNPAYMENT_PESOS ? req.downpaymentAmount : null;
+    return req.pickupDeliveryFeePesos ?? legacy ?? PICKUP_DELIVERY_FEE_MIN_PESOS;
+  }
   return serviceFeeAmount(req.province, req.city) ?? 0;
 }
 

@@ -491,7 +491,7 @@ export async function generateQuotationPdf(opts: {
   }
   w.paragraph(
     pickupDelivery
-      ? "The Booking, Diagnostic & Delivery Fee is a single flat rate covering the rider's pickup trip, the initial diagnosis, and delivery of your repaired device back to you — it does not repeat per device, and there is nothing more to pay for delivery."
+      ? "The Booking, Diagnostic & Delivery Fee is a single fee covering the rider's pickup trip, the initial diagnosis, and delivery of your repaired device back to you — it does not repeat per device. A ₱100 down payment confirms your booking; the rest of the fee is paid together with the repair cost on delivery."
       : "The service fee is a single flat rate for this visit to your address — it does not repeat per device.",
     9
   );

@@ -186,10 +186,10 @@ export async function sendQuotationEmail(
       ? opts.fulfillmentMode === "pickup_delivery"
         ? `
       <div style="margin: 16px 0; padding: 16px; border: 2px solid #f59e0b; border-radius: 8px; background: #fffbeb;">
-        <p style="font-size: 14px; font-weight: 700; color: #92400e; margin: 0 0 6px;">💳 Booking, Diagnostic &amp; Delivery Fee required</p>
+        <p style="font-size: 14px; font-weight: 700; color: #92400e; margin: 0 0 6px;">💳 ${peso(opts.downpaymentAmount)} down payment required to confirm your booking</p>
         <p style="font-size: 13px; color: #78350f; margin: 0; line-height: 1.5;">
-          We require a ${peso(opts.downpaymentAmount)} payment to confirm your booking and assign a rider. This one payment covers the
-          pickup trip, the initial diagnosis, and delivery of your repaired device back to you — nothing more to pay when it comes back.
+          Pay the ${peso(opts.downpaymentAmount)} down payment via QR Ph to confirm your booking and have a rider assigned.
+          ${opts.serviceFee !== null && opts.serviceFee > opts.downpaymentAmount ? `It counts toward your ${peso(opts.serviceFee)} Booking, Diagnostic &amp; Delivery Fee (pickup trip, diagnosis, and delivery back to you) — the remaining ${peso(opts.serviceFee - opts.downpaymentAmount)} is paid together with the repair cost when your repaired device is delivered.` : "It covers your Booking, Diagnostic &amp; Delivery Fee."}
         </p>
       </div>
     `
@@ -524,7 +524,18 @@ export async function sendTrackingLinkEmail(
 // confirms it went through and hands over the tracking link.
 export async function sendPickupDeliveryBookingConfirmedEmail(
   to: string,
-  opts: { customerName: string; reference: string; phone: string; deviceLabel: string; preferredDate: string; address: string; amountPaid: number }
+  opts: {
+    customerName: string;
+    reference: string;
+    phone: string;
+    deviceLabel: string;
+    preferredDate: string;
+    address: string;
+    amountPaid: number;
+    // The full Booking, Diagnostic & Delivery Fee, to state the balance
+    // still due on delivery when only a down payment was paid.
+    serviceFee?: number | null;
+  }
 ) {
   const client = getClient();
   const trackingUrl = `${SITE_URL}/track?reference=${encodeURIComponent(opts.reference)}&phone=${encodeURIComponent(opts.phone)}`;
@@ -543,7 +554,11 @@ export async function sendPickupDeliveryBookingConfirmedEmail(
           confirmed. We're assigning a rider now — you'll get another email once they're on the way.
         </p>
         <p style="font-size: 13px; line-height: 1.5; color: #64748b;">
-          This payment covers pickup, diagnosis, and delivery back to you — nothing more to pay when your repaired device comes back.
+          ${
+            opts.serviceFee != null && opts.serviceFee > opts.amountPaid
+              ? `This ${peso(opts.amountPaid)} is a down payment toward your ${peso(opts.serviceFee)} Booking, Diagnostic &amp; Delivery Fee. The remaining ${peso(opts.serviceFee - opts.amountPaid)} is paid together with the repair cost when your repaired device is delivered back to you.`
+              : "This payment covers pickup, diagnosis, and delivery back to you — nothing more to pay when your repaired device comes back."
+          }
         </p>
         <table style="width: 100%; font-size: 13px; margin: 16px 0; border-collapse: collapse;">
           <tr><td style="padding: 4px 0; color: #64748b;">Job ID</td><td style="padding: 4px 0; text-align: right; font-weight: 600;">${escapeHtml(opts.reference)}</td></tr>
