@@ -21,6 +21,7 @@ import {
   nextSunday,
   minPreferredDateStr,
   pickupDeliveryMinDateStr,
+  PICKUP_DELIVERY_DOWNPAYMENT_PESOS,
 } from "@/lib/homeServiceFees";
 import dynamic from "next/dynamic";
 import PhotoUpload from "./PhotoUpload";
@@ -346,16 +347,16 @@ export default function HomeServiceForm({
         {state.downpaymentRequired && state.confirmationUrl && (
           <FormNotice tone="amber" icon="💳">
             <p className="font-semibold">
-              {mode === "pickup_delivery" ? "Booking, Diagnostic & Delivery Fee required to confirm your booking" : "Down payment required to confirm your booking"}
+              Down payment required to confirm your booking
             </p>
             <p className="mt-1">
               {mode === "pickup_delivery"
-                ? `Pickup & Delivery bookings require a ₱${(state.downpaymentAmount ?? 0).toLocaleString()}.00 Booking, Diagnostic & Delivery Fee via QR Ph before we can confirm your booking and assign a rider — this covers pickup, diagnosis, and delivery back to you, so there's nothing more to pay when your device comes back.`
+                ? `Pickup & Delivery bookings require a ₱${(state.downpaymentAmount ?? 0).toLocaleString()}.00 down payment via QR Ph before we can confirm your booking and assign a rider. It counts toward your ${state.quotation?.serviceFee ? `₱${state.quotation.serviceFee.toLocaleString()}.00 ` : ""}Booking, Diagnostic & Delivery Fee (pickup, diagnosis, and delivery back to you) — the remaining balance is paid together with the repair cost when your device is delivered back to you.`
                 : `Home Service bookings in your area require a ₱${(state.downpaymentAmount ?? 0).toLocaleString()}.00 down payment via QR Ph before we can confirm your booking.`}{" "}
               Please pay within {BOOKING_CONFIRMATION_WINDOW_MINUTES} minutes, or your request will be automatically cancelled.
             </p>
             <a href={state.confirmationUrl} className="btn-primary mt-3 inline-block">
-              {mode === "pickup_delivery" ? "Pay Booking, Diagnostic & Delivery Fee Now" : "Pay Down Payment Now"}
+              Pay Down Payment Now
             </a>
           </FormNotice>
         )}
@@ -934,7 +935,8 @@ export default function HomeServiceForm({
           A rider will pick up your device at the address below, we&apos;ll repair it at the shop, then a rider delivers it back to you.
           One Pickup &amp; Delivery Booking, Diagnostic &amp; Delivery Fee covers the whole round trip — ₱{PICKUP_DELIVERY_FEE_MIN_PESOS.toLocaleString()} to ₱
           {PICKUP_DELIVERY_FEE_MAX_PESOS.toLocaleString()} depending on how far you are from our nearest branch ({PICKUP_DELIVERY_FEE_TIER_LABEL}) —
-          pickup and delivery back are both included, nothing more to pay when it comes back.
+          pickup and delivery back are both included. A ₱{PICKUP_DELIVERY_DOWNPAYMENT_PESOS} down payment via QR Ph confirms your booking; the
+          rest is paid together with the repair cost when your device is delivered back.
         </FormNotice>
       )}
 
@@ -998,8 +1000,8 @@ export default function HomeServiceForm({
         {mode === "pickup_delivery" && (
           <p className="mt-2 font-semibold">
             {pdQuote
-              ? `Your pickup address is about ${pdQuote.km} km from our nearest branch — a ₱${pdQuote.fee.toLocaleString()}.00 Pickup & Delivery Booking, Diagnostic & Delivery Fee is required via QR Ph after phone verification, before we confirm your booking and assign a rider. This rate is for Pickup & Delivery and already covers the round trip: pickup from you, the initial diagnosis, and delivery back to you — nothing more to pay when your device comes back.`
-              : `A Pickup & Delivery Booking, Diagnostic & Delivery Fee of ₱${PICKUP_DELIVERY_FEE_MIN_PESOS.toLocaleString()}–₱${PICKUP_DELIVERY_FEE_MAX_PESOS.toLocaleString()}, depending on your distance from our nearest branch, is required via QR Ph after phone verification. These rates are for Pickup & Delivery and already cover the round trip — pickup from you and delivery back (${PICKUP_DELIVERY_FEE_TIER_LABEL}). Pin your pickup location on the map above to see your exact fee.`}
+              ? `Your pickup address is about ${pdQuote.km} km from our nearest branch — your Pickup & Delivery Booking, Diagnostic & Delivery Fee is ₱${pdQuote.fee.toLocaleString()}.00. To confirm your booking you pay a ₱${PICKUP_DELIVERY_DOWNPAYMENT_PESOS} down payment via QR Ph after phone verification; the remaining ₱${Math.max(0, pdQuote.fee - PICKUP_DELIVERY_DOWNPAYMENT_PESOS).toLocaleString()}.00 is paid together with the repair cost when your repaired device is delivered back to you. This fee is for Pickup & Delivery and covers the round trip: pickup from you, the initial diagnosis, and delivery back to you.`
+              : `A Pickup & Delivery Booking, Diagnostic & Delivery Fee of ₱${PICKUP_DELIVERY_FEE_MIN_PESOS.toLocaleString()}–₱${PICKUP_DELIVERY_FEE_MAX_PESOS.toLocaleString()}, depending on your distance from our nearest branch (${PICKUP_DELIVERY_FEE_TIER_LABEL}), covers the round trip — pickup from you and delivery back. You pay a ₱${PICKUP_DELIVERY_DOWNPAYMENT_PESOS} down payment via QR Ph after phone verification to confirm your booking; the rest is paid together with the repair cost on delivery. Pin your pickup location on the map above to see your exact fee.`}
           </p>
         )}
       </FormNotice>

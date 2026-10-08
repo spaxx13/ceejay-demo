@@ -77,6 +77,7 @@ export async function confirmBookingRows(reqs: HomeServiceRequest[]): Promise<Co
         preferredDate: first.preferredDatetime ? formatDate(first.preferredDatetime) : "To be scheduled",
         address: [first.street, first.barangay, first.city, first.province].filter(Boolean).join(", "),
         amountPaid: first.downpaymentAmount ?? 0,
+        serviceFee: first.pickupDeliveryFeePesos ?? null,
       });
     } catch {
       // Best-effort — never blocks booking confirmation.

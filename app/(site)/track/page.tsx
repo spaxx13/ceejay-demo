@@ -195,8 +195,9 @@ export default async function TrackPage({ searchParams }: { searchParams: Promis
           )}
           {stage === "ready_for_delivery" && (
             <p className="text-sm text-slate-600">
-              Repaired and ready — waiting for a delivery rider to be assigned. Your delivery fee was already included in your Booking,
-              Diagnostic &amp; Delivery Fee, so there&apos;s nothing more to pay.
+              Repaired and ready — waiting for a delivery rider to be assigned. Your delivery is already included in your Booking,
+              Diagnostic &amp; Delivery Fee; the balance of that fee (after your down payment) is paid together with the repair cost when
+              it&apos;s delivered to you.
             </p>
           )}
           {stage === "out_for_delivery" && (

@@ -109,7 +109,7 @@ export default async function ConfirmBookingPage({
             </p>
             {reqs[0].downpaymentAmount !== null && (
               <p>
-                <span className="text-slate-400">{isPickupDelivery ? "Booking, Diagnostic & Delivery Fee:" : "Down Payment:"}</span>{" "}
+                <span className="text-slate-400">{"Down Payment:"}</span>{" "}
                 <span className="font-semibold">{peso(reqs[0].downpaymentAmount)}</span>{" "}
                 {reqs[0].downpaymentStatus === "paid" ? <span className="text-green-700">(Paid)</span> : <span className="text-amber-600">(Unpaid)</span>}
               </p>
@@ -120,18 +120,18 @@ export default async function ConfirmBookingPage({
             <>
               <p className="text-sm text-slate-400">
                 {isPickupDelivery
-                  ? `Pickup & Delivery bookings require a ${peso(reqs[0].downpaymentAmount ?? 0)} Booking, Diagnostic & Delivery Fee via QR Ph before we can confirm your booking and assign a rider — this covers pickup, diagnosis, and delivery back to you.`
+                  ? `Pickup & Delivery bookings require a ${peso(reqs[0].downpaymentAmount ?? 0)} down payment via QR Ph before we can confirm your booking and assign a rider. It counts toward your Booking, Diagnostic & Delivery Fee — the remaining balance is paid together with the repair cost when your device is delivered back to you.`
                   : `Home Service bookings in your area require a ${peso(reqs[0].downpaymentAmount ?? 0)} down payment via QR Ph before we can confirm your booking${reqs.length > 1 ? "s" : ""}.`}{" "}
                 Unconfirmed bookings are automatically cancelled after the confirmation window.
               </p>
               {reqs[0].paymongoCheckoutUrl ? (
                 <a href={reqs[0].paymongoCheckoutUrl} className="btn-primary block w-full">
-                  Resume {isPickupDelivery ? "Payment" : "Down Payment"} ({peso(reqs[0].downpaymentAmount ?? 0)})
+                  Resume Down Payment ({peso(reqs[0].downpaymentAmount ?? 0)})
                 </a>
               ) : (
                 <form action={payDownpayment}>
                   <button type="submit" className="btn-primary w-full">
-                    Pay {isPickupDelivery ? "Booking, Diagnostic & Delivery Fee" : "Down Payment"} via QR Ph ({peso(reqs[0].downpaymentAmount ?? 0)})
+                    Pay Down Payment via QR Ph ({peso(reqs[0].downpaymentAmount ?? 0)})
                   </button>
                 </form>
               )}

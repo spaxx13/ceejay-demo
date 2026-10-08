@@ -108,6 +108,7 @@ import {
   EXCLUDED_FROM_PICKUP_DELIVERY,
   PICKUP_DELIVERY_COVERAGE_LABEL,
   pickupDeliveryMinDateStr,
+  PICKUP_DELIVERY_DOWNPAYMENT_PESOS,
 } from "./homeServiceFees";
 import { getRepairQuote } from "./servicePricing";
 import { formatDate, isCheckInOpen, todayDateStr, toManilaDateStr } from "./format";
@@ -2486,7 +2487,14 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
   // a "Pending Confirmation" status exists) — otherwise there's no gate to
   // attach a down payment requirement to at all.
   const downpaymentActive = requiresDownpayment && needsConfirmation;
-  const downpaymentAmount = downpaymentActive ? (fulfillmentMode === "pickup_delivery" ? pdFee : serviceFeeAmount(province, city)) : null;
+  // P&D confirms with a flat ₱100 down payment; the balance of its
+  // distance-tiered fee (pdFee, recorded on the request) is settled with the
+  // repair cost on delivery. Home Service keeps "down payment = visit fee".
+  const downpaymentAmount = downpaymentActive
+    ? fulfillmentMode === "pickup_delivery"
+      ? Math.min(PICKUP_DELIVERY_DOWNPAYMENT_PESOS, pdFee)
+      : serviceFeeAmount(province, city)
+    : null;
   const cancelledStatus = requestStatuses.find((s) => s.label === "Cancelled");
 
   // A customer can book several devices in one submission (the "+ Add
