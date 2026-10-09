@@ -274,6 +274,24 @@ export function quotedServiceFee(req: {
 // never typed by the technician: the province/city visit fee for an
 // on-site visit, the flat Pickup & Delivery fee for that mode, and ₱0 when
 // staff waived the fee (Admin > Requests > Waive Service Fee).
+// A Pickup & Delivery booking's service-fee picture for the rider/admin:
+// the full Booking, Diagnostic & Delivery Fee, what the customer already
+// paid by QR Ph (the down payment, only once it cleared), and the balance
+// still due on delivery.
+export function pickupDeliveryFeeSummary(req: {
+  province: string;
+  city: string;
+  serviceFeeWaived: boolean;
+  fulfillmentMode: "on_site" | "pickup_delivery";
+  pickupDeliveryFeePesos?: number | null;
+  downpaymentAmount?: number | null;
+  downpaymentStatus?: "not_required" | "pending" | "paid";
+}): { fee: number; paid: number; balance: number } {
+  const fee = requestServiceFee(req);
+  const paid = req.downpaymentStatus === "paid" ? Math.min(fee, req.downpaymentAmount ?? 0) : 0;
+  return { fee, paid, balance: Math.max(0, fee - paid) };
+}
+
 export function requestServiceFee(req: {
   province: string;
   city: string;

@@ -16,6 +16,7 @@ import RiderLocationReporter from "@/components/RiderLocationReporter";
 import RiderBranchRedirectForm from "@/components/RiderBranchRedirectForm";
 import RiderAcceptDeclineForm from "@/components/RiderAcceptDeclineForm";
 import NavigateButtons from "@/components/NavigateButtons";
+import { pickupDeliveryFeeSummary } from "@/lib/homeServiceFees";
 import RiderOnDutyToggle from "@/components/RiderOnDutyToggle";
 import JobQrCode from "@/components/JobQrCode";
 import ReportExceptionForm from "@/components/ReportExceptionForm";
@@ -47,6 +48,22 @@ export default async function RiderPage() {
   // customer's pinned spot when they dropped one on the booking form — a
   // typed address alone can land on the wrong nearby building. Same for the
   // destination branch and its Exact Pin.
+  const peso = (n: number) => `₱${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  // The booking's total service (Booking, Diagnostic & Delivery Fee), what
+  // the customer already paid by QR Ph, and the balance due on delivery.
+  const feeLine = (r: Parameters<typeof pickupDeliveryFeeSummary>[0]) => {
+    const f = pickupDeliveryFeeSummary(r);
+    return (
+      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+        <p>
+          Total service: <span className="text-sm font-bold text-slate-900">{peso(f.fee)}</span>
+        </p>
+        <p className="mt-0.5 text-slate-500">
+          Paid by customer {peso(f.paid)} · Balance on delivery <span className="font-semibold text-slate-700">{peso(f.balance)}</span>
+        </p>
+      </div>
+    );
+  };
   const customerAddress = (r: { street: string; barangay: string; city: string; province: string }) =>
     [r.street, r.barangay, r.city, r.province].filter(Boolean).join(", ");
   // The pickup leg isn't done until the device is actually at the shop, not
@@ -109,6 +126,7 @@ export default async function RiderPage() {
               </p>
               {r.landmark && <p className="text-xs text-slate-400">Landmark: {r.landmark}</p>}
               <p className="text-sm text-slate-600">{r.deviceOther || "Device not specified"}</p>
+              {feeLine(r)}
               <NavigateButtons lat={r.lat} lng={r.lng} address={customerAddress(r)} label="Navigate to customer" />
               {r.phone && (
                 <a href={`tel:${r.phone}`} className="btn-secondary inline-block !px-3 !py-1.5 text-xs">
@@ -196,6 +214,7 @@ export default async function RiderPage() {
               </p>
               {r.landmark && <p className="text-xs text-slate-400">Landmark: {r.landmark}</p>}
               <p className="text-sm text-slate-600">{r.deviceOther || "Device not specified"} — repaired, ready for delivery</p>
+              {feeLine(r)}
               <NavigateButtons lat={r.lat} lng={r.lng} address={customerAddress(r)} label="Navigate to customer" />
               {r.phone && (
                 <a href={`tel:${r.phone}`} className="btn-secondary inline-block !px-3 !py-1.5 text-xs">

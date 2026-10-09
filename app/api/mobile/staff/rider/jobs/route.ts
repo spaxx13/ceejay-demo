@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { SITE_URL } from "@/lib/config";
 import { getBranches, getLookups, getRequests, getRiderById, pickupDeliveryStage } from "@/lib/db";
+import { pickupDeliveryFeeSummary } from "@/lib/homeServiceFees";
 import { PICKUP_CONDITION_TEMPLATE, type HomeServiceRequest } from "@/lib/types";
 
 // The rider's My Jobs board as JSON — a mirror of app/rider/page.tsx: the
@@ -129,6 +130,11 @@ function jobDTO(r: HomeServiceRequest, leg: "pickup" | "delivery", statusLabel: 
     deliveredAt: r.deliveredAt,
     deliveredBranchId: r.deliveredBranchId,
     pickupSecuritySeal: r.pickupSecuritySeal,
+    // Total service (Booking, Diagnostic & Delivery Fee), what the customer
+    // already paid by QR Ph, and the balance due on delivery.
+    serviceFee: pickupDeliveryFeeSummary(r).fee,
+    serviceFeePaid: pickupDeliveryFeeSummary(r).paid,
+    serviceFeeBalance: pickupDeliveryFeeSummary(r).balance,
     // Package label — the same Pickup & Delivery job link JobQrCode encodes.
     qrUrl: `${SITE_URL}/admin/pickup-delivery/${r.id}`,
   };
