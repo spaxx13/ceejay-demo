@@ -12,6 +12,8 @@ import {
 import { technicianUpdateStatus } from "@/lib/actions";
 import RequestUpdateComposer from "@/components/RequestUpdateComposer";
 import RequestUpdatesList from "@/components/RequestUpdatesList";
+import EditAgreementPriceForm from "@/components/EditAgreementPriceForm";
+import { MAX_PRICE_EDITS } from "@/lib/config";
 
 // Technician-side "Repair Updates" for a Pickup & Delivery job at the shop
 // — post progress (description + photos/videos) the customer sees on
@@ -43,6 +45,11 @@ export default async function TechnicianUpdatesPage({ params }: { params: Promis
   const hasPost = agreements.some((a) => a.phase === "post_repair");
   const isAssignedTechnician = user.role === "technician" && req.assignedTechnicianId === user.technicianId;
   const inProgress = statusLabel === "In Progress";
+  const postAgreement = agreements.find((a) => a.phase === "post_repair");
+  // Same rule as the technician board's Update Status: "Pending Confirmation"
+  // and "Completed" are never set by hand (Completed happens when the
+  // Post-Repair checklist is submitted).
+  const technicianStatuses = statuses.filter((s) => (s.label !== "Pending Confirmation" && s.label !== "Completed") || s.id === req.statusId);
 
   return (
     <div className="space-y-4">
@@ -68,6 +75,39 @@ export default async function TechnicianUpdatesPage({ params }: { params: Promis
             <p className="text-xs font-semibold text-slate-700">Posted updates ({updates.length})</p>
             <RequestUpdatesList updates={updates} deletableIds={deletableIds} />
           </div>
+
+          {isAssignedTechnician && (
+            <div className="card space-y-3">
+              <form action={technicianUpdateStatus} className="space-y-1.5">
+                <input type="hidden" name="id" value={req.id} />
+                <label className="text-xs font-semibold text-slate-700">Repair status</label>
+                <select name="statusId" defaultValue={req.statusId} className="input">
+                  {technicianStatuses.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.label}
+                    </option>
+                  ))}
+                </select>
+                <textarea name="note" rows={2} className="input" placeholder="Job note (optional)" />
+                <button type="submit" className="btn-primary w-full text-sm">
+                  Update Status
+                </button>
+              </form>
+              {postAgreement && (
+                <div className="space-y-1 border-t border-slate-200 pt-3">
+                  <p className="text-xs font-semibold text-slate-700">Repair price</p>
+                  <EditAgreementPriceForm
+                    key={`${postAgreement.cost}-${postAgreement.laborCost}-${postAgreement.partsCost}-${postAgreement.priceEditCount}`}
+                    agreementId={postAgreement.id}
+                    cost={postAgreement.cost}
+                    laborCost={postAgreement.laborCost}
+                    partsCost={postAgreement.partsCost}
+                    editsRemaining={Math.max(0, MAX_PRICE_EDITS - postAgreement.priceEditCount)}
+                  />
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="card space-y-3 border-blue-200 bg-blue-50/40">
             <h2 className="text-sm font-semibold text-slate-800">What&apos;s next?</h2>

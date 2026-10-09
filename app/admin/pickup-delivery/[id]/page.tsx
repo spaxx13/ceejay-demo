@@ -10,13 +10,15 @@ import {
   getCustomFormFields,
   getRequestExceptions,
   getRequestUpdates,
+  getServiceAgreementsForRequest,
   canManagePickupDelivery,
   isPickupDeliveryJobHidden,
   pickupDeliveryStage,
   PICKUP_DELIVERY_STAGE_LABELS,
 } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
-import { assignPickupRider, assignDeliveryRider, reassignRequest, reportRequestException, resolveRequestException } from "@/lib/actions";
+import { assignPickupRider, assignDeliveryRider, reassignRequest, changeRequestStatus, reportRequestException, resolveRequestException } from "@/lib/actions";
+import EditAgreementPriceAdminForm from "@/components/EditAgreementPriceAdminForm";
 import { getUnboxingVideoUrl } from "@/lib/storage";
 import UnboxingVideoRecorder from "@/components/UnboxingVideoRecorder";
 import UnboxingVideoReview from "@/components/UnboxingVideoReview";
@@ -131,6 +133,8 @@ export default async function PickupDeliveryDetailPage({ params }: { params: Pro
   const resolvedIssues = exceptions.filter((e) => e.requestId === req.id && e.resolvedAt);
   const unboxingUrl = await getUnboxingVideoUrl(req.unboxingVideoPath);
   const updates = req.receivedAtShopAt ? await getRequestUpdates(req.id) : [];
+  const postAgreement = req.receivedAtShopAt ? (await getServiceAgreementsForRequest(req.id)).find((a) => a.phase === "post_repair") : undefined;
+  const peso = (n: number) => `₱${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
   return (
     <div className="space-y-6">
@@ -343,6 +347,46 @@ export default async function PickupDeliveryDetailPage({ params }: { params: Pro
               <p className="text-xs text-slate-400">Not recorded yet — the technician records it from their board (🎥 Record Unboxing Video), or record it here.</p>
             )}
             <UnboxingVideoRecorder requestId={req.id} existing={!!req.unboxingVideoPath} />
+          </div>
+        )}
+
+        {req.receivedAtShopAt && (
+          <form action={changeRequestStatus} className="space-y-1.5 border-t border-slate-200 pt-3">
+            <input type="hidden" name="id" value={req.id} />
+            <label className="text-xs font-semibold text-slate-500">Repair status</label>
+            <div className="flex gap-1.5">
+              <select name="statusId" defaultValue={req.statusId} className="input">
+                {statuses.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.label}
+                  </option>
+                ))}
+              </select>
+              <button type="submit" className="btn-primary shrink-0 !px-3">
+                Update
+              </button>
+            </div>
+          </form>
+        )}
+
+        {postAgreement && (
+          <div className="space-y-2 border-t border-slate-200 pt-3">
+            <p className="text-xs font-medium text-slate-500">Repair Price (from the Post-Repair Checklist)</p>
+            <div className="grid grid-cols-2 gap-y-1 text-xs">
+              <span className="text-slate-400">Repair Price</span>
+              <span className="text-right text-slate-700">{peso(postAgreement.cost)}</span>
+              <span className="text-slate-400">Parts / Material Cost</span>
+              <span className="text-right text-slate-700">{peso(postAgreement.partsCost)}</span>
+              <span className="text-slate-400">Service Fee</span>
+              <span className="text-right text-slate-700">{peso(postAgreement.laborCost)}</span>
+            </div>
+            <EditAgreementPriceAdminForm
+              key={`${postAgreement.cost}-${postAgreement.laborCost}-${postAgreement.partsCost}`}
+              agreementId={postAgreement.id}
+              cost={postAgreement.cost}
+              laborCost={postAgreement.laborCost}
+              partsCost={postAgreement.partsCost}
+            />
           </div>
         )}
 

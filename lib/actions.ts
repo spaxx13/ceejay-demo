@@ -3553,6 +3553,10 @@ export async function changeRequestStatus(formData: FormData) {
   revalidatePath("/admin/requests");
   revalidatePath(`/admin/requests/${requestId}`);
   revalidatePath("/technician");
+  if (req.fulfillmentMode === "pickup_delivery") {
+    revalidatePath("/admin/pickup-delivery");
+    revalidatePath(`/admin/pickup-delivery/${requestId}`);
+  }
   if (cancelled) {
     revalidatePath("/admin/pos");
     revalidatePath("/admin/sales/home-service");
@@ -4127,6 +4131,10 @@ export async function technicianUpdateStatus(formData: FormData) {
   revalidatePath(`/technician/requests/${requestId}/updates`);
   revalidatePath("/admin/requests");
   revalidatePath(`/admin/requests/${requestId}`);
+  if (req.fulfillmentMode === "pickup_delivery") {
+    revalidatePath("/admin/pickup-delivery");
+    revalidatePath(`/admin/pickup-delivery/${requestId}`);
+  }
   revalidatePath("/admin");
   if (cancelled) {
     revalidatePath("/admin/pos");
@@ -4547,7 +4555,7 @@ export async function updateAgreementPriceAdmin(
   formData: FormData
 ): Promise<UpdateAgreementPriceAdminResult> {
   const user = await getCurrentUser();
-  if (!canEditRepairPrice(user)) return { ok: false, error: "You don't have access to edit this." };
+  if (!user) return { ok: false, error: "You don't have access to edit this." };
 
   const agreementId = str(formData, "agreementId");
   const agreements = await getServiceAgreements();
@@ -4557,6 +4565,12 @@ export async function updateAgreementPriceAdmin(
 
   const req = await getRequestById(agreement.requestId);
   if (!req) return { ok: false, error: "Request not found." };
+  // Pickup & Delivery jobs are repaired and priced right on their own
+  // Pickup & Delivery page, so an admin with that section's access can
+  // correct the price there without also needing the separate "edit repair
+  // price" flag; every other job still needs canEditRepairPrice.
+  const canEdit = canEditRepairPrice(user) || (req.fulfillmentMode === "pickup_delivery" && canManagePickupDelivery(user));
+  if (!canEdit) return { ok: false, error: "You don't have access to edit this." };
   const hidden = req.fulfillmentMode === "pickup_delivery" ? isPickupDeliveryJobHidden(user, req) : isBranchHidden(user, req.queueBranchId);
   if (hidden) return { ok: false, error: "You don't have access to this request." };
 
@@ -4572,6 +4586,7 @@ export async function updateAgreementPriceAdmin(
     user!.name
   );
   revalidatePath(`/admin/requests/${req.id}`);
+  revalidatePath(`/admin/pickup-delivery/${req.id}`);
   revalidatePath("/admin/sales/home-service");
   revalidatePath("/admin/sales/pickup-delivery");
   return { ok: true };
