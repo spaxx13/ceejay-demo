@@ -44,6 +44,10 @@ export function resolveEarningsRange(period: EarningsPeriod, customFrom?: string
 // passing each technician's own share (from their Technician record, via
 // lib/db.ts's technicianSharePercent) into computeTechnicianEarnings below.
 export const DEFAULT_EARNINGS_SHARE_PERCENT = 50;
+// Pickup & Delivery jobs always pay the technician a flat 50% of the net,
+// regardless of their own earnings share (which still applies to POS and
+// on-site Home Service jobs).
+export const PICKUP_DELIVERY_EARNINGS_SHARE_PERCENT = 50;
 
 export type EarningsJob = {
   id: string;
@@ -145,7 +149,8 @@ export function computeTechnicianEarnings(
       const source: EarningsJob["source"] = requestById.get(a.requestId!)?.fulfillmentMode === "pickup_delivery" ? "Pickup & Delivery" : "Home Service";
       return toJob(
         a.id, source, a.reference, a.customerName, toManilaDateStr(a.completedAt), a.deviceLabel || "—",
-        a.cost, a.laborCost, a.partsCost, a.otherExpenses, sharePercent
+        a.cost, a.laborCost, a.partsCost, a.otherExpenses,
+        source === "Pickup & Delivery" ? PICKUP_DELIVERY_EARNINGS_SHARE_PERCENT : sharePercent
       );
     });
 

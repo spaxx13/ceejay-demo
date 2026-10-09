@@ -8,7 +8,7 @@ import { todayDateStr } from "@/lib/format";
 const peso = (n: number) => `₱${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 // Mirrors Sales > Home Service exactly (same peso helper, same layout, same
-// 30/70 split) but reads pickupDeliverySalesByTechnician instead of
+// 50/50 split) but reads pickupDeliverySalesByTechnician instead of
 // homeServiceSalesByTechnician — a Pickup & Delivery job never appears on
 // the Home Service tab, and an on-site home service job never appears here,
 // so the two revenue streams stay completely separate.
@@ -28,7 +28,7 @@ export default async function PickupDeliverySalesPage({ searchParams }: { search
   // Post-Repair checklist is completed. The device's repair price plus the
   // flat Pickup & Delivery fee together are the Total Amount charged to the
   // customer, minus that job's visit fee if it's currently waived, same as
-  // Sales > Home Service — for the 30/70 split, Parts/Material Cost is
+  // Sales > Home Service — for the 50/50 split, Parts/Material Cost is
   // deducted from that Total Amount to get a Net Amount.
   const rows = pickupDeliverySalesByTechnician(agreements, inRange, requests, technicians);
   const grandTotal = sumHomeServiceSales(rows);
@@ -39,7 +39,7 @@ export default async function PickupDeliverySalesPage({ searchParams }: { search
         <h1 className="text-xl font-bold text-slate-900">Pickup &amp; Delivery Sales</h1>
         <p className="mt-1 text-sm text-slate-400">
           Each technician&apos;s Pickup &amp; Delivery earnings — Total Amount is Repair Price + Pickup &amp; Delivery Fee (what the customer is
-          charged). Parts/Material Cost is deducted internally to get the Net Amount, split 30% to the business and 70% to the technician.
+          charged). Parts/Material Cost is deducted internally to get the Net Amount, split 50% to the business and 50% to the technician.
           Completely separate from Sales &gt; Home Service — no job counts in both.
         </p>
       </div>
@@ -91,9 +91,9 @@ export default async function PickupDeliverySalesPage({ searchParams }: { search
                   <span className="text-right text-red-700">−{peso(r.partsCost)}</span>
                   <span className="font-medium text-slate-500">Net Amount</span>
                   <span className="text-right font-medium text-slate-900">{peso(r.netAmount)}</span>
-                  <span className="text-green-700">Company Share (30%)</span>
+                  <span className="text-green-700">Company Share (50%)</span>
                   <span className="text-right text-green-700">{peso(r.companyShare)}</span>
-                  <span className="font-medium text-blue-300">Technician Share (70%)</span>
+                  <span className="font-medium text-blue-300">Technician Share (50%)</span>
                   <span className="text-right font-medium text-blue-300">{peso(r.technicianShare)}</span>
                 </div>
               </div>
@@ -110,9 +110,9 @@ export default async function PickupDeliverySalesPage({ searchParams }: { search
                 <span className="text-right text-red-700">−{peso(grandTotal.partsCost)}</span>
                 <span className="font-semibold text-slate-700">Net Amount</span>
                 <span className="text-right font-semibold text-slate-900">{peso(grandTotal.netAmount)}</span>
-                <span className="font-medium text-green-700">Company Share (30%)</span>
+                <span className="font-medium text-green-700">Company Share (50%)</span>
                 <span className="text-right font-medium text-green-700">{peso(grandTotal.companyShare)}</span>
-                <span className="font-medium text-blue-300">Technician Share (70%)</span>
+                <span className="font-medium text-blue-300">Technician Share (50%)</span>
                 <span className="text-right font-medium text-blue-300">{peso(grandTotal.technicianShare)}</span>
               </div>
             </div>
@@ -129,8 +129,8 @@ export default async function PickupDeliverySalesPage({ searchParams }: { search
                   <th className="pb-2 pr-3 font-medium">Total Amount</th>
                   <th className="pb-2 pr-3 font-medium">Parts/Material Cost</th>
                   <th className="pb-2 pr-3 font-medium">Net Amount</th>
-                  <th className="pb-2 pr-3 font-medium">Company Share (30%)</th>
-                  <th className="pb-2 font-medium">Technician Share (70%)</th>
+                  <th className="pb-2 pr-3 font-medium">Company Share (50%)</th>
+                  <th className="pb-2 font-medium">Technician Share (50%)</th>
                 </tr>
               </thead>
               <tbody>
