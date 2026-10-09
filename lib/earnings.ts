@@ -82,12 +82,14 @@ export type EarningsJob = {
 //   Sales, where revenue is the repair price alone and Parts/Service/Other
 //   are all deducted from it.
 //     Net = Repair Cost − Parts Cost − Service Fee − Other Expenses
-//   Home Service and Pickup & Delivery (source="Home Service" or "Pickup &
-//   Delivery"): the service fee IS billed to the customer on top of the
-//   repair price (the customer-facing Total Amount) — same as Sales > Home
-//   Service / Sales > Pickup & Delivery, which only deduct Parts/Material
-//   Cost from that Total Amount.
+//   Home Service (source="Home Service"): the service fee IS billed to the
+//   customer on top of the repair price (the customer-facing Total Amount)
+//   — same as Sales > Home Service, which only deducts Parts/Material Cost
+//   from that Total Amount.
 //     Net = (Repair Cost + Service Fee) − Parts Cost
+//   Pickup & Delivery: the fee pays for the rider's trip and is left out of
+//   the technician/owner split, same as Sales > Pickup & Delivery.
+//     Net = Repair Cost − Parts Cost
 export function toJob(
   id: string,
   source: EarningsJob["source"],
@@ -102,7 +104,14 @@ export function toJob(
   sharePercent: number
 ): EarningsJob {
   const gross = repairCost + serviceFee;
-  const net = source === "POS" ? repairCost - partsCost - serviceFee - otherExpenses : gross - partsCost;
+  // Pickup & Delivery: the fee covers the rider's trip and sits outside the
+  // technician/owner 50/50, so only the repair price (less parts) is split.
+  const net =
+    source === "POS"
+      ? repairCost - partsCost - serviceFee - otherExpenses
+      : source === "Pickup & Delivery"
+        ? repairCost - partsCost
+        : gross - partsCost;
   return {
     id, source, reference, customerName, date, deviceLabel, repairCost, serviceFee, partsCost, otherExpenses,
     gross, net, earnings: net * (sharePercent / 100),
