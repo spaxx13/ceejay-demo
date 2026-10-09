@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { SITE_URL } from "@/lib/config";
-import { getBranches, getLookups, getRequests, getRiderById, pickupDeliveryStage } from "@/lib/db";
+import { getBranches, getCustomFormFields, getDeviceModels, getLookups, getRequests, getRiderById, pickupDeliveryStage } from "@/lib/db";
+import { bookingDetailRows } from "@/lib/bookingDetails";
 import { pickupDeliveryFeeSummary } from "@/lib/homeServiceFees";
-import { PICKUP_CONDITION_TEMPLATE, type HomeServiceRequest } from "@/lib/types";
+import { PICKUP_CONDITION_TEMPLATE, type CustomFormField, type DeviceModel, type HomeServiceRequest, type LookupItem } from "@/lib/types";
 
 // The rider's My Jobs board as JSON — a mirror of app/rider/page.tsx: the
 // on-duty flag, active branches, and the two legs scoped exactly as the
@@ -82,7 +83,9 @@ function navigationFor(r: HomeServiceRequest, leg: "pickup" | "delivery", branch
   };
 }
 
-function jobDTO(r: HomeServiceRequest, leg: "pickup" | "delivery", statusLabel: string | undefined) {
+type BookingRefs = { lookups: LookupItem[]; deviceModels: DeviceModel[]; customFormFields: CustomFormField[] };
+
+function jobDTO(r: HomeServiceRequest, leg: "pickup" | "delivery", statusLabel: string | undefined, refs: BookingRefs) {
   const accepted = leg === "pickup" ? !!r.pickupRiderAcceptedAt : !!r.deliveryRiderAcceptedAt;
   const badge = !accepted
     ? "Awaiting your response"
@@ -114,6 +117,9 @@ function jobDTO(r: HomeServiceRequest, leg: "pickup" | "delivery", statusLabel: 
     lng: r.lng,
     deviceLabel: r.deviceOther || "Device not specified",
     issueDescription: r.issueDescription,
+    // Everything the customer filled in on the booking form (device, service
+    // needed, problem, extra fields) as label/value rows.
+    bookingDetails: bookingDetailRows(r, refs.lookups, refs.deviceModels, refs.customFormFields),
     preferredDatetime: r.preferredDatetime,
     createdAt: r.createdAt,
     statusLabel: statusLabel ?? "",
@@ -147,7 +153,15 @@ export async function GET() {
   }
   const riderId = user.riderId;
 
-  const [allRequests, allBranches, rider, lookups] = await Promise.all([getRequests(), getBranches(), getRiderById(riderId), getLookups()]);
+  const [allRequests, allBranches, rider, lookups, deviceModels, customFormFields] = await Promise.all([
+    getRequests(),
+    getBranches(),
+    getRiderById(riderId),
+    getLookups(),
+    getDeviceModels(),
+    getCustomFormFields(),
+  ]);
+  const refs: BookingRefs = { lookups, deviceModels, customFormFields };
   const statusLabel = (r: HomeServiceRequest) => lookups.find((l) => l.id === r.statusId)?.label;
   const byCreated = (a: HomeServiceRequest, b: HomeServiceRequest) => (a.createdAt < b.createdAt ? -1 : 1);
   // The "Bring the device to" branch — looked up across all branches (not
@@ -162,12 +176,12 @@ export async function GET() {
     .sort(byCreated)
     .map((r) => {
       const branch = destination(r);
-      return { ...jobDTO(r, "pickup", statusLabel(r)), destinationBranch: branch, navigation: navigationFor(r, "pickup", branch) };
+      return { ...jobDTO(r, "pickup", statusLabel(r), refs), destinationBranch: branch, navigation: navigationFor(r, "pickup", branch) };
     });
   const deliveries = allRequests
     .filter((r) => r.fulfillmentMode === "pickup_delivery" && r.deliveryRiderId === riderId && !r.deliveredAt)
     .sort(byCreated)
-    .map((r) => ({ ...jobDTO(r, "delivery", statusLabel(r)), navigation: navigationFor(r, "delivery", null) }));
+    .map((r) => ({ ...jobDTO(r, "delivery", statusLabel(r), refs), navigation: navigationFor(r, "delivery", null) }));
 
   return NextResponse.json(
     {
