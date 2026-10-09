@@ -1294,7 +1294,10 @@ function salesByTechnicianForMode(
     // submitChecklist), so only subtract the waived fee from what was
     // actually stored — never below zero — to avoid double-counting it.
     const waivedFee = request?.serviceFeeWaived ? quotedServiceFee(request) : 0;
-    const amount = Math.max(0, a.cost + Math.max(0, a.laborCost - waivedFee));
+    // Pickup & Delivery: the Booking, Diagnostic & Delivery Fee covers the
+    // rider's trip and is not part of the technician/owner 50/50 split, so
+    // only the repair price counts toward Total Amount there.
+    const amount = mode === "pickup_delivery" ? Math.max(0, a.cost) : Math.max(0, a.cost + Math.max(0, a.laborCost - waivedFee));
     bucket.count += 1;
     bucket.totalAmount += amount;
     bucket.partsCost += a.partsCost;

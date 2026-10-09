@@ -25,11 +25,10 @@ export default async function PickupDeliverySalesPage({ searchParams }: { search
   const inRange = (date: string) => (!from || date >= from) && (!to || date <= to);
 
   // Pickup & Delivery jobs only — a job only has revenue once its
-  // Post-Repair checklist is completed. The device's repair price plus the
-  // flat Pickup & Delivery fee together are the Total Amount charged to the
-  // customer, minus that job's visit fee if it's currently waived, same as
-  // Sales > Home Service — for the 50/50 split, Parts/Material Cost is
-  // deducted from that Total Amount to get a Net Amount.
+  // Post-Repair checklist is completed. Total Amount is the device's repair
+  // price only — the Pickup & Delivery fee pays for the rider's trip and is
+  // left out of the split. Parts/Material Cost is deducted from it to get the
+  // Net Amount, split 50/50 between the owner and the technician.
   const rows = pickupDeliverySalesByTechnician(agreements, inRange, requests, technicians);
   const grandTotal = sumHomeServiceSales(rows);
 
@@ -38,8 +37,9 @@ export default async function PickupDeliverySalesPage({ searchParams }: { search
       <div>
         <h1 className="text-xl font-bold text-slate-900">Pickup &amp; Delivery Sales</h1>
         <p className="mt-1 text-sm text-slate-400">
-          Each technician&apos;s Pickup &amp; Delivery earnings — Total Amount is Repair Price + Pickup &amp; Delivery Fee (what the customer is
-          charged). Parts/Material Cost is deducted internally to get the Net Amount, split 50% to the business and 50% to the technician.
+          Each technician&apos;s Pickup &amp; Delivery earnings — Total Amount is the Repair Price only — the Pickup &amp; Delivery Fee covers the
+          rider&apos;s trip and isn&apos;t part of the split. Parts/Material Cost is deducted internally to get the Net Amount, split 50% to the
+          business and 50% to the technician (the rider has no share in it).
           Completely separate from Sales &gt; Home Service — no job counts in both.
         </p>
       </div>
