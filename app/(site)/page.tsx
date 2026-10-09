@@ -217,6 +217,17 @@ export default async function HomePage() {
             {sc.ctaBannerButtonLabel}
           </Link>
         </div>
+        {PICKUP_DELIVERY_PUBLIC_ENABLED && (
+          <div className="card mx-auto flex max-w-4xl flex-col items-center gap-4 text-center sm:flex-row sm:justify-between sm:text-left">
+            <div>
+              <p className="text-lg font-semibold text-slate-800">Too busy to wait around?</p>
+              <p className="mt-1 text-sm text-slate-400">A rider picks up your device, we repair it at the shop, then a rider brings it back to you.</p>
+            </div>
+            <Link href="/pickup-delivery" className="btn-primary shrink-0">
+              Book Pickup &amp; Delivery
+            </Link>
+          </div>
+        )}
       </section>
     </main>
   );
