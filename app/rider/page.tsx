@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { getCurrentUser } from "@/lib/auth";
-import { getRequests, getBranches, getRiderById } from "@/lib/db";
+import { getRequests, getBranches, getRiderById, getLookups, getDeviceModels, getCustomFormFields } from "@/lib/db";
 import {
   riderUpdatePickupStatus,
   riderUpdateDeliveryStatus,
@@ -17,6 +17,8 @@ import RiderBranchRedirectForm from "@/components/RiderBranchRedirectForm";
 import RiderAcceptDeclineForm from "@/components/RiderAcceptDeclineForm";
 import NavigateButtons from "@/components/NavigateButtons";
 import { pickupDeliveryFeeSummary } from "@/lib/homeServiceFees";
+import { bookingDetailRows } from "@/lib/bookingDetails";
+import BookingDetailsCard from "@/components/BookingDetailsCard";
 import RiderOnDutyToggle from "@/components/RiderOnDutyToggle";
 import JobQrCode from "@/components/JobQrCode";
 import ReportExceptionForm from "@/components/ReportExceptionForm";
@@ -37,10 +39,13 @@ export default async function RiderPage() {
   const user = await getCurrentUser();
   const riderId = user?.riderId ?? null;
 
-  const [allRequests, allBranches, rider] = await Promise.all([
+  const [allRequests, allBranches, rider, lookups, deviceModels, customFormFields] = await Promise.all([
     riderId ? getRequests() : Promise.resolve([]),
     getBranches(),
     riderId ? getRiderById(riderId) : Promise.resolve(null),
+    getLookups(),
+    getDeviceModels(),
+    getCustomFormFields(),
   ]);
   const branches = allBranches.filter((b) => b.active).map((b) => ({ id: b.id, name: b.name }));
   const branchById = (id: string | null) => (id ? allBranches.find((b) => b.id === id) ?? null : null);
@@ -127,6 +132,7 @@ export default async function RiderPage() {
               {r.landmark && <p className="text-xs text-slate-400">Landmark: {r.landmark}</p>}
               <p className="text-sm text-slate-600">{r.deviceOther || "Device not specified"}</p>
               {feeLine(r)}
+              <BookingDetailsCard compact rows={bookingDetailRows(r, lookups, deviceModels, customFormFields)} photoDataUrl={r.photoDataUrl} />
               <NavigateButtons lat={r.lat} lng={r.lng} address={customerAddress(r)} label="Navigate to customer" />
               {r.phone && (
                 <a href={`tel:${r.phone}`} className="btn-secondary inline-block !px-3 !py-1.5 text-xs">
@@ -215,6 +221,7 @@ export default async function RiderPage() {
               {r.landmark && <p className="text-xs text-slate-400">Landmark: {r.landmark}</p>}
               <p className="text-sm text-slate-600">{r.deviceOther || "Device not specified"} — repaired, ready for delivery</p>
               {feeLine(r)}
+              <BookingDetailsCard compact rows={bookingDetailRows(r, lookups, deviceModels, customFormFields)} photoDataUrl={r.photoDataUrl} />
               <NavigateButtons lat={r.lat} lng={r.lng} address={customerAddress(r)} label="Navigate to customer" />
               {r.phone && (
                 <a href={`tel:${r.phone}`} className="btn-secondary inline-block !px-3 !py-1.5 text-xs">

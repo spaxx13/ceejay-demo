@@ -6,6 +6,8 @@ import {
   getTechnicians,
   getBranches,
   getLookups,
+  getDeviceModels,
+  getCustomFormFields,
   getRequestExceptions,
   getRequestUpdates,
   canManagePickupDelivery,
@@ -26,6 +28,8 @@ import JobQrCode from "@/components/JobQrCode";
 import ReportExceptionForm from "@/components/ReportExceptionForm";
 import { REQUEST_EXCEPTION_LABELS, type Branch } from "@/lib/types";
 import { pickupDeliveryQuote } from "@/lib/homeServiceFees";
+import { bookingDetailRows } from "@/lib/bookingDetails";
+import BookingDetailsCard from "@/components/BookingDetailsCard";
 
 // One job's full detail — the same information Admin > Home Service
 // Requests puts on its own "View" page, so a Pickup & Delivery job looks
@@ -84,13 +88,15 @@ export default async function PickupDeliveryDetailPage({ params }: { params: Pro
   if (!canManagePickupDelivery(user)) redirect("/admin");
 
   const { id } = await params;
-  const [req, riders, technicians, branches, lookups, exceptions] = await Promise.all([
+  const [req, riders, technicians, branches, lookups, exceptions, deviceModels, customFormFields] = await Promise.all([
     getRequestById(id),
     getRiders(),
     getTechnicians(),
     getBranches(),
     getLookups(),
     getRequestExceptions(),
+    getDeviceModels(),
+    getCustomFormFields(),
   ]);
   if (!req || req.fulfillmentMode !== "pickup_delivery" || isPickupDeliveryJobHidden(user, req)) notFound();
 
@@ -245,6 +251,8 @@ export default async function PickupDeliveryDetailPage({ params }: { params: Pro
           </div>
         </div>
       </div>
+
+      <BookingDetailsCard rows={bookingDetailRows(req, lookups, deviceModels, customFormFields)} photoDataUrl={req.photoDataUrl} />
 
       <div className="card space-y-3">
         <h3 className="text-sm font-semibold text-slate-800">Actions</h3>
