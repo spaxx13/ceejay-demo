@@ -28,7 +28,10 @@ export default function TechnicianEarningsView({
   to: string;
   isCustomRange: boolean;
 }) {
-  const sharePct = `${sharePercent}%`;
+  // Pickup & Delivery jobs always pay a flat 50% (lib/earnings.ts), whatever
+  // the technician's own share is — say so when any are in this period.
+  const hasPickupDelivery = jobs.some((j) => j.source === "Pickup & Delivery");
+  const sharePct = `${sharePercent}%${hasPickupDelivery ? ", 50% for Pickup & Delivery" : ""}`;
   const totals = jobs.reduce(
     (acc, j) => ({
       repairCost: acc.repairCost + j.repairCost,

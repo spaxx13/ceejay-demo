@@ -270,7 +270,7 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
     );
     const homeService = sumHomeServiceSales(homeServiceTechnicians);
     // Pickup & Delivery for this branch — the repair happens at this branch
-    // (the checklist's branch), so its 30/70 split lands here too, kept in
+    // (the checklist's branch), so its split lands here too, kept in
     // its own section so it never mixes with Home Service.
     const pickupDeliveryTechnicians = pickupDeliverySalesByTechnician(
       visibleAgreements.filter((a) => a.branchId === r.branchId),
@@ -328,7 +328,7 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
   // twice.
   const homeServiceExpenses = homeServiceBusinessExpenses(expenses, inRange, homeServiceQueueBranchIds);
   const grandHomeServiceNet = grandHomeService.companyShare - homeServiceExpenses;
-  // Pickup & Delivery, all branches — same 30/70 split; it has no expense
+  // Pickup & Delivery, all branches — 50/50 split; it has no expense
   // bucket of its own (business expenses are logged per branch or under
   // Home Service), so its net is its company share.
   const grandPickupDelivery = sumHomeServiceSales(pickupDeliverySalesByTechnician(visibleAgreements, inRange, requests, technicians));
@@ -385,7 +385,7 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
             Settings &gt; Technicians
           </Link>
           ) — the rest is the business&apos;s Remaining share. Each branch card below also shows that branch&apos;s Home Service sales
-          (fixed 30/70 split) — see the Home Service tab for the full cross-branch breakdown.
+          (fixed 30/70 split; Pickup & Delivery is 50/50) — see the Home Service tab for the full cross-branch breakdown.
         </p>
       </div>
 
@@ -995,11 +995,11 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
                       <td className="py-2 pr-3 text-right font-semibold text-green-700">{peso(grandPickupDelivery.netAmount)}</td>
                     </tr>
                     <tr className="border-b border-slate-100">
-                      <td className="py-2 pr-3 pl-5 text-slate-500">Technician Share (70%)</td>
+                      <td className="py-2 pr-3 pl-5 text-slate-500">Technician Share (50%)</td>
                       <td className="py-2 pr-3 text-right text-amber-700">{peso(grandPickupDelivery.technicianShare)}</td>
                     </tr>
                     <tr>
-                      <td className="pt-2 pr-3 pl-5 font-semibold text-slate-900">Company Share (30%) = Business Share (Net)</td>
+                      <td className="pt-2 pr-3 pl-5 font-semibold text-slate-900">Company Share (50%) = Business Share (Net)</td>
                       <td className="pt-2 pr-3 text-right">
                         <span className="inline-block rounded-md border-2 border-blue-300 bg-blue-50 px-2.5 py-1 text-base font-bold text-blue-900">
                           {peso(grandPickupDeliveryNet)}
@@ -1043,7 +1043,7 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
   );
 }
 
-// One service mode's 30/70 breakdown for a branch card — the same rows the
+// One service mode's breakdown for a branch card — the same rows the
 // Home Service section renders inline above, reused for Pickup & Delivery
 // so the two modes read identically but stay separate.
 function ModeSalesBlock({
@@ -1084,11 +1084,11 @@ function ModeSalesBlock({
                 <td className="py-2 pr-3 text-right font-semibold text-green-700">{peso(totals.netAmount)}</td>
               </tr>
               <tr className="border-b border-slate-100">
-                <td className="py-2 pr-3 pl-5 text-slate-500">Technician Share (70%)</td>
+                <td className="py-2 pr-3 pl-5 text-slate-500">Technician Share (50%)</td>
                 <td className="py-2 pr-3 text-right text-amber-700">{peso(totals.technicianShare)}</td>
               </tr>
               <tr>
-                <td className="py-2 pr-3 pl-5 font-semibold text-slate-700">Company Share (30%)</td>
+                <td className="py-2 pr-3 pl-5 font-semibold text-slate-700">Company Share (50%)</td>
                 <td className="py-2 pr-3 text-right">
                   <span className="inline-block rounded-md border-2 border-green-300 bg-green-50 px-2.5 py-1 text-base font-bold text-green-900">
                     {peso(totals.companyShare)}

@@ -1225,6 +1225,10 @@ export function getManualRecordStatus(record: ManualRepairRecord, checklists: Ma
 
 export const HOME_SERVICE_COMPANY_SHARE = 0.3;
 export const HOME_SERVICE_TECHNICIAN_SHARE = 0.7;
+// Pickup & Delivery jobs split their Net Amount 50/50 between the technician
+// and the owner (Home Service stays 30/70 above).
+export const PICKUP_DELIVERY_COMPANY_SHARE = 0.5;
+export const PICKUP_DELIVERY_TECHNICIAN_SHARE = 0.5;
 
 export type HomeServiceSalesRow = {
   name: string;
@@ -1239,7 +1243,7 @@ export type HomeServiceSalesRow = {
 
 // Shared by Sales > Home Service and the Home Service Requests dashboard
 // summary — same "Total Amount = Repair Price + Labor/Service Cost" and
-// 30/70 Net Amount split computed in exactly one place, so the two pages
+// Net Amount split (30/70 on-site, 50/50 Pickup & Delivery) computed in exactly one place, so the two pages
 // can never disagree on a figure. `requests` (optional — defaults to none;
 // every call site passes getRequests()'s non-deleted list) does two things:
 //   1. A completed job whose request isn't in this list — i.e. it's been
@@ -1300,7 +1304,9 @@ function salesByTechnicianForMode(
   return Array.from(totals.values())
     .map((t) => {
       const netAmount = Math.max(0, t.totalAmount - t.partsCost);
-      return { ...t, netAmount, companyShare: netAmount * HOME_SERVICE_COMPANY_SHARE, technicianShare: netAmount * HOME_SERVICE_TECHNICIAN_SHARE };
+      const companyRate = mode === "pickup_delivery" ? PICKUP_DELIVERY_COMPANY_SHARE : HOME_SERVICE_COMPANY_SHARE;
+      const technicianRate = mode === "pickup_delivery" ? PICKUP_DELIVERY_TECHNICIAN_SHARE : HOME_SERVICE_TECHNICIAN_SHARE;
+      return { ...t, netAmount, companyShare: netAmount * companyRate, technicianShare: netAmount * technicianRate };
     })
     .sort((a, b) => {
       if (a.name === "Unassigned") return 1;
