@@ -1039,6 +1039,46 @@ export async function riderUpdatePickupStatus(_prev: RiderStatusResult | undefin
   return { ok: true };
 }
 
+// A rider can be handed several pickups in a row (a new one is often assigned
+// while they're still out on the first). They collect every device first, then
+// bring them all to the branch together — this applies one branch-leg step to
+// each of the devices they're carrying with a single tap, running the same
+// per-device logic (and customer emails) as the individual status dropdown.
+export async function riderBringDevicesToBranch(
+  requestIds: string[],
+  step: "heading_to_shop" | "delivered_to_branch",
+): Promise<RiderStatusResult> {
+  const user = await getCurrentUser();
+  if (!user || user.role !== "rider" || !user.riderId) return { ok: false, error: "Not signed in as a rider." };
+  const ids = Array.from(new Set(requestIds.filter(Boolean)));
+  if (ids.length === 0) return { ok: false, error: "No devices selected." };
+  if (step !== "heading_to_shop" && step !== "delivered_to_branch") return { ok: false, error: "Invalid step." };
+
+  const failures: string[] = [];
+  for (const id of ids) {
+    const req = await getRequestById(id);
+    if (!req || req.pickupRiderId !== user.riderId) {
+      failures.push("A job isn't assigned to you.");
+      continue;
+    }
+    // Only devices already in hand and not yet handed over at the shop.
+    if (!req.pickedUpAt || req.receivedAtShopAt) continue;
+    const fd = new FormData();
+    fd.set("requestId", id);
+    fd.set("status", step);
+    const result = await riderUpdatePickupStatus(undefined, fd);
+    if (!result.ok) failures.push(`${req.reference}: ${result.error}`);
+  }
+  revalidatePath("/rider");
+  revalidatePath("/admin/pickup-delivery");
+  return failures.length ? { ok: false, error: failures.join(" ") } : { ok: true };
+}
+
+export async function riderBringDevicesToBranchAction(_prev: RiderStatusResult | undefined, formData: FormData): Promise<RiderStatusResult> {
+  const step = str(formData, "step") === "delivered_to_branch" ? "delivered_to_branch" : "heading_to_shop";
+  return riderBringDevicesToBranch(formData.getAll("requestId").map(String), step);
+}
+
 // Lets the rider redirect to a different branch mid-trip — e.g. told to
 // bring it to Greenhills instead of Cubao after already leaving. Separate
 // from the "On The Way to Branch" step in riderUpdatePickupStatus above,

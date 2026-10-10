@@ -15,6 +15,7 @@ import RiderStatusUpdateForm from "@/components/RiderStatusUpdateForm";
 import RiderLocationReporter from "@/components/RiderLocationReporter";
 import RiderBranchRedirectForm from "@/components/RiderBranchRedirectForm";
 import RiderAcceptDeclineForm from "@/components/RiderAcceptDeclineForm";
+import RiderBatchBranchBar, { type BatchGroup } from "@/components/RiderBatchBranchBar";
 import NavigateButtons from "@/components/NavigateButtons";
 import { pickupDeliveryFeeSummary } from "@/lib/homeServiceFees";
 import { bookingDetailRows } from "@/lib/bookingDetails";
@@ -80,6 +81,22 @@ export default async function RiderPage() {
     .filter((r) => r.fulfillmentMode === "pickup_delivery" && r.deliveryRiderId === riderId && !r.deliveredAt)
     .sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1));
 
+  // Devices this rider already has in hand (picked up, not yet handed over at
+  // the shop), grouped by destination branch — for the one-tap "bring all to
+  // the branch" bar below.
+  const inHand = myPickups.filter((r) => r.pickedUpAt);
+  const batchGroups: BatchGroup[] = [];
+  for (const r of inHand) {
+    const key = r.deliveredBranchId ?? "none";
+    let g = batchGroups.find((x) => x.key === key);
+    if (!g) {
+      g = { key, branchName: branchById(r.deliveredBranchId)?.name ?? "the branch", jobs: [] };
+      batchGroups.push(g);
+    }
+    g.jobs.push({ id: r.id, reference: r.reference, customerName: r.customerName, headingToShop: !!r.headingToShopAt });
+  }
+  const waitingPickups = myPickups.filter((r) => !r.pickedUpAt).length;
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-2">
@@ -95,6 +112,8 @@ export default async function RiderPage() {
       </div>
 
       {rider && <RiderOnDutyToggle initialOnDuty={rider.onDuty} />}
+
+      <RiderBatchBranchBar groups={batchGroups} />
 
       <section className="space-y-3">
         <h2 className="text-sm font-semibold text-slate-700">Pickups ({myPickups.length})</h2>
@@ -153,6 +172,12 @@ export default async function RiderPage() {
                         </p>
                       )}
                     </div>
+                  )}
+                  {r.pickedUpAt && !r.headingToShopAt && waitingPickups > 0 && (
+                    <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                      You have {waitingPickups} more pickup{waitingPickups === 1 ? "" : "s"} waiting — no need to go to the branch yet. Pick{" "}
+                      {waitingPickups === 1 ? "it" : "them"} up first, then bring everything together.
+                    </p>
                   )}
                   {r.pickupStartedAt && !r.receivedAtShopAt && <RiderLocationReporter requestId={r.id} />}
                   {r.pickedUpAt && !r.receivedAtShopAt && (
