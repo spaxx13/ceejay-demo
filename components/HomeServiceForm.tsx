@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useActionState, useEffect, useRef, useState } from "react";
+import { trackMetaEvent } from "@/lib/metaPixel";
 import { submitHomeServiceRequest, sendHomeServiceOtp, verifyHomeServiceOtp, confirmBookingFromForm } from "@/lib/actions";
 import { OTP_GATE_ENABLED, BOOKING_CONFIRMATION_WINDOW_MINUTES } from "@/lib/config";
 import { PICKUP_DELIVERY_AGREEMENT_TERMS } from "@/lib/pickupDeliveryAgreement";
@@ -127,6 +128,12 @@ export default function HomeServiceForm({
   const [agreedToPickupDelivery, setAgreedToPickupDelivery] = useState(false);
   const pickupDeliveryAgreementPending = mode === "pickup_delivery" && !agreedToPickupDelivery;
   const [preferredDate, setPreferredDate] = useState("");
+  // Meta Pixel: one "Lead" per submitted booking (the success screen below),
+  // tagged with which service it was so ad results can be told apart.
+  const bookingOk = !!state?.ok;
+  useEffect(() => {
+    if (bookingOk) trackMetaEvent("Lead", { content_name: mode === "pickup_delivery" ? "Pickup & Delivery" : "Home Service" });
+  }, [bookingOk, mode]);
 
   // One or more devices per booking — starts with a single blank block;
   // "+ Add Another Device" appends another, sharing the contact/address

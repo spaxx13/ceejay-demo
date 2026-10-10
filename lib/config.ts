@@ -52,3 +52,10 @@ export const PICKUP_DELIVERY_SKIP_PAYMENT =
 // as PICKUP_DELIVERY_SKIP_PAYMENT above.
 export const PICKUP_DELIVERY_SKIP_OTP =
   process.env.PICKUP_DELIVERY_SKIP_OTP === "true" && process.env.VERCEL_ENV !== "production";
+
+// Meta (Facebook/Instagram) Pixel for the public website only — measures how
+// many visitors from Meta ads actually submit a booking. The ID is public
+// (it ships in the page source either way); set NEXT_PUBLIC_META_PIXEL_ID to
+// override it, or to "off" to turn the Pixel off entirely.
+const META_PIXEL_ENV = process.env.NEXT_PUBLIC_META_PIXEL_ID;
+export const META_PIXEL_ID = META_PIXEL_ENV === "off" ? "" : META_PIXEL_ENV || "2115094332053907";
