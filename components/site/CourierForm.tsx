@@ -11,12 +11,12 @@ type Model = { id: string; brandId: string; name: string };
 type ServiceType = { id: string; label: string };
 
 export default function CourierForm({
-  branches,
+  branch,
   brands,
   models,
   serviceTypes,
 }: {
-  branches: Pick<Branch, "id" | "name" | "address">[];
+  branch: Pick<Branch, "id" | "name" | "address">;
   brands: Brand[];
   models: Model[];
   serviceTypes: ServiceType[];
@@ -117,20 +117,11 @@ export default function CourierForm({
       </div>
 
       <h3 className="pt-2 text-sm font-semibold text-slate-800">Your Device</h3>
-      <div className="space-y-1.5">
-        <label className="text-xs font-medium text-slate-500">
-          Which branch will you ship it to? <span className="text-red-600">*</span>
-        </label>
-        <select name="branchId" required defaultValue="" className="input">
-          <option value="" disabled>
-            Select a branch
-          </option>
-          {branches.map((b) => (
-            <option key={b.id} value={b.id}>
-              {b.name} — {b.address}
-            </option>
-          ))}
-        </select>
+      <input type="hidden" name="branchId" value={branch.id} />
+      <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
+        <p className="font-semibold">You&apos;ll ship your device to:</p>
+        <p>Ceejay Cellphone Repair Shop — {branch.name}</p>
+        <p>{branch.address}</p>
       </div>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div className="space-y-1.5">

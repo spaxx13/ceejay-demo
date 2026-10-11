@@ -28,6 +28,14 @@ export function isCourierStatus(v: string): v is CourierStatus {
 // Couriers offered in the dropdown; "Other" falls back to free text.
 export const COURIER_OPTIONS = ["J&T Express", "LBC", "JRS Express", "Lalamove / Grab Express", "2GO", "Ninja Van", "Flash Express", "Other"];
 
+// Devices are only shipped to this branch (name as in Admin > Branches,
+// case-insensitive). The booking form shows its address instead of a branch
+// picker, and the booking action rejects any other branch.
+export const COURIER_RECEIVING_BRANCH_NAME = "Cubao";
+export function isCourierReceivingBranch(name: string): boolean {
+  return name.trim().toLowerCase() === COURIER_RECEIVING_BRANCH_NAME.toLowerCase();
+}
+
 export const COURIER_AGREEMENT_VERSION = "2026-10";
 
 // Shown on the booking form (and stored as accepted via agreed_at) —
