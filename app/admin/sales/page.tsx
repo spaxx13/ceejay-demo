@@ -6,6 +6,7 @@ import {
   getTechnicians,
   getServiceAgreements,
   getRequests,
+  getCourierRequests,
   homeServiceSalesByTechnician,
   pickupDeliverySalesByTechnician,
   sumHomeServiceSales,
@@ -18,13 +19,13 @@ import {
 import { getCurrentUser } from "@/lib/auth";
 import SalesTabs from "@/components/SalesTabs";
 import BarBreakdownChart from "@/components/BarBreakdownChart";
-import { todayDateStr } from "@/lib/format";
+import { todayDateStr, toManilaDateStr, formatDate } from "@/lib/format";
 
 const peso = (n: number) => `₱${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 export default async function BranchSalesPage({ searchParams }: { searchParams: Promise<{ from?: string; to?: string }> }) {
   const sp = await searchParams;
-  const [user, allBranches, repairRecords, expenses, technicians, agreements, requests] = await Promise.all([
+  const [user, allBranches, repairRecords, expenses, technicians, agreements, requests, courierRequests] = await Promise.all([
     getCurrentUser(),
     getBranches(),
     getRepairRecords(),
@@ -32,6 +33,7 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
     getTechnicians(),
     getServiceAgreements(),
     getRequests(),
+    getCourierRequests(),
   ]);
   // Backend-only branches (no address, e.g. "Home Service") exist purely for
   // sales/expense attribution — they don't get their own card here since
@@ -280,8 +282,27 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
     );
     const pickupDelivery = sumHomeServiceSales(pickupDeliveryTechnicians);
 
+    // Courier Service for this branch (the branch the device is shipped to):
+    // requests whose payment was confirmed in range, counted at the repair
+    // cost only — the return shipping fee goes to the courier. Kept in its
+    // own section, never mixed into the POS or Home Service figures.
+    const courierJobs = courierRequests
+      .filter(
+        (c) =>
+          c.branchId === r.branchId &&
+          c.status !== "cancelled" &&
+          c.paidAt &&
+          c.repairCost !== null &&
+          inRange(toManilaDateStr(c.paidAt)) &&
+          !isBranchHidden(user, c.branchId)
+      )
+      .sort((a, b) => ((a.paidAt ?? "") < (b.paidAt ?? "") ? 1 : -1));
+    const courierTotal = courierJobs.reduce((s, c) => s + (c.repairCost ?? 0), 0);
+
     return {
       ...r,
+      courierJobs,
+      courierTotal,
       technicians,
       netProfitExpenses,
       netProfitBeforeSharing,
@@ -756,6 +777,44 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
                 <ModeSalesBlock title="Pickup & Delivery" noun="Pickup & Delivery" totals={r.pickupDelivery} technicians={r.pickupDeliveryTechnicians} />
               </div>
 
+              {(r.courierJobs.length > 0 || branchEntry) && (
+                <div className="space-y-2 border-t border-slate-200 pt-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <h4 className="text-sm font-semibold text-slate-800">Courier Service</h4>
+                    <span className="rounded-full border border-slate-300 bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-700">
+                      {r.courierJobs.length} paid
+                    </span>
+                  </div>
+                  {r.courierJobs.length === 0 ? (
+                    <p className="text-sm text-slate-400">No Courier Service payments confirmed in this range.</p>
+                  ) : (
+                    <>
+                      <table className="w-full text-left text-sm">
+                        <tbody>
+                          <tr className="border-b border-slate-100">
+                            <td className="py-2 pr-3 font-semibold text-slate-800">Total Repair Cost</td>
+                            <td className="py-2 pr-3 text-right font-semibold text-green-700">{peso(r.courierTotal)}</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                      <ul className="space-y-1 text-sm">
+                        {r.courierJobs.map((c) => (
+                          <li key={c.id} className="flex flex-wrap justify-between gap-x-3 text-slate-600">
+                            <Link href={`/admin/courier/${c.id}`} className="font-mono text-xs text-blue-500 hover:underline">
+                              {c.reference}
+                            </Link>
+                            <span>{c.name}</span>
+                            <span className="text-xs text-slate-400">{c.paidAt ? formatDate(c.paidAt) : ""}</span>
+                            <span className="text-slate-800">{peso(c.repairCost ?? 0)}</span>
+                          </li>
+                        ))}
+                      </ul>
+                      <p className="text-[11px] text-slate-400">Repair cost only — the return shipping fee goes to the courier. Counted on the day payment was confirmed.</p>
+                    </>
+                  )}
+                </div>
+              )}
+
               <div className="flex flex-wrap gap-2">
                 {branchEntry && (
                   <Link href={`/admin/pos?branch=${branchEntry.id}`} className="btn-secondary inline-block !px-3 !py-1 text-xs">
@@ -770,6 +829,11 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
                 {r.pickupDelivery.count > 0 && (
                   <Link href="/admin/sales/pickup-delivery" className="btn-secondary inline-block !px-3 !py-1 text-xs">
                     View Pickup &amp; Delivery Records
+                  </Link>
+                )}
+                {r.courierJobs.length > 0 && (
+                  <Link href="/admin/courier" className="btn-secondary inline-block !px-3 !py-1 text-xs">
+                    View Courier Records
                   </Link>
                 )}
               </div>
