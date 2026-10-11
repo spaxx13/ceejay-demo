@@ -662,6 +662,7 @@ export async function sendCourierShippedEmail(
           Hi ${escapeHtml(opts.customerName)}, your repaired device (<strong>${escapeHtml(opts.reference)}</strong>) was shipped via
           <strong>${escapeHtml(opts.courier)}</strong>.<br/>Tracking number: <strong>${escapeHtml(opts.trackingNumber)}</strong>
         </p>
+        <p style="font-size: 14px; line-height: 1.5;">When your device arrives, please open the link below and tap <strong>Natanggap ko na ang device ko</strong> so we know it reached you.</p>
         <p style="font-size: 14px;"><a href="${SITE_URL}/courier-service/track?reference=${encodeURIComponent(opts.reference)}">View your request</a></p>
       </div>
     `,

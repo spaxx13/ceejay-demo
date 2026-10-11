@@ -4,6 +4,7 @@ import { normalizePhone } from "@/lib/sms";
 import { COURIER_STATUS_LABELS, COURIER_STATUS_ORDER, COURIER_PACKING_TIPS, COURIER_PAYMENT_ACCOUNTS, COURIER_PAYMENT_QR_IMAGE, formatPesos } from "@/lib/courierService";
 import CourierInboundForm from "@/components/site/CourierInboundForm";
 import CourierPaymentForm from "@/components/site/CourierPaymentForm";
+import CourierReceivedForm from "@/components/site/CourierReceivedForm";
 import { formatDateTime } from "@/lib/format";
 
 // Customer-facing tracking for a Courier Service request: reference number
@@ -155,6 +156,13 @@ export default async function CourierTrackPage({ searchParams }: { searchParams:
               {req.outboundCourier} — <span className="font-mono">{req.outboundTracking}</span>
             </p>
             {req.shippedAt && <p className="text-xs text-slate-400">Shipped {formatDateTime(req.shippedAt)}</p>}
+            {req.status === "shipped" && (
+              <div className="space-y-2 border-t border-slate-200 pt-3">
+                <p className="text-xs text-slate-500">Dumating na ba ang device mo? Pindutin ito para ma-confirm.</p>
+                <CourierReceivedForm reference={req.reference} phone={phone} />
+              </div>
+            )}
+            {req.status === "delivered" && req.deliveredAt && <p className="text-xs text-green-700">Delivered {formatDateTime(req.deliveredAt)}</p>}
           </div>
         )}
 
