@@ -57,7 +57,7 @@ export const COURIER_PACKING_TIPS = [
 // app. Put the image in /public and set its path here, e.g.
 // "/courier-payment-qr.png". The site can't tell when a static QR has been
 // paid, so the customer still uploads a receipt for staff to verify.
-export const COURIER_PAYMENT_QR_IMAGE = "";
+export const COURIER_PAYMENT_QR_IMAGE = "/courier-payment-qr.jpg";
 
 export const COURIER_PAYMENT_METHODS = ["GCash", "Bank Transfer", "InstaPay QR"] as const;
 export const COURIER_PAYMENT_ACCOUNTS: { method: (typeof COURIER_PAYMENT_METHODS)[number]; accountName: string; accountNumber: string; bank?: string }[] = [

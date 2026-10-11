@@ -121,7 +121,7 @@ export default async function CourierTrackPage({ searchParams }: { searchParams:
                   {COURIER_PAYMENT_QR_IMAGE && (
                     <>
                       {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={COURIER_PAYMENT_QR_IMAGE} alt="InstaPay QR code" className="my-2 h-48 w-48 max-w-full rounded-lg border border-blue-200 bg-white object-contain" />
+                      <img src={COURIER_PAYMENT_QR_IMAGE} alt="InstaPay QR code" className="my-2 h-auto w-full max-w-xs rounded-lg border border-blue-200 bg-white" />
                       <p className="text-xs">Scan with any bank or e-wallet app and enter {formatPesos(total)}.</p>
                     </>
                   )}
