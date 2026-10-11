@@ -3,7 +3,7 @@
 import { useActionState, useEffect, useRef, useState } from "react";
 import { submitCourierRequest, sendWalkInOtp, verifyWalkInOtp } from "@/lib/actions";
 import { OTP_GATE_ENABLED } from "@/lib/config";
-import { COURIER_AGREEMENT_TERMS, COURIER_LIST, COURIER_PACKING_TIPS, COURIER_SELF_SHIP_NOTICE } from "@/lib/courierService";
+import { COURIER_AGREEMENT_TERMS, COURIER_LIST, COURIER_PACKING_TIPS, COURIER_SELF_SHIP_NOTICE, COURIER_TRACKING_REMINDER } from "@/lib/courierService";
 import PhotoUpload from "@/components/PhotoUpload";
 import type { Branch } from "@/lib/types";
 
@@ -139,6 +139,10 @@ export default function CourierForm({
             <li key={t}>{t}</li>
           ))}
         </ul>
+        <div className="rounded-lg border-2 border-blue-400 bg-blue-50 p-3 text-sm text-blue-900">
+          <p className="font-semibold">📦 Huwag kalimutan: ilagay ang tracking number</p>
+          <p className="mt-1">{COURIER_TRACKING_REMINDER}</p>
+        </div>
         <a href={`/courier-service/track?reference=${encodeURIComponent(state.reference)}`} className="btn-primary block text-center">
           Track This Request & Enter Your Tracking Number
         </a>

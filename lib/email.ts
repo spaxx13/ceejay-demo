@@ -619,7 +619,7 @@ export async function sendTechnicianOnTheWayEmail(
 // to ship the device, then again once the branch ships it back.
 export async function sendCourierBookingEmail(
   to: string,
-  opts: { customerName: string; reference: string; branchName: string; branchAddress: string; branchContact: string; tips: string[]; couriers: string[]; selfShipNotice: string }
+  opts: { customerName: string; reference: string; branchName: string; branchAddress: string; branchContact: string; tips: string[]; couriers: string[]; selfShipNotice: string; trackingReminder: string }
 ) {
   const client = getClient();
   const { error } = await client.emails.send({
@@ -640,7 +640,8 @@ export async function sendCourierBookingEmail(
         <p style="font-size: 14px; line-height: 1.5; background: #fff6d6; padding: 10px 12px; border-radius: 6px;"><strong>${escapeHtml(opts.selfShipNotice)}</strong></p>
         <p style="font-size: 14px; line-height: 1.5;"><strong>Couriers you can use:</strong> ${opts.couriers.map(escapeHtml).join(", ")}</p>
         <ul style="font-size: 13px; line-height: 1.5; padding-left: 18px;">${opts.tips.map((t) => `<li>${escapeHtml(t)}</li>`).join("")}</ul>
-        <p style="font-size: 14px;"><a href="${SITE_URL}/courier-service/track?reference=${encodeURIComponent(opts.reference)}">Track your request</a></p>
+        <p style="font-size: 14px; line-height: 1.5; background: #e6effb; padding: 10px 12px; border-radius: 6px;"><strong>${escapeHtml(opts.trackingReminder)}</strong></p>
+        <p style="font-size: 14px;"><a href="${SITE_URL}/courier-service/track?reference=${encodeURIComponent(opts.reference)}">Track this request and enter your tracking number</a></p>
       </div>
     `,
   });
