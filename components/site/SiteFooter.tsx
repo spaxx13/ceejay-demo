@@ -44,6 +44,7 @@ export default async function SiteFooter() {
                 <span className="text-slate-300">Pickup &amp; Delivery (Soon)</span>
               )}
             </li>
+            <li><Link href="/courier-service" className="hover:text-slate-700">Courier Service (Nationwide)</Link></li>
             {PICKUP_DELIVERY_PUBLIC_ENABLED && (
               <li><Link href="/track" className="hover:text-slate-700">Track Your Order</Link></li>
             )}

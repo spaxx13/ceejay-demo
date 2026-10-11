@@ -27,6 +27,7 @@ const NAV_GROUPS: {
     links: [
       { href: "/admin/requests", label: "Home Service Requests", requestsGated: true },
       { href: "/admin/pickup-delivery", label: "Pickup & Delivery", pickupDeliveryGated: true },
+      { href: "/admin/courier", label: "Courier Service", requestsGated: true },
       { href: "/admin/walk-ins", label: "Walk-In Registrations", walkinsGated: true },
       { href: "/admin/pos", label: "POS" },
       { href: "/admin/manual-checklists", label: "Manual Checklist & Receipt" },

@@ -311,6 +311,46 @@ export type WalkInRequest = {
   createdAt: string;
 };
 
+// Courier Service — a mail-in repair for customers anywhere in the
+// Philippines, outside the Home Service / Pickup & Delivery areas. See
+// lib/courierService.ts for the status flow and supabase/migrations/0091.
+export type CourierStatus = "awaiting_unit" | "received" | "in_repair" | "ready_to_ship" | "shipped" | "delivered" | "cancelled";
+export type CourierRequest = {
+  id: string;
+  reference: string; // CS-<year>-<seq>
+  customerId: string | null;
+  name: string;
+  phone: string;
+  email: string;
+  street: string;
+  barangay: string;
+  city: string;
+  province: string;
+  zipCode: string;
+  landmark: string;
+  branchId: string | null; // branch the customer ships the device to
+  deviceBrandId: string | null;
+  deviceModelId: string | null;
+  deviceOther: string;
+  serviceTypeId: string | null;
+  issueDescription: string;
+  photoDataUrl: string | null;
+  status: CourierStatus;
+  inboundCourier: string;
+  inboundTracking: string;
+  receivedAt: string | null;
+  repairCost: number | null;
+  returnShippingFee: number | null;
+  paidAt: string | null;
+  outboundCourier: string;
+  outboundTracking: string;
+  shippedAt: string | null;
+  deliveredAt: string | null;
+  adminNotes: string;
+  agreedAt: string | null;
+  createdAt: string;
+};
+
 // Created the moment a Home Service visit fee is waived, and lands
 // straight in Trash (deletedAt set immediately) rather than an "active"
 // list — Trash is the only place this is ever managed from: Restore
@@ -604,6 +644,7 @@ export type ActivityLog = {
     | "lead"
     | "home_service_request"
     | "walkin_request"
+    | "courier_request"
     | "manual_checklist"
     | "branch"
     | "technician"

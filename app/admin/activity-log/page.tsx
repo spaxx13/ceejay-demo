@@ -11,6 +11,7 @@ const ENTITY_LABELS: Record<ActivityLog["entityType"], string> = {
   lead: "Lead",
   home_service_request: "Home Service Request",
   walkin_request: "Walk-In Request",
+  courier_request: "Courier Service",
   manual_checklist: "Manual Checklist",
   branch: "Branch",
   technician: "Technician",
@@ -33,6 +34,7 @@ const ID_PATHS: Partial<Record<ActivityLog["entityType"], (id: string) => string
   customer: (id) => `/admin/crm/${id}`,
   lead: (id) => `/admin/crm/${id}`,
   walkin_request: (id) => `/admin/walk-ins/${id}`,
+  courier_request: (id) => `/admin/courier/${id}`,
   manual_checklist: (id) => `/admin/manual-checklists/${id}`,
   repair_record: (id) => `/admin/pos/${id}`,
 };
