@@ -3,17 +3,23 @@ barangay in the Philippines, in the same shape as ph-addresses-near.json
 ({key, label, cities: [{name, barangays}]}) — for the Courier Service form's
 Province -> City -> Barangay dropdowns.
 
-Source: the open-source `phil-reg-prov-mun-brgy` npm package (PSGC data, ISC
-license), which ships regions/provinces/city-mun/barangays JSON. Install it
-somewhere outside the repo, then point this script at its src/json folder:
+Source: the `@ianlabicani/geoph-lite` npm package (MIT), which ships the
+PSA's Philippine Standard Geographic Code (PSGC) as of 30 June 2026. The PSGC
+data is CC BY 4.0, Philippine Statistics Authority:
+https://psa.gov.ph/classification/psgc/index
 
-    npm i phil-reg-prov-mun-brgy --prefix /tmp/psgc
-    python3 scripts/build-ph-addresses-all.py /tmp/psgc/node_modules/phil-reg-prov-mun-brgy/src/json
+Install the package somewhere outside the repo, then point this script at its
+regions folder:
 
-That package's data is older than the PSGC the near-area file was built from,
-so the seven provinces already in public/ph-addresses-near.json (Metro Manila
-and its neighbours) are taken from that file instead. Metro Manila is also
-one entry there, where this package splits NCR into four "districts".
+    npm i @ianlabicani/geoph-lite --prefix /tmp/psgc
+    python3 scripts/build-ph-addresses-all.py /tmp/psgc/node_modules/@ianlabicani/geoph-lite/regions
+
+The PSGC lists independent / highly urbanized cities (Cebu City, Davao City,
+...) directly under their region, not under a province. Customers write their
+address under the province they're customarily in, so each one is placed in
+INDEPENDENT_CITY_PROVINCE below. NCR is one "Metro Manila" entry, and the
+BARMM Special Geographic Area municipalities, which belong to no province,
+get their own entry.
 """
 
 import json
@@ -21,60 +27,74 @@ import re
 import sys
 from pathlib import Path
 
-LOWER = {"of", "de", "del", "ng", "sa", "y", "the"}
 ROOT = Path(__file__).resolve().parent.parent
 
-
-def title(name: str) -> str:
-    words = re.split(r"(\s+|-|\()", name.strip().lower())
-    out = []
-    first = True
-    for w in words:
-        if not w or w.isspace() or w in ("-", "("):
-            out.append(w)
-            continue
-        if w in LOWER and not first:
-            out.append(w)
-        elif re.fullmatch(r"(i{1,3}|iv|v|vi{0,3}|ix|x)\)?", w):
-            out.append(w.upper())
-        else:
-            out.append(w[:1].upper() + w[1:])
-        first = False
-    return "".join(out)
+# PSGC locality name -> the province it is customarily written under.
+INDEPENDENT_CITY_PROVINCE = {
+    "City of Angeles": "Pampanga",
+    "City of Olongapo": "Zambales",
+    "City of Lucena": "Quezon",
+    "City of Iloilo": "Iloilo",
+    "City of Cebu": "Cebu",
+    "City of Lapu-Lapu": "Cebu",
+    "City of Mandaue": "Cebu",
+    "City of Tacloban": "Leyte",
+    "City of Isabela": "Basilan",
+    "City of Zamboanga": "Zamboanga del Sur",
+    "City of Cagayan De Oro": "Misamis Oriental",
+    "City of Iligan": "Lanao del Norte",
+    "City of Davao": "Davao del Sur",
+    "City of General Santos": "South Cotabato",
+    "City of Baguio": "Benguet",
+    "City of Butuan": "Agusan del Norte",
+    "City of Puerto Princesa": "Palawan",
+    "City of Bacolod": "Negros Occidental",
+}
+SGA_LABEL = "Special Geographic Area (BARMM)"
 
 
 def slugify(label: str) -> str:
     return re.sub(r"[^a-z0-9]+", "_", label.lower()).strip("_")
 
 
+def locality(loc):
+    return {"name": loc["name"], "barangays": sorted({b["name"].strip() for b in loc["barangays"]})}
+
+
 def main():
     src = Path(sys.argv[1])
-    provinces = json.load(open(src / "provinces.json"))
-    cities = json.load(open(src / "city-mun.json"))
-    barangays = json.load(open(src / "barangays.json"))
-    near = json.load(open(ROOT / "public" / "ph-addresses-near.json"))
-    near_keys = {p["key"] for p in near}
+    provinces = {}  # label -> list of localities
 
-    brgy_by_mun = {}
-    for b in barangays:
-        brgy_by_mun.setdefault(b["mun_code"], []).append(b["name"].strip())
+    def add(label, loc):
+        provinces.setdefault(label, []).append(locality(loc))
 
-    result = {p["key"]: p for p in near}
-    for prov in provinces:
-        if prov["reg_code"] == "13":  # NCR districts -> Metro Manila, from the near file
-            continue
-        label = title(prov["name"])
-        key = slugify(label)
-        if key in near_keys:
-            continue
-        entry = result.setdefault(key, {"key": key, "label": label, "cities": []})
-        for c in cities:
-            if c["prov_code"] != prov["prov_code"]:
-                continue
-            entry["cities"].append({"name": title(c["name"]), "barangays": sorted(set(brgy_by_mun.get(c["mun_code"], [])))})
-        entry["cities"].sort(key=lambda c: c["name"])
+    regions = [json.load(open(f, encoding="utf-8")) for f in sorted(src.glob("*.json"))]
+    # Provinces first, so region-level cities can be filed under them.
+    for region in regions:
+        for prov in region["provinces"]:
+            provinces.setdefault(prov["name"], [])
+            for loc in prov["localities"]:
+                add(prov["name"], loc)
+    for region in regions:
+        for loc in region["localities"]:
+            if region["name"].startswith("National Capital Region"):
+                add("Metro Manila", loc)
+            elif loc["name"] in INDEPENDENT_CITY_PROVINCE:
+                target = INDEPENDENT_CITY_PROVINCE[loc["name"]]
+                if target not in provinces:
+                    sys.exit(f"{loc['name']}: province {target!r} not found")
+                add(target, loc)
+            elif loc["type"] == "municipality":
+                add(SGA_LABEL, loc)
+            else:
+                sys.exit(f"Unplaced region-level locality: {loc['name']} ({region['name']})")
 
-    out = sorted((p for p in result.values() if p["cities"]), key=lambda p: p["label"])
+    out = []
+    for label in sorted(provinces, key=str.lower):
+        cities = sorted(provinces[label], key=lambda c: c["name"])
+        if cities:
+            out.append({"key": slugify(label), "label": label, "cities": cities})
+
     path = ROOT / "public" / "ph-addresses-all.json"
     path.write_text(json.dumps(out, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
     n_city = sum(len(p["cities"]) for p in out)
