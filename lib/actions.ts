@@ -3557,6 +3557,21 @@ export async function confirmCourierReceived(_prev: CourierInboundResult | undef
   return { ok: true };
 }
 
+// Permanently deletes a courier request. Owner admins only — there is no
+// Trash for these, so it can't be undone; the Activity Log keeps a record.
+export async function deleteCourierRequest(formData: FormData) {
+  const user = await getCurrentUser();
+  if (!user || user.role !== "owner_admin") return;
+  const id = str(formData, "id");
+  const req = await getCourierRequestById(id);
+  if (!req) return;
+  await query("delete from courier_requests where id=$1", [id]);
+  await logActivity("courier_request", id, `${user.name} permanently deleted ${req.reference} (${req.name})`, user.name);
+  revalidatePath("/admin/courier");
+  revalidatePath("/courier-service/track");
+  redirect("/admin/courier");
+}
+
 // What each admin action may move a request from, and to.
 const COURIER_TRANSITIONS: Record<string, { from: CourierStatus[]; to: CourierStatus }> = {
   received: { from: ["awaiting_unit"], to: "received" },

@@ -6,6 +6,8 @@ import StatusBadge from "@/components/StatusBadge";
 import { COURIER_STATUS_LABELS, COURIER_STATUS_ORDER } from "@/lib/courierService";
 import type { CourierStatus } from "@/lib/types";
 import { formatDateTime } from "@/lib/format";
+import DeleteButton from "@/components/DeleteButton";
+import { deleteCourierRequest } from "@/lib/actions";
 
 export default async function CourierRequestsPage({ searchParams }: { searchParams: Promise<{ status?: string; branch?: string }> }) {
   const user = await getCurrentUser();
@@ -18,6 +20,7 @@ export default async function CourierRequestsPage({ searchParams }: { searchPara
   let requests = visible;
   if (sp.status) requests = requests.filter((r) => r.status === sp.status);
   if (sp.branch) requests = requests.filter((r) => r.branchId === sp.branch);
+  const isOwner = user?.role === "owner_admin";
   const statuses: CourierStatus[] = [...COURIER_STATUS_ORDER, "cancelled"];
 
   return (
@@ -68,12 +71,13 @@ export default async function CourierRequestsPage({ searchParams }: { searchPara
               <th className="py-2 pr-3">Ships To</th>
               <th className="py-2 pr-3">Status</th>
               <th className="py-2 pr-3">Booked</th>
+              {isOwner && <th className="py-2 pr-3" />}
             </tr>
           </thead>
           <tbody>
             {requests.length === 0 && (
               <tr>
-                <td colSpan={6} className="py-6 text-center text-slate-400">
+                <td colSpan={isOwner ? 7 : 6} className="py-6 text-center text-slate-400">
                   No courier requests yet.
                 </td>
               </tr>
@@ -95,6 +99,15 @@ export default async function CourierRequestsPage({ searchParams }: { searchPara
                   <StatusBadge label={COURIER_STATUS_LABELS[r.status]} />
                 </td>
                 <td className="py-2 pr-3 text-xs text-slate-400">{formatDateTime(r.createdAt)}</td>
+                {isOwner && (
+                  <td className="py-2 pr-3">
+                    <DeleteButton
+                      id={r.id}
+                      action={deleteCourierRequest}
+                      confirmMessage={`Permanently delete courier request ${r.reference}? This cannot be undone.`}
+                    />
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>

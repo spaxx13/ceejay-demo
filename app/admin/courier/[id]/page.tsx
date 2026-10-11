@@ -3,9 +3,10 @@ import { notFound, redirect } from "next/navigation";
 import { getCourierRequestById, getLookups, getDeviceModels, getBranches, getActivity, canManageHomeServiceRequests, isBranchHidden } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import StatusBadge from "@/components/StatusBadge";
-import { updateCourierRequest } from "@/lib/actions";
+import { updateCourierRequest, deleteCourierRequest } from "@/lib/actions";
 import { COURIER_OPTIONS, COURIER_STATUS_LABELS, formatPesos } from "@/lib/courierService";
 import { formatDateTime } from "@/lib/format";
+import DeleteButton from "@/components/DeleteButton";
 
 function CourierSelect({ name, defaultValue }: { name: string; defaultValue?: string }) {
   return (
@@ -226,6 +227,20 @@ export default async function CourierDetailPage({ params }: { params: Promise<{ 
               </button>
             </form>
           </div>
+
+          {user?.role === "owner_admin" && (
+            <div className="card space-y-2">
+              <h3 className="text-sm font-semibold text-red-600">Delete Request</h3>
+              <p className="text-xs text-slate-500">Permanently removes this request. It can&apos;t be restored — use Cancel instead if you only want to stop it.</p>
+              <DeleteButton
+                id={req.id}
+                action={deleteCourierRequest}
+                confirmMessage={`Permanently delete courier request ${req.reference}? This cannot be undone.`}
+                label="Delete Permanently"
+                className="btn-secondary w-full !text-red-600"
+              />
+            </div>
+          )}
 
           {open && (
             <div className="card space-y-2">
