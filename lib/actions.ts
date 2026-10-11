@@ -3414,6 +3414,7 @@ export async function submitCourierRequest(_prev: CourierBookingResult | undefin
   if (!branchId || !UUID_RE.test(branchId)) return { ok: false, error: "Something went wrong with your submission. Please try again." };
   if (!rawDeviceBrandId) return { ok: false, error: "Please select your device brand." };
   if (!issue) return { ok: false, error: "Please briefly describe the issue." };
+  if (!photoDataUrl) return { ok: false, error: "Please upload a photo of your device." };
   if (str(formData, "courierAgreed") !== "1") return { ok: false, error: "Please read and accept the Courier Service Agreement before submitting." };
 
   // Email OTP: the booking form verifies the customer's email first. Only

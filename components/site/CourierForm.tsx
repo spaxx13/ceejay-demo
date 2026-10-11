@@ -65,6 +65,11 @@ export default function CourierForm({
   function handleProceedToOtp() {
     const form = formRef.current;
     if (!form || !form.reportValidity()) return; // surfaces the browser's native "please fill this in"
+    // The photo goes through a hidden field the browser can't validate.
+    if (!String(new FormData(form).get("photoDataUrl") ?? "")) {
+      setOtpError("Please upload a photo of your device.");
+      return;
+    }
     void sendCode(String(new FormData(form).get("email") ?? "").trim(), true);
   }
 
@@ -320,7 +325,7 @@ export default function CourierForm({
         </label>
         <textarea name="issue" required rows={3} className="input" placeholder="e.g. Won't charge after it got wet" />
       </div>
-      <PhotoUpload label="Photo of the Issue (optional)" />
+      <PhotoUpload label="Photo of Your Device" required />
 
       <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
         <p className="text-xs font-semibold text-slate-700">Courier Service Agreement</p>
