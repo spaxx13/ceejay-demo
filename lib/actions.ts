@@ -27,6 +27,8 @@ import {
   getUsers,
   getTechnicians,
   getBranches,
+  getCourierRequestById,
+  getCourierRequestByReference,
   pickPickupDeliveryBranchByShare,
   getRiders,
   getLookups,
@@ -89,9 +91,13 @@ import {
   sendPublicQuoteEmail,
   sendTrackingLinkEmail,
   sendTechnicianOnTheWayEmail,
+  sendCourierBookingEmail,
+  sendCourierShippedEmail,
   emailConfigured,
 } from "./email";
 import { isOnTheWayStatus, distanceKm } from "./technicianTracking";
+import { COURIER_AGREEMENT_VERSION, COURIER_PACKING_TIPS, COURIER_PAYMENT_METHODS, COURIER_STATUS_LABELS } from "./courierService";
+import type { CourierStatus } from "./types";
 import { storageConfigured, createSignedUploadUrl, deleteStorageObject, UPDATES_BUCKET } from "./storage";
 import { PICKUP_DELIVERY_AGREEMENT_VERSION } from "./pickupDeliveryAgreement";
 import { getRequestUpdateById } from "./db";
@@ -3369,6 +3375,260 @@ export async function permanentlyDeleteWalkInRequest(formData: FormData) {
   await query("delete from walkin_requests where id=$1 and deleted_at is not null", [id]);
   await logActivity("walkin_request", id, `${user!.name} permanently deleted ${walkIn?.reference ?? id}`, user!.name);
   revalidatePath("/admin/trash");
+}
+
+// ---------- Courier Service (mail-in repair, nationwide) ----------
+
+export type CourierBookingResult =
+  | { ok: true; reference: string; branch: { name: string; address: string; contactNumber: string } }
+  | { ok: false; error: string };
+
+// A customer outside the Home Service / Pickup & Delivery areas ships the
+// device to a branch by courier. Lighter than submitHomeServiceRequest: no
+// scheduling, map pin, distance fee or payment at booking — the customer
+// pays the courier both ways, and the repair cost plus return shipping fee
+// are settled before the branch ships the device back.
+export async function submitCourierRequest(_prev: CourierBookingResult | undefined, formData: FormData): Promise<CourierBookingResult> {
+  const name = str(formData, "name");
+  const phone = str(formData, "phone");
+  const email = str(formData, "email");
+  const street = str(formData, "street");
+  const barangay = str(formData, "barangay");
+  const city = str(formData, "city");
+  const province = str(formData, "province");
+  const zipCode = str(formData, "zipCode");
+  const landmark = str(formData, "landmark");
+  const branchId = str(formData, "branchId");
+  const rawDeviceBrandId = str(formData, "deviceBrandId");
+  const rawDeviceModelId = str(formData, "deviceModelId");
+  const deviceOther = str(formData, "deviceOther");
+  const rawServiceTypeId = str(formData, "serviceTypeId");
+  const issue = str(formData, "issue");
+  const photoDataUrlRaw = str(formData, "photoDataUrl");
+  const photoDataUrl = photoDataUrlRaw.startsWith("data:image/") ? photoDataUrlRaw : null;
+
+  if (!name) return { ok: false, error: "Please share your name." };
+  if (!phone || !isValidPhone(phone)) return { ok: false, error: "Please enter a valid PH mobile number, e.g. 0917 123 4567." };
+  if (!email || !isValidEmail(email)) return { ok: false, error: "Please enter a valid email address — we send the shipping instructions there." };
+  if (!street || !city || !province) return { ok: false, error: "Please fill in the address we should ship your repaired device back to." };
+  if (!branchId || !UUID_RE.test(branchId)) return { ok: false, error: "Please choose the branch you will ship your device to." };
+  if (!rawDeviceBrandId) return { ok: false, error: "Please select your device brand." };
+  if (!issue) return { ok: false, error: "Please briefly describe the issue." };
+  if (str(formData, "courierAgreed") !== "1") return { ok: false, error: "Please read and accept the Courier Service Agreement before submitting." };
+
+  const branches = await getBranches();
+  const branch = branches.find((b) => b.id === branchId && b.active && b.address.trim());
+  if (!branch) return { ok: false, error: "Something went wrong with your submission. Please try again." };
+
+  const deviceBrandId = UUID_RE.test(rawDeviceBrandId) ? rawDeviceBrandId : null;
+  const deviceModelId = deviceBrandId && UUID_RE.test(rawDeviceModelId) ? rawDeviceModelId : null;
+  const serviceTypeId = UUID_RE.test(rawServiceTypeId) ? rawServiceTypeId : null;
+
+  // Same max-based + retry-on-collision reference pattern as walk-ins.
+  const year = new Date().getFullYear();
+  let reference = "";
+  let created: { id: string } | null = null;
+  for (let attempt = 1; attempt <= 5; attempt++) {
+    const max = await queryOne<{ n: number }>(
+      "select coalesce(max(split_part(reference, '-', 3)::int), 0)::int as n from courier_requests where reference like $1",
+      [`CS-${year}-%`]
+    );
+    reference = `CS-${year}-${String((max?.n ?? 0) + 1).padStart(4, "0")}`;
+    try {
+      created = await queryOne<{ id: string }>(
+        `insert into courier_requests
+           (reference, name, phone, email, street, barangay, city, province, zip_code, landmark, branch_id,
+            device_brand_id, device_model_id, device_other, service_type_id, issue_description, photo_data_url, agreed_at)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17, now()) returning id`,
+        [reference, name, phone, email, street, barangay, city, province, zipCode, landmark, branchId,
+         deviceBrandId, deviceModelId, deviceOther, serviceTypeId, issue, photoDataUrl]
+      );
+      break;
+    } catch (err) {
+      const code = (err as { code?: string }).code;
+      if (code === "23505" && attempt < 5) continue;
+      throw err;
+    }
+  }
+
+  await logActivity(
+    "courier_request",
+    created!.id,
+    `Courier Service ${reference} booked via website — ship to ${branch.name}, return to ${[city, province].filter(Boolean).join(", ")} (agreement ${COURIER_AGREEMENT_VERSION})`,
+    "System"
+  );
+  if (emailConfigured()) {
+    try {
+      await sendCourierBookingEmail(email, {
+        customerName: name,
+        reference,
+        branchName: branch.name,
+        branchAddress: branch.address,
+        branchContact: branch.contactNumber,
+        tips: COURIER_PACKING_TIPS,
+      });
+    } catch {
+      // Best-effort — the success screen shows the same instructions.
+    }
+  }
+  revalidatePath("/admin/courier");
+  return { ok: true, reference, branch: { name: branch.name, address: branch.address, contactNumber: branch.contactNumber } };
+}
+
+export type CourierInboundResult = { ok: true } | { ok: false; error: string };
+
+// Customer tells us which courier/tracking number their device is on — the
+// reference + mobile number they booked with is the only credential, same
+// as the /track pages.
+export async function submitCourierInboundTracking(_prev: CourierInboundResult | undefined, formData: FormData): Promise<CourierInboundResult> {
+  const reference = str(formData, "reference").toUpperCase();
+  const phone = str(formData, "phone");
+  const courier = str(formData, "courier").slice(0, 80);
+  const tracking = str(formData, "trackingNumber").slice(0, 80);
+  if (!courier || !tracking) return { ok: false, error: "Please enter the courier and the tracking number." };
+  const req = await getCourierRequestByReference(reference);
+  if (!req || normalizePhone(req.phone) !== normalizePhone(phone)) return { ok: false, error: "We couldn't find that request." };
+  if (req.status !== "awaiting_unit") return { ok: false, error: "This request no longer accepts shipment details." };
+  await query("update courier_requests set inbound_courier=$1, inbound_tracking=$2 where id=$3", [courier, tracking, req.id]);
+  await logActivity("courier_request", req.id, `Customer shipped via ${courier}, tracking ${tracking}`, req.name);
+  revalidatePath("/admin/courier");
+  revalidatePath(`/admin/courier/${req.id}`);
+  revalidatePath("/courier-service/track");
+  return { ok: true };
+}
+
+// Customer uploads a screenshot of their GCash / bank transfer receipt once
+// the repair is done and the total is set. Staff verify it on the admin
+// page and record the payment; the same reference + phone check as above.
+export async function submitCourierPaymentProof(_prev: CourierInboundResult | undefined, formData: FormData): Promise<CourierInboundResult> {
+  const reference = str(formData, "reference").toUpperCase();
+  const phone = str(formData, "phone");
+  const method = str(formData, "method");
+  const paymentReference = str(formData, "paymentReference").slice(0, 80);
+  const proof = str(formData, "proofDataUrl");
+  if (!(COURIER_PAYMENT_METHODS as readonly string[]).includes(method)) return { ok: false, error: "Please choose how you paid." };
+  if (!proof.startsWith("data:image/")) return { ok: false, error: "Please upload a screenshot or photo of your payment receipt." };
+  const req = await getCourierRequestByReference(reference);
+  if (!req || normalizePhone(req.phone) !== normalizePhone(phone)) return { ok: false, error: "We couldn't find that request." };
+  if (req.status !== "ready_to_ship") return { ok: false, error: "This request isn't waiting for payment." };
+  if (req.paidAt) return { ok: false, error: "Your payment was already confirmed." };
+  await query("update courier_requests set payment_method=$1, payment_reference=$2, payment_proof_data_url=$3, payment_proof_at=now() where id=$4", [
+    method,
+    paymentReference,
+    proof,
+    req.id,
+  ]);
+  await logActivity("courier_request", req.id, `Customer uploaded proof of payment (${method}${paymentReference ? `, ref ${paymentReference}` : ""})`, req.name);
+  revalidatePath("/admin/courier");
+  revalidatePath(`/admin/courier/${req.id}`);
+  revalidatePath("/courier-service/track");
+  return { ok: true };
+}
+
+// What each admin action may move a request from, and to.
+const COURIER_TRANSITIONS: Record<string, { from: CourierStatus[]; to: CourierStatus }> = {
+  received: { from: ["awaiting_unit"], to: "received" },
+  start_repair: { from: ["received"], to: "in_repair" },
+  ready: { from: ["in_repair"], to: "ready_to_ship" },
+  ship: { from: ["ready_to_ship"], to: "shipped" },
+  delivered: { from: ["shipped"], to: "delivered" },
+  cancel: { from: ["awaiting_unit", "received", "in_repair", "ready_to_ship"], to: "cancelled" },
+};
+
+function courierAmount(fd: FormData, key: string): number | null {
+  const raw = str(fd, key).replace(/,/g, "");
+  if (!raw) return null;
+  const n = Number(raw);
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
+// One admin action for the whole mail-in lifecycle; `intent` picks the
+// step. Gated like Home Service Requests (canManageHomeServiceRequests)
+// and scoped to the receiving branch.
+export async function updateCourierRequest(formData: FormData) {
+  const user = await getCurrentUser();
+  if (!canManageHomeServiceRequests(user)) return;
+  const id = str(formData, "id");
+  const intent = str(formData, "intent");
+  const req = await getCourierRequestById(id);
+  if (!req || isBranchHidden(user, req.branchId)) return;
+  const actor = user?.name ?? "Admin";
+  const revalidate = () => {
+    revalidatePath("/admin/courier");
+    revalidatePath(`/admin/courier/${id}`);
+    revalidatePath("/courier-service/track");
+  };
+
+  if (intent === "save_notes") {
+    await query("update courier_requests set admin_notes=$1 where id=$2", [str(formData, "adminNotes"), id]);
+    revalidate();
+    return;
+  }
+  if (intent === "save_inbound") {
+    await query("update courier_requests set inbound_courier=$1, inbound_tracking=$2 where id=$3", [
+      str(formData, "inboundCourier").slice(0, 80),
+      str(formData, "inboundTracking").slice(0, 80),
+      id,
+    ]);
+    await logActivity("courier_request", id, `Inbound shipment details updated by ${actor}`, actor);
+    revalidate();
+    return;
+  }
+  if (intent === "save_amounts") {
+    if (req.status !== "in_repair" && req.status !== "ready_to_ship") return;
+    const repairCost = courierAmount(formData, "repairCost");
+    const returnShippingFee = courierAmount(formData, "returnShippingFee");
+    if (repairCost === null || returnShippingFee === null) return;
+    // Changing the amounts after payment would leave a stale "paid" mark and
+    // proof against a different total, so the customer must pay/upload again.
+    await query("update courier_requests set repair_cost=$1, return_shipping_fee=$2, paid_at=null, payment_proof_data_url=null, payment_proof_at=null, payment_method='', payment_reference='' where id=$3", [repairCost, returnShippingFee, id]);
+    await logActivity("courier_request", id, `Amounts set by ${actor}: repair ₱${repairCost}, return shipping ₱${returnShippingFee}`, actor);
+    revalidate();
+    return;
+  }
+  if (intent === "mark_paid") {
+    // Staff confirm only after seeing the customer's uploaded proof.
+    if (req.status !== "ready_to_ship" || req.repairCost === null || req.returnShippingFee === null || req.paidAt || !req.paymentProofAt) return;
+    await query("update courier_requests set paid_at=now() where id=$1", [id]);
+    await logActivity("courier_request", id, `Payment of ₱${req.repairCost + req.returnShippingFee} (${req.paymentMethod || "proof uploaded"}) confirmed by ${actor}`, actor);
+    revalidate();
+    return;
+  }
+
+  const step = COURIER_TRANSITIONS[intent];
+  if (!step || !step.from.includes(req.status)) return;
+
+  if (intent === "received") {
+    await query("update courier_requests set status=$1, received_at=now() where id=$2", [step.to, id]);
+  } else if (intent === "ready") {
+    // The customer needs a final amount before the device can wait on payment.
+    if (req.repairCost === null || req.returnShippingFee === null) return;
+    await query("update courier_requests set status=$1 where id=$2", [step.to, id]);
+  } else if (intent === "ship") {
+    const courier = str(formData, "outboundCourier").slice(0, 80);
+    const tracking = str(formData, "outboundTracking").slice(0, 80);
+    // Never ship a device back before the repair + shipping were paid.
+    if (!req.paidAt || !courier || !tracking) return;
+    await query("update courier_requests set status=$1, shipped_at=now(), outbound_courier=$2, outbound_tracking=$3 where id=$4", [
+      step.to,
+      courier,
+      tracking,
+      id,
+    ]);
+    if (req.email && emailConfigured()) {
+      try {
+        await sendCourierShippedEmail(req.email, { customerName: req.name, reference: req.reference, courier, trackingNumber: tracking });
+      } catch {
+        // Best-effort; the tracking page shows the same details.
+      }
+    }
+  } else if (intent === "delivered") {
+    await query("update courier_requests set status=$1, delivered_at=now() where id=$2", [step.to, id]);
+  } else {
+    await query("update courier_requests set status=$1 where id=$2", [step.to, id]);
+  }
+  await logActivity("courier_request", id, `Status changed to "${COURIER_STATUS_LABELS[step.to]}" by ${actor}`, actor);
+  revalidate();
 }
 
 // ---------- Public: iCloud ON/OFF Checker ----------

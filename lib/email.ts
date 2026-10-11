@@ -614,3 +614,57 @@ export async function sendTechnicianOnTheWayEmail(
   });
   if (error) throw new Error(error.message);
 }
+
+// Courier Service (mail-in repair) — sent right after booking with where
+// to ship the device, then again once the branch ships it back.
+export async function sendCourierBookingEmail(
+  to: string,
+  opts: { customerName: string; reference: string; branchName: string; branchAddress: string; branchContact: string; tips: string[] }
+) {
+  const client = getClient();
+  const { error } = await client.emails.send({
+    from: FROM,
+    to,
+    subject: `Ship your device to Ceejay — ${opts.reference}`,
+    html: `
+      <div style="font-family: -apple-system, sans-serif; max-width: 480px; margin: 0 auto; color: #1e293b;">
+        <p style="font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8;">Ceejay Cellphone Repair Shop</p>
+        <h2 style="margin: 4px 0 16px;">Courier Service booking received</h2>
+        <p style="font-size: 14px; line-height: 1.5;">Hi ${escapeHtml(opts.customerName)}, your reference number is <strong>${escapeHtml(opts.reference)}</strong>.</p>
+        <p style="font-size: 14px; line-height: 1.5;"><strong>Ship your device to:</strong><br/>
+          Ceejay Cellphone Repair Shop — ${escapeHtml(opts.branchName)}<br/>
+          ${escapeHtml(opts.branchAddress)}<br/>
+          ${opts.branchContact ? `Contact: ${escapeHtml(opts.branchContact)}<br/>` : ""}
+          Attn: ${escapeHtml(opts.reference)}
+        </p>
+        <ul style="font-size: 13px; line-height: 1.5; padding-left: 18px;">${opts.tips.map((t) => `<li>${escapeHtml(t)}</li>`).join("")}</ul>
+        <p style="font-size: 14px;"><a href="${SITE_URL}/courier-service/track?reference=${encodeURIComponent(opts.reference)}">Track your request</a></p>
+      </div>
+    `,
+  });
+  if (error) throw new Error(error.message);
+}
+
+export async function sendCourierShippedEmail(
+  to: string,
+  opts: { customerName: string; reference: string; courier: string; trackingNumber: string }
+) {
+  const client = getClient();
+  const { error } = await client.emails.send({
+    from: FROM,
+    to,
+    subject: `Your repaired device is on its way — ${opts.reference}`,
+    html: `
+      <div style="font-family: -apple-system, sans-serif; max-width: 480px; margin: 0 auto; color: #1e293b;">
+        <p style="font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8;">Ceejay Cellphone Repair Shop</p>
+        <h2 style="margin: 4px 0 16px;">Your device has been shipped</h2>
+        <p style="font-size: 14px; line-height: 1.5;">
+          Hi ${escapeHtml(opts.customerName)}, your repaired device (<strong>${escapeHtml(opts.reference)}</strong>) was shipped via
+          <strong>${escapeHtml(opts.courier)}</strong>.<br/>Tracking number: <strong>${escapeHtml(opts.trackingNumber)}</strong>
+        </p>
+        <p style="font-size: 14px;"><a href="${SITE_URL}/courier-service/track?reference=${encodeURIComponent(opts.reference)}">View your request</a></p>
+      </div>
+    `,
+  });
+  if (error) throw new Error(error.message);
+}
