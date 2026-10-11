@@ -863,7 +863,7 @@ type CourierRequestRow = {
   repair_cost: string | number | null; return_shipping_fee: string | number | null; paid_at: Date | null;
   payment_method: string; payment_reference: string; payment_proof_data_url: string | null; payment_proof_at: Date | null;
   outbound_courier: string; outbound_tracking: string; shipped_at: Date | null; delivered_at: Date | null;
-  admin_notes: string; agreed_at: Date | null; created_at: Date;
+  admin_notes: string; agreed_at: Date | null; deleted_at?: Date | null; created_at: Date;
 };
 function mapCourierRequest(r: CourierRequestRow): CourierRequest {
   return {
@@ -877,7 +877,7 @@ function mapCourierRequest(r: CourierRequestRow): CourierRequest {
     paidAt: toIsoOrNull(r.paid_at), paymentMethod: r.payment_method, paymentReference: r.payment_reference,
     paymentProofDataUrl: r.payment_proof_data_url ?? null, paymentProofAt: toIsoOrNull(r.payment_proof_at), outboundCourier: r.outbound_courier, outboundTracking: r.outbound_tracking,
     shippedAt: toIsoOrNull(r.shipped_at), deliveredAt: toIsoOrNull(r.delivered_at),
-    adminNotes: r.admin_notes, agreedAt: toIsoOrNull(r.agreed_at), createdAt: toIso(r.created_at),
+    adminNotes: r.admin_notes, agreedAt: toIsoOrNull(r.agreed_at), deletedAt: toIsoOrNull(r.deleted_at ?? null), createdAt: toIso(r.created_at),
   };
 }
 // Same egress reasoning as getWalkInRequests(): the inline issue photo
@@ -885,9 +885,12 @@ function mapCourierRequest(r: CourierRequestRow): CourierRequest {
 const COURIER_LIGHT_COLUMNS =
   "id, reference, customer_id, name, phone, email, street, barangay, city, province, zip_code, landmark, branch_id, device_brand_id, " +
   "device_model_id, device_other, service_type_id, issue_description, status, inbound_courier, inbound_tracking, received_at, " +
-  "repair_cost, return_shipping_fee, paid_at, payment_method, payment_reference, payment_proof_at, outbound_courier, outbound_tracking, shipped_at, delivered_at, admin_notes, agreed_at, created_at";
+  "repair_cost, return_shipping_fee, paid_at, payment_method, payment_reference, payment_proof_at, outbound_courier, outbound_tracking, shipped_at, delivered_at, admin_notes, agreed_at, deleted_at, created_at";
 export async function getCourierRequests() {
-  return (await query<CourierRequestRow>(`select ${COURIER_LIGHT_COLUMNS} from courier_requests order by created_at desc`)).map(mapCourierRequest);
+  return (await query<CourierRequestRow>(`select ${COURIER_LIGHT_COLUMNS} from courier_requests where deleted_at is null order by created_at desc`)).map(mapCourierRequest);
+}
+export async function getDeletedCourierRequests() {
+  return (await query<CourierRequestRow>(`select ${COURIER_LIGHT_COLUMNS} from courier_requests where deleted_at is not null order by deleted_at desc`)).map(mapCourierRequest);
 }
 export async function getCourierRequestById(id: string) {
   const row = await queryOne<CourierRequestRow>("select * from courier_requests where id = $1", [id]);
@@ -895,7 +898,7 @@ export async function getCourierRequestById(id: string) {
 }
 // Customer tracking: the reference number is all they have, no login.
 export async function getCourierRequestByReference(reference: string) {
-  const row = await queryOne<CourierRequestRow>("select * from courier_requests where reference = $1", [reference.trim().toUpperCase()]);
+  const row = await queryOne<CourierRequestRow>("select * from courier_requests where reference = $1 and deleted_at is null", [reference.trim().toUpperCase()]);
   return row ? mapCourierRequest(row) : null;
 }
 

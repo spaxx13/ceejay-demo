@@ -3557,19 +3557,43 @@ export async function confirmCourierReceived(_prev: CourierInboundResult | undef
   return { ok: true };
 }
 
-// Permanently deletes a courier request. Owner admins only — there is no
-// Trash for these, so it can't be undone; the Activity Log keeps a record.
+// Trash for courier requests — owner admins only, like the POS tab of Trash.
+// Deleting moves a request to Trash (it disappears from the list and from the
+// customer's tracking page); restoring brings it back unchanged.
 export async function deleteCourierRequest(formData: FormData) {
   const user = await getCurrentUser();
   if (!user || user.role !== "owner_admin") return;
   const id = str(formData, "id");
   const req = await getCourierRequestById(id);
-  if (!req) return;
-  await query("delete from courier_requests where id=$1", [id]);
-  await logActivity("courier_request", id, `${user.name} permanently deleted ${req.reference} (${req.name})`, user.name);
+  if (!req || req.deletedAt) return;
+  await query("update courier_requests set deleted_at=now() where id=$1", [id]);
+  await logActivity("courier_request", id, `Moved to Trash by ${user.name}`, user.name);
   revalidatePath("/admin/courier");
+  revalidatePath("/admin/trash");
   revalidatePath("/courier-service/track");
   redirect("/admin/courier");
+}
+
+export async function restoreCourierRequest(formData: FormData) {
+  const user = await getCurrentUser();
+  if (!user || user.role !== "owner_admin") return;
+  const id = str(formData, "id");
+  await query("update courier_requests set deleted_at=null where id=$1", [id]);
+  await logActivity("courier_request", id, `Restored from Trash by ${user.name}`, user.name);
+  revalidatePath("/admin/courier");
+  revalidatePath("/admin/trash");
+  revalidatePath("/courier-service/track");
+}
+
+export async function permanentlyDeleteCourierRequest(formData: FormData) {
+  const user = await getCurrentUser();
+  if (!user || user.role !== "owner_admin") return;
+  const id = str(formData, "id");
+  const req = await queryOne<{ reference: string }>("select reference from courier_requests where id=$1 and deleted_at is not null", [id]);
+  if (!req) return;
+  await query("delete from courier_requests where id=$1 and deleted_at is not null", [id]);
+  await logActivity("courier_request", id, `${user.name} permanently deleted ${req.reference}`, user.name);
+  revalidatePath("/admin/trash");
 }
 
 // What each admin action may move a request from, and to.
@@ -3598,7 +3622,7 @@ export async function updateCourierRequest(formData: FormData) {
   const id = str(formData, "id");
   const intent = str(formData, "intent");
   const req = await getCourierRequestById(id);
-  if (!req || isBranchHidden(user, req.branchId)) return;
+  if (!req || req.deletedAt || isBranchHidden(user, req.branchId)) return;
   const actor = user?.name ?? "Admin";
   const revalidate = () => {
     revalidatePath("/admin/courier");

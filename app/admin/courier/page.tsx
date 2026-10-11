@@ -104,7 +104,8 @@ export default async function CourierRequestsPage({ searchParams }: { searchPara
                     <DeleteButton
                       id={r.id}
                       action={deleteCourierRequest}
-                      confirmMessage={`Permanently delete courier request ${r.reference}? This cannot be undone.`}
+                      confirmMessage={`Move courier request ${r.reference} to Trash? You can restore it later from Trash.`}
+                      label="Move to Trash"
                     />
                   </td>
                 )}

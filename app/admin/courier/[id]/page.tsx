@@ -231,12 +231,14 @@ export default async function CourierDetailPage({ params }: { params: Promise<{ 
           {user?.role === "owner_admin" && (
             <div className="card space-y-2">
               <h3 className="text-sm font-semibold text-red-600">Delete Request</h3>
-              <p className="text-xs text-slate-500">Permanently removes this request. It can&apos;t be restored — use Cancel instead if you only want to stop it.</p>
+              <p className="text-xs text-slate-500">
+                Moves this request to Trash — it disappears from the list and from the customer&apos;s tracking page, but can be restored later from Trash.
+              </p>
               <DeleteButton
                 id={req.id}
                 action={deleteCourierRequest}
-                confirmMessage={`Permanently delete courier request ${req.reference}? This cannot be undone.`}
-                label="Delete Permanently"
+                confirmMessage={`Move courier request ${req.reference} to Trash? You can restore it later from Trash.`}
+                label="Move to Trash"
                 className="btn-secondary w-full !text-red-600"
               />
             </div>

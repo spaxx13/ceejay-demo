@@ -352,6 +352,7 @@ export type CourierRequest = {
   deliveredAt: string | null;
   adminNotes: string;
   agreedAt: string | null;
+  deletedAt: string | null; // set when moved to Trash — null again once restored
   createdAt: string;
 };
 
