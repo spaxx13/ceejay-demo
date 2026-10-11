@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useState } from "react";
 import { submitCourierRequest } from "@/lib/actions";
 import { COURIER_AGREEMENT_TERMS, COURIER_PACKING_TIPS } from "@/lib/courierService";
 import PhotoUpload from "@/components/PhotoUpload";
@@ -9,6 +9,8 @@ import type { Branch } from "@/lib/types";
 type Brand = { id: string; label: string };
 type Model = { id: string; brandId: string; name: string };
 type ServiceType = { id: string; label: string };
+// public/ph-addresses-all.json (scripts/build-ph-addresses-all.py)
+type PhProvince = { key: string; label: string; cities: { name: string; barangays: string[] }[] };
 
 export default function CourierForm({
   branch,
@@ -24,6 +26,22 @@ export default function CourierForm({
   const [state, formAction, pending] = useActionState(submitCourierRequest, undefined);
   const [brandId, setBrandId] = useState("");
   const [agreed, setAgreed] = useState(false);
+
+  // Every province / city / barangay in the Philippines, loaded on demand.
+  // If it can't load, or the customer's address isn't in the list, the same
+  // three fields fall back to plain text inputs.
+  const [phData, setPhData] = useState<PhProvince[] | null>(null);
+  const [typed, setTyped] = useState(false);
+  const [provinceKey, setProvinceKey] = useState("");
+  const [city, setCity] = useState("");
+  useEffect(() => {
+    fetch("/ph-addresses-all.json")
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then(setPhData)
+      .catch(() => setTyped(true));
+  }, []);
+  const province = phData?.find((p) => p.key === provinceKey) ?? null;
+  const cityEntry = province?.cities.find((c) => c.name === city) ?? null;
 
   if (state?.ok) {
     return (
@@ -89,28 +107,89 @@ export default function CourierForm({
         </label>
         <input name="street" required className="input" placeholder="123 Rizal St." />
       </div>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <div className="space-y-1.5">
-          <label className="text-xs font-medium text-slate-500">Barangay</label>
-          <input name="barangay" className="input" />
+      {typed ? (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-slate-500">
+              Province <span className="text-red-600">*</span>
+            </label>
+            <input name="province" required className="input" />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-slate-500">
+              City / Municipality <span className="text-red-600">*</span>
+            </label>
+            <input name="city" required className="input" />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-slate-500">Barangay</label>
+            <input name="barangay" className="input" />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-slate-500">ZIP Code</label>
+            <input name="zipCode" inputMode="numeric" maxLength={4} className="input" />
+          </div>
         </div>
-        <div className="space-y-1.5">
-          <label className="text-xs font-medium text-slate-500">
-            City / Municipality <span className="text-red-600">*</span>
-          </label>
-          <input name="city" required className="input" />
+      ) : (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-slate-500">
+              Province <span className="text-red-600">*</span>
+            </label>
+            <input type="hidden" name="province" value={province?.label ?? ""} />
+            <select
+              required
+              className="input"
+              disabled={!phData}
+              value={provinceKey}
+              onChange={(e) => {
+                setProvinceKey(e.target.value);
+                setCity("");
+              }}
+            >
+              <option value="">{phData ? "Select province..." : "Loading..."}</option>
+              {(phData ?? []).map((p) => (
+                <option key={p.key} value={p.key}>
+                  {p.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-slate-500">
+              City / Municipality <span className="text-red-600">*</span>
+            </label>
+            <select name="city" required className="input" disabled={!province} value={city} onChange={(e) => setCity(e.target.value)}>
+              <option value="">{province ? "Select city / municipality..." : "Select a province first"}</option>
+              {(province?.cities ?? []).map((c) => (
+                <option key={c.name} value={c.name}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-slate-500">Barangay</label>
+            <select key={`${provinceKey}-${city}`} name="barangay" className="input" disabled={!cityEntry} defaultValue="">
+              <option value="">{cityEntry ? "Select barangay..." : "Select a city first"}</option>
+              {(cityEntry?.barangays ?? []).map((b) => (
+                <option key={b} value={b}>
+                  {b}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-slate-500">ZIP Code</label>
+            <input name="zipCode" inputMode="numeric" maxLength={4} className="input" />
+          </div>
         </div>
-        <div className="space-y-1.5">
-          <label className="text-xs font-medium text-slate-500">
-            Province <span className="text-red-600">*</span>
-          </label>
-          <input name="province" required className="input" />
-        </div>
-        <div className="space-y-1.5">
-          <label className="text-xs font-medium text-slate-500">ZIP Code</label>
-          <input name="zipCode" inputMode="numeric" maxLength={4} className="input" />
-        </div>
-      </div>
+      )}
+      {phData && (
+        <button type="button" onClick={() => setTyped(!typed)} className="-mt-2 text-xs text-blue-500 hover:underline">
+          {typed ? "← Choose from the list instead" : "My address isn't listed — type it instead"}
+        </button>
+      )}
       <div className="space-y-1.5">
         <label className="text-xs font-medium text-slate-500">Landmark (optional)</label>
         <input name="landmark" className="input" placeholder="e.g. beside the barangay hall" />
