@@ -76,7 +76,7 @@ export const COURIER_PAYMENT_QR_IMAGE = "/courier-payment-qr.jpg";
 export const COURIER_PAYMENT_METHODS = ["GCash", "Bank Transfer", "InstaPay QR"] as const;
 export const COURIER_PAYMENT_ACCOUNTS: { method: (typeof COURIER_PAYMENT_METHODS)[number]; accountName: string; accountNumber: string; bank?: string }[] = [
   // { method: "GCash", accountName: "…", accountNumber: "09xx xxx xxxx" },
-  // { method: "Bank Transfer", bank: "…", accountName: "…", accountNumber: "…" },
+  { method: "Bank Transfer", bank: "Banco De Oro (BDO)", accountName: "Ceejay", accountNumber: "008066001024" },
 ];
 
 export function formatPesos(n: number | null): string {
