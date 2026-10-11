@@ -11,6 +11,7 @@ const LINKS = [
   { href: "/services", label: "Services" },
   { href: "/quote", label: "Get a Quote" },
   { href: "/branches", label: "Branches" },
+  { href: "/courier-service", label: "Courier Service" },
   { href: "/panic-log-checker", label: "Panic Log Checker" },
   ...(PICKUP_DELIVERY_PUBLIC_ENABLED ? [{ href: "/track", label: "Track Order" }] : []),
   { href: "/about", label: "About" },
