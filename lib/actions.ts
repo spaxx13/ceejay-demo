@@ -96,7 +96,7 @@ import {
   emailConfigured,
 } from "./email";
 import { isOnTheWayStatus, distanceKm } from "./technicianTracking";
-import { COURIER_AGREEMENT_VERSION, COURIER_PACKING_TIPS, COURIER_PAYMENT_METHODS, COURIER_STATUS_LABELS } from "./courierService";
+import { COURIER_AGREEMENT_VERSION, COURIER_PACKING_TIPS, isCourierReceivingBranch, COURIER_PAYMENT_METHODS, COURIER_STATUS_LABELS } from "./courierService";
 import type { CourierStatus } from "./types";
 import { storageConfigured, createSignedUploadUrl, deleteStorageObject, UPDATES_BUCKET } from "./storage";
 import { PICKUP_DELIVERY_AGREEMENT_VERSION } from "./pickupDeliveryAgreement";
@@ -3411,13 +3411,14 @@ export async function submitCourierRequest(_prev: CourierBookingResult | undefin
   if (!phone || !isValidPhone(phone)) return { ok: false, error: "Please enter a valid PH mobile number, e.g. 0917 123 4567." };
   if (!email || !isValidEmail(email)) return { ok: false, error: "Please enter a valid email address — we send the shipping instructions there." };
   if (!street || !city || !province) return { ok: false, error: "Please fill in the address we should ship your repaired device back to." };
-  if (!branchId || !UUID_RE.test(branchId)) return { ok: false, error: "Please choose the branch you will ship your device to." };
+  if (!branchId || !UUID_RE.test(branchId)) return { ok: false, error: "Something went wrong with your submission. Please try again." };
   if (!rawDeviceBrandId) return { ok: false, error: "Please select your device brand." };
   if (!issue) return { ok: false, error: "Please briefly describe the issue." };
   if (str(formData, "courierAgreed") !== "1") return { ok: false, error: "Please read and accept the Courier Service Agreement before submitting." };
 
   const branches = await getBranches();
-  const branch = branches.find((b) => b.id === branchId && b.active && b.address.trim());
+  // Only the receiving branch (COURIER_RECEIVING_BRANCH_NAME) takes courier shipments.
+  const branch = branches.find((b) => b.id === branchId && b.active && b.address.trim() && isCourierReceivingBranch(b.name));
   if (!branch) return { ok: false, error: "Something went wrong with your submission. Please try again." };
 
   const deviceBrandId = UUID_RE.test(rawDeviceBrandId) ? rawDeviceBrandId : null;

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getBranches, getLookups, getDeviceModels } from "@/lib/db";
 import CourierForm from "@/components/site/CourierForm";
+import { isCourierReceivingBranch } from "@/lib/courierService";
 
 // Mail-in repair for customers outside the Home Service and Pickup &
 // Delivery areas — anywhere in the Philippines. The customer ships the
@@ -9,9 +10,8 @@ import CourierForm from "@/components/site/CourierForm";
 export default async function CourierServicePage() {
   const [allBranches, lookups, deviceModels] = await Promise.all([getBranches(), getLookups(), getDeviceModels()]);
 
-  // A branch without an address is a backend-only bucket (e.g. "Home
-  // Service"), not somewhere a courier can deliver to.
-  const branches = allBranches.filter((b) => b.active && b.address.trim()).map((b) => ({ id: b.id, name: b.name, address: b.address }));
+  // Devices are only shipped to one branch (COURIER_RECEIVING_BRANCH_NAME).
+  const branch = allBranches.filter((b) => b.active && b.address.trim() && isCourierReceivingBranch(b.name)).map((b) => ({ id: b.id, name: b.name, address: b.address }))[0];
   const brands = lookups
     .filter((l) => l.kind === "device_brand" && l.active)
     .sort((a, b) => a.order - b.order)
@@ -46,10 +46,10 @@ export default async function CourierServicePage() {
         </p>
 
         <div className="mt-8">
-          {branches.length === 0 ? (
+          {!branch ? (
             <p className="card text-center text-sm text-slate-400">Courier Service is temporarily unavailable. Please contact a branch directly.</p>
           ) : (
-            <CourierForm branches={branches} brands={brands} models={models} serviceTypes={serviceTypes} />
+            <CourierForm branch={branch} brands={brands} models={models} serviceTypes={serviceTypes} />
           )}
         </div>
         <p className="mt-4 text-center text-sm">
