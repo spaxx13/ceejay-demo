@@ -36,6 +36,12 @@ export function isCourierReceivingBranch(name: string): boolean {
   return name.trim().toLowerCase() === COURIER_RECEIVING_BRANCH_NAME.toLowerCase();
 }
 
+// Shown after booking (screen + email): the customer arranges and pays for
+// the shipment to us themselves — we don't book a courier for them.
+export const COURIER_SELF_SHIP_NOTICE =
+  "Ikaw mismo ang magpapadala ng device sa branch namin. Hindi kami ang magbo-book ng courier para sa iyo. Pumili ng courier sa baba, ibigay ang address ng branch, at ikaw ang magbabayad ng shipping.";
+export const COURIER_LIST = COURIER_OPTIONS.filter((c) => c !== "Other");
+
 export const COURIER_AGREEMENT_VERSION = "2026-10";
 
 // Shown on the booking form (and stored as accepted via agreed_at) —
@@ -54,7 +60,7 @@ export const COURIER_PACKING_TIPS = [
   "Wrap the device in bubble wrap and use a sturdy box — no loose envelopes.",
   "Turn off Find My iPhone / Find My Device and remove SIM, memory card, case and accessories.",
   "Declare the device's value for insurance when you ship.",
-  "Send us the courier and tracking number (on the tracking page, or just reply to your confirmation email) so we can watch for it.",
+  "After you ship, enter the tracking number you got from the courier on the tracking page. We need it to watch for your parcel.",
 ];
 
 // How the customer pays the repair cost + return shipping fee: GCash or

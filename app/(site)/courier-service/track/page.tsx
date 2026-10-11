@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { getCourierRequestByReference, getBranches } from "@/lib/db";
 import { normalizePhone } from "@/lib/sms";
-import { COURIER_STATUS_LABELS, COURIER_STATUS_ORDER, COURIER_PACKING_TIPS, COURIER_PAYMENT_ACCOUNTS, COURIER_PAYMENT_QR_IMAGE, formatPesos } from "@/lib/courierService";
+import { COURIER_STATUS_LABELS, COURIER_STATUS_ORDER, COURIER_LIST, COURIER_PACKING_TIPS, COURIER_PAYMENT_ACCOUNTS, COURIER_SELF_SHIP_NOTICE, COURIER_PAYMENT_QR_IMAGE, formatPesos } from "@/lib/courierService";
 import CourierInboundForm from "@/components/site/CourierInboundForm";
 import CourierPaymentForm from "@/components/site/CourierPaymentForm";
 import CourierReceivedForm from "@/components/site/CourierReceivedForm";
@@ -95,12 +95,20 @@ export default async function CourierTrackPage({ searchParams }: { searchParams:
                 <li key={t}>{t}</li>
               ))}
             </ul>
+            <p className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm font-medium text-amber-900">
+              {COURIER_SELF_SHIP_NOTICE}
+            </p>
+            <p className="text-xs text-slate-500">Couriers na pwede mong gamitin: {COURIER_LIST.join(", ")}.</p>
             {req.inboundTracking ? (
               <p className="text-sm text-slate-600">
                 Your shipment: {req.inboundCourier} — <span className="font-mono">{req.inboundTracking}</span>
               </p>
             ) : (
-              <CourierInboundForm reference={req.reference} phone={phone} />
+              <div className="space-y-2 border-t border-slate-200 pt-3">
+                <p className="text-sm font-semibold text-slate-800">Kailangan ang tracking number</p>
+                <p className="text-xs text-slate-500">Pagkatapos mong ipadala, ilagay ang courier at ang tracking number na ibinigay nila sa iyo.</p>
+                <CourierInboundForm reference={req.reference} phone={phone} />
+              </div>
             )}
           </div>
         )}

@@ -96,7 +96,7 @@ import {
   emailConfigured,
 } from "./email";
 import { isOnTheWayStatus, distanceKm } from "./technicianTracking";
-import { COURIER_AGREEMENT_VERSION, COURIER_PACKING_TIPS, isCourierReceivingBranch, COURIER_PAYMENT_METHODS, COURIER_STATUS_LABELS } from "./courierService";
+import { COURIER_AGREEMENT_VERSION, COURIER_LIST, COURIER_SELF_SHIP_NOTICE, COURIER_PACKING_TIPS, isCourierReceivingBranch, COURIER_PAYMENT_METHODS, COURIER_STATUS_LABELS } from "./courierService";
 import type { CourierStatus } from "./types";
 import { storageConfigured, createSignedUploadUrl, deleteStorageObject, UPDATES_BUCKET } from "./storage";
 import { PICKUP_DELIVERY_AGREEMENT_VERSION } from "./pickupDeliveryAgreement";
@@ -3416,6 +3416,14 @@ export async function submitCourierRequest(_prev: CourierBookingResult | undefin
   if (!issue) return { ok: false, error: "Please briefly describe the issue." };
   if (str(formData, "courierAgreed") !== "1") return { ok: false, error: "Please read and accept the Courier Service Agreement before submitting." };
 
+  // Email OTP: the booking form verifies the customer's email first. Only
+  // enforced when email sending is configured, so a missing Resend key can't
+  // take the form down (same convention as the walk-in form).
+  if (OTP_GATE_ENABLED && emailConfigured()) {
+    const otpRow = await queryOne<{ verified: boolean }>("select verified from email_otp_codes where email=$1", [email.trim().toLowerCase()]);
+    if (!otpRow?.verified) return { ok: false, error: "Please verify your email address before submitting." };
+  }
+
   const branches = await getBranches();
   // Only the receiving branch (COURIER_RECEIVING_BRANCH_NAME) takes courier shipments.
   const branch = branches.find((b) => b.id === branchId && b.active && b.address.trim() && isCourierReceivingBranch(b.name));
@@ -3467,11 +3475,15 @@ export async function submitCourierRequest(_prev: CourierBookingResult | undefin
         branchAddress: branch.address,
         branchContact: branch.contactNumber,
         tips: COURIER_PACKING_TIPS,
+        couriers: COURIER_LIST,
+        selfShipNotice: COURIER_SELF_SHIP_NOTICE,
       });
     } catch {
       // Best-effort — the success screen shows the same instructions.
     }
   }
+  // A submitted, verified code has done its job and shouldn't linger for reuse.
+  await query("delete from email_otp_codes where email=$1", [email.trim().toLowerCase()]);
   revalidatePath("/admin/courier");
   return { ok: true, reference, branch: { name: branch.name, address: branch.address, contactNumber: branch.contactNumber } };
 }
