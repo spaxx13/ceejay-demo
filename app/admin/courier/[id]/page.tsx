@@ -146,7 +146,7 @@ export default async function CourierDetailPage({ params }: { params: Promise<{ 
 
             {req.status === "ready_to_ship" && (
               <>
-                <p className="text-sm text-slate-700">Customer owes {formatPesos(total)} (GCash / bank transfer).</p>
+                <p className="text-sm text-slate-700">Customer owes {formatPesos(total)} (InstaPay QR, GCash, or bank transfer).</p>
                 {req.paymentProofDataUrl ? (
                   <div className="space-y-1">
                     <p className="text-xs text-slate-500">

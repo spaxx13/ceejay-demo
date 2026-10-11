@@ -3506,7 +3506,7 @@ export async function submitCourierPaymentProof(_prev: CourierInboundResult | un
   const method = str(formData, "method");
   const paymentReference = str(formData, "paymentReference").slice(0, 80);
   const proof = str(formData, "proofDataUrl");
-  if (!(COURIER_PAYMENT_METHODS as readonly string[]).includes(method)) return { ok: false, error: "Please choose GCash or Bank Transfer." };
+  if (!(COURIER_PAYMENT_METHODS as readonly string[]).includes(method)) return { ok: false, error: "Please choose how you paid." };
   if (!proof.startsWith("data:image/")) return { ok: false, error: "Please upload a screenshot or photo of your payment receipt." };
   const req = await getCourierRequestByReference(reference);
   if (!req || normalizePhone(req.phone) !== normalizePhone(phone)) return { ok: false, error: "We couldn't find that request." };

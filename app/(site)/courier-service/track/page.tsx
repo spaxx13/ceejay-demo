@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { getCourierRequestByReference, getBranches } from "@/lib/db";
 import { normalizePhone } from "@/lib/sms";
-import { COURIER_STATUS_LABELS, COURIER_STATUS_ORDER, COURIER_PACKING_TIPS, COURIER_PAYMENT_ACCOUNTS, formatPesos } from "@/lib/courierService";
+import { COURIER_STATUS_LABELS, COURIER_STATUS_ORDER, COURIER_PACKING_TIPS, COURIER_PAYMENT_ACCOUNTS, COURIER_PAYMENT_QR_IMAGE, formatPesos } from "@/lib/courierService";
 import CourierInboundForm from "@/components/site/CourierInboundForm";
 import CourierPaymentForm from "@/components/site/CourierPaymentForm";
 import { formatDateTime } from "@/lib/format";
@@ -117,7 +117,14 @@ export default async function CourierTrackPage({ searchParams }: { searchParams:
             ) : (
               <>
                 <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-blue-900">
-                  <p className="font-semibold">Pay via GCash or bank transfer</p>
+                  <p className="font-semibold">Pay via InstaPay QR, GCash, or bank transfer</p>
+                  {COURIER_PAYMENT_QR_IMAGE && (
+                    <>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={COURIER_PAYMENT_QR_IMAGE} alt="InstaPay QR code" className="my-2 h-48 w-48 max-w-full rounded-lg border border-blue-200 bg-white object-contain" />
+                      <p className="text-xs">Scan with any bank or e-wallet app and enter {formatPesos(total)}.</p>
+                    </>
+                  )}
                   {COURIER_PAYMENT_ACCOUNTS.length === 0 ? (
                     <p>Please ask the branch for our payment details{branch?.contactNumber ? ` (${branch.contactNumber})` : ""}.</p>
                   ) : (
