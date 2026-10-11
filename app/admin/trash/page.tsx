@@ -4,6 +4,7 @@ import {
   getDeletedRequests,
   getDeletedRepairRecords,
   getDeletedWalkInRequests,
+  getDeletedCourierRequests,
   getDeletedServiceFeeWaivers,
   getBranches,
   canDeleteHomeServiceRequests,
@@ -21,6 +22,8 @@ import {
   permanentlyDeleteRepairRecord,
   restoreWalkInRequest,
   permanentlyDeleteWalkInRequest,
+  restoreCourierRequest,
+  permanentlyDeleteCourierRequest,
   restoreServiceFeeWaiver,
   permanentlyDeleteServiceFeeWaiver,
 } from "@/lib/actions";
@@ -48,14 +51,18 @@ export default async function TrashPage({ searchParams }: { searchParams: Promis
   // shared delete permission, same layering as the Walk-in server actions.
   const canWalkIns = canManageWalkIns(user) && canDeleteHomeServiceRequests(user);
   const canWaivers = canWaiveServiceFee(user) && canManageHomeServiceRequests(user);
+  // Courier Service Trash is owner-only, same as the POS tab.
+  const canCourier = user?.role === "owner_admin";
   if (!canPos && !canRequests && !canWalkIns && !canWaivers) redirect("/admin");
 
   const { tab: rawTab } = await searchParams;
-  const defaultTab = canRequests ? "requests" : canWalkIns ? "walkins" : canWaivers ? "waivers" : "pos";
+  const defaultTab = canRequests ? "requests" : canWalkIns ? "walkins" : canWaivers ? "waivers" : canCourier ? "courier" : "pos";
   const tab =
     rawTab === "pos" && canPos
       ? "pos"
-      : rawTab === "requests" && canRequests
+      : rawTab === "courier" && canCourier
+        ? "courier"
+        : rawTab === "requests" && canRequests
         ? "requests"
         : rawTab === "walkins" && canWalkIns
           ? "walkins"
@@ -63,12 +70,13 @@ export default async function TrashPage({ searchParams }: { searchParams: Promis
             ? "waivers"
             : defaultTab;
 
-  const [allBranches, deletedRequestsRaw, deletedRecordsRaw, deletedWalkInsRaw, deletedWaiversRaw] = await Promise.all([
+  const [allBranches, deletedRequestsRaw, deletedRecordsRaw, deletedWalkInsRaw, deletedWaiversRaw, deletedCourier] = await Promise.all([
     getBranches(),
     canRequests ? getDeletedRequests() : Promise.resolve([]),
     canPos ? getDeletedRepairRecords() : Promise.resolve([]),
     canWalkIns ? getDeletedWalkInRequests() : Promise.resolve([]),
     canWaivers ? getDeletedServiceFeeWaivers() : Promise.resolve([]),
+    canCourier ? getDeletedCourierRequests() : Promise.resolve([]),
   ]);
   // Trashed Pickup & Delivery jobs only show to accounts with that section.
   const pdAccess = canManagePickupDelivery(user);
@@ -87,12 +95,12 @@ export default async function TrashPage({ searchParams }: { searchParams: Promis
       <div>
         <h1 className="text-xl font-bold text-slate-900">Trash</h1>
         <p className="mt-1 text-sm text-slate-400">
-          Deleted home service requests, walk-in registrations, waived service fees, and POS repair records land here first — restore one back to normal, or
+          Deleted home service requests, walk-in registrations, courier requests, waived service fees, and POS repair records land here first — restore one back to normal, or
           delete it permanently (which can&apos;t be undone).
         </p>
       </div>
 
-      {(canRequests ? 1 : 0) + (canWalkIns ? 1 : 0) + (canPos ? 1 : 0) + (canWaivers ? 1 : 0) > 1 && (
+      {(canRequests ? 1 : 0) + (canWalkIns ? 1 : 0) + (canPos ? 1 : 0) + (canWaivers ? 1 : 0) + (canCourier ? 1 : 0) > 1 && (
         <div className="flex flex-wrap gap-1 border-b border-slate-200">
           {canRequests && (
             <Link href={tabLink("requests")} className={tabClass(tab === "requests")}>
@@ -107,6 +115,11 @@ export default async function TrashPage({ searchParams }: { searchParams: Promis
           {canWaivers && (
             <Link href={tabLink("waivers")} className={tabClass(tab === "waivers")}>
               Waived Service Fees ({deletedWaivers.length})
+            </Link>
+          )}
+          {canCourier && (
+            <Link href={tabLink("courier")} className={tabClass(tab === "courier")}>
+              Courier ({deletedCourier.length})
             </Link>
           )}
           {canPos && (
@@ -343,6 +356,54 @@ export default async function TrashPage({ searchParams }: { searchParams: Promis
                           id={w.id}
                           action={permanentlyDeleteServiceFeeWaiver}
                           confirmMessage={`Permanently delete this waiver record for ${w.reference}? The fee stays waived — this just stops tracking it here.`}
+                          label="Delete Permanently"
+                        />
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
+      {tab === "courier" && canCourier && (
+        <section className="space-y-3">
+          <div className="card overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-400">
+                  <th className="pb-2 pr-3">Reference</th>
+                  <th className="pb-2 pr-3">Customer</th>
+                  <th className="pb-2 pr-3">Phone</th>
+                  <th className="pb-2 pr-3">Return To</th>
+                  <th className="pb-2 pr-3">Deleted</th>
+                  <th className="pb-2">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {deletedCourier.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="py-6 text-center text-slate-400">
+                      Trash is empty.
+                    </td>
+                  </tr>
+                )}
+                {deletedCourier.map((r) => (
+                  <tr key={r.id} className="border-b border-slate-200 last:border-0">
+                    <td className="py-3 pr-3 font-mono text-xs text-blue-300">{r.reference}</td>
+                    <td className="py-3 pr-3 text-slate-800">{r.name}</td>
+                    <td className="py-3 pr-3 text-slate-500">{r.phone || "—"}</td>
+                    <td className="py-3 pr-3 text-slate-500">{[r.city, r.province].filter(Boolean).join(", ") || "—"}</td>
+                    <td className="py-3 pr-3 text-slate-500">{r.deletedAt ? formatDateTime(r.deletedAt) : "—"}</td>
+                    <td className="py-3">
+                      <div className="flex gap-1.5">
+                        <RestoreButton id={r.id} action={restoreCourierRequest} />
+                        <DeleteButton
+                          id={r.id}
+                          action={permanentlyDeleteCourierRequest}
+                          confirmMessage={`Permanently delete courier request ${r.reference}? This can't be undone.`}
                           label="Delete Permanently"
                         />
                       </div>
