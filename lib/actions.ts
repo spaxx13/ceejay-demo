@@ -3526,6 +3526,24 @@ export async function submitCourierPaymentProof(_prev: CourierInboundResult | un
   return { ok: true };
 }
 
+// Customer confirms the repaired device arrived. Moves "Shipped Back" to
+// "Delivered" without waiting for staff to check the courier's tracking —
+// same reference + phone check as the other customer actions.
+export async function confirmCourierReceived(_prev: CourierInboundResult | undefined, formData: FormData): Promise<CourierInboundResult> {
+  const reference = str(formData, "reference").toUpperCase();
+  const phone = str(formData, "phone");
+  const req = await getCourierRequestByReference(reference);
+  if (!req || normalizePhone(req.phone) !== normalizePhone(phone)) return { ok: false, error: "We couldn't find that request." };
+  if (req.status === "delivered") return { ok: true };
+  if (req.status !== "shipped") return { ok: false, error: "This request hasn't been shipped back yet." };
+  await query("update courier_requests set status='delivered', delivered_at=now() where id=$1 and status='shipped'", [req.id]);
+  await logActivity("courier_request", req.id, "Customer confirmed the device was received — status changed to \"Delivered\"", req.name);
+  revalidatePath("/admin/courier");
+  revalidatePath(`/admin/courier/${req.id}`);
+  revalidatePath("/courier-service/track");
+  return { ok: true };
+}
+
 // What each admin action may move a request from, and to.
 const COURIER_TRANSITIONS: Record<string, { from: CourierStatus[]; to: CourierStatus }> = {
   received: { from: ["awaiting_unit"], to: "received" },
