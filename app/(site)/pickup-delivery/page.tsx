@@ -94,7 +94,7 @@ export default async function PickupDeliveryPage() {
         {staffPreview && (
           <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-center text-xs text-amber-800">
             Staff preview — you can see this because you&apos;re logged in as an admin with Pickup &amp; Delivery access. Visitors still see &quot;Coming Soon&quot; until
-            NEXT_PUBLIC_PICKUP_DELIVERY_ENABLED is turned on. Test bookings from here skip SMS verification and the QR Ph fee.
+            NEXT_PUBLIC_PICKUP_DELIVERY_ENABLED is turned on. Test bookings from here skip SMS verification.
           </p>
         )}
         {staffPreview && branchesWithoutPins.length > 0 && (
