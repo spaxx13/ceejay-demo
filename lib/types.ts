@@ -341,7 +341,11 @@ export type CourierRequest = {
   receivedAt: string | null;
   repairCost: number | null;
   returnShippingFee: number | null;
-  paidAt: string | null;
+  paidAt: string | null; // set when staff verify the customer's proof of payment
+  paymentMethod: string; // "GCash" | "Bank Transfer" | "" until proof is uploaded
+  paymentReference: string; // reference no. from the customer's receipt
+  paymentProofDataUrl: string | null;
+  paymentProofAt: string | null;
   outboundCourier: string;
   outboundTracking: string;
   shippedAt: string | null;

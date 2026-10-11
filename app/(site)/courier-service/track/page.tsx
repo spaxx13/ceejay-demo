@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { getCourierRequestByReference, getBranches } from "@/lib/db";
 import { normalizePhone } from "@/lib/sms";
-import { COURIER_STATUS_LABELS, COURIER_STATUS_ORDER, COURIER_PACKING_TIPS, formatPesos } from "@/lib/courierService";
+import { COURIER_STATUS_LABELS, COURIER_STATUS_ORDER, COURIER_PACKING_TIPS, COURIER_PAYMENT_ACCOUNTS, formatPesos } from "@/lib/courierService";
 import CourierInboundForm from "@/components/site/CourierInboundForm";
+import CourierPaymentForm from "@/components/site/CourierPaymentForm";
 import { formatDateTime } from "@/lib/format";
 
 // Customer-facing tracking for a Courier Service request: reference number
@@ -104,16 +105,39 @@ export default async function CourierTrackPage({ searchParams }: { searchParams:
         )}
 
         {req.status === "ready_to_ship" && (
-          <div className="card space-y-1 text-sm">
-            <p className="font-semibold text-slate-800">Your device is repaired!</p>
-            <p className="text-slate-500">Repair cost: {formatPesos(req.repairCost)}</p>
-            <p className="text-slate-500">Return shipping: {formatPesos(req.returnShippingFee)}</p>
-            <p className="font-semibold text-slate-800">Total: {formatPesos(total)}</p>
-            <p className="text-xs text-slate-400">
-              {req.paidAt
-                ? "Payment received — we'll ship it back shortly."
-                : `Please pay this to the branch${branch?.contactNumber ? ` (${branch.contactNumber})` : ""} so we can ship your device back to you.`}
-            </p>
+          <div className="card space-y-3 text-sm">
+            <div className="space-y-1">
+              <p className="font-semibold text-slate-800">Your device is repaired!</p>
+              <p className="text-slate-500">Repair cost: {formatPesos(req.repairCost)}</p>
+              <p className="text-slate-500">Return shipping: {formatPesos(req.returnShippingFee)}</p>
+              <p className="font-semibold text-slate-800">Total: {formatPesos(total)}</p>
+            </div>
+            {req.paidAt ? (
+              <p className="text-xs text-green-700">Payment confirmed — we&apos;ll ship your device back shortly.</p>
+            ) : (
+              <>
+                <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-blue-900">
+                  <p className="font-semibold">Pay via GCash or bank transfer</p>
+                  {COURIER_PAYMENT_ACCOUNTS.length === 0 ? (
+                    <p>Please ask the branch for our payment details{branch?.contactNumber ? ` (${branch.contactNumber})` : ""}.</p>
+                  ) : (
+                    COURIER_PAYMENT_ACCOUNTS.map((a) => (
+                      <p key={a.method}>
+                        {a.method}: {a.bank ? `${a.bank} — ` : ""}
+                        {a.accountName} — <span className="font-mono">{a.accountNumber}</span>
+                      </p>
+                    ))
+                  )}
+                  <p className="mt-1 text-xs">Then upload a screenshot of your receipt below.</p>
+                </div>
+                {req.paymentProofAt && (
+                  <p className="text-xs text-slate-500">
+                    Proof received {formatDateTime(req.paymentProofAt)} — waiting for us to verify it. You can upload a new one if needed.
+                  </p>
+                )}
+                <CourierPaymentForm reference={req.reference} phone={phone} uploaded={Boolean(req.paymentProofAt)} />
+              </>
+            )}
           </div>
         )}
 

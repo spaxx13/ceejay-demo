@@ -96,7 +96,7 @@ import {
   emailConfigured,
 } from "./email";
 import { isOnTheWayStatus, distanceKm } from "./technicianTracking";
-import { COURIER_AGREEMENT_VERSION, COURIER_PACKING_TIPS, COURIER_STATUS_LABELS } from "./courierService";
+import { COURIER_AGREEMENT_VERSION, COURIER_PACKING_TIPS, COURIER_PAYMENT_METHODS, COURIER_STATUS_LABELS } from "./courierService";
 import type { CourierStatus } from "./types";
 import { storageConfigured, createSignedUploadUrl, deleteStorageObject, UPDATES_BUCKET } from "./storage";
 import { PICKUP_DELIVERY_AGREEMENT_VERSION } from "./pickupDeliveryAgreement";
@@ -3497,6 +3497,34 @@ export async function submitCourierInboundTracking(_prev: CourierInboundResult |
   return { ok: true };
 }
 
+// Customer uploads a screenshot of their GCash / bank transfer receipt once
+// the repair is done and the total is set. Staff verify it on the admin
+// page and record the payment; the same reference + phone check as above.
+export async function submitCourierPaymentProof(_prev: CourierInboundResult | undefined, formData: FormData): Promise<CourierInboundResult> {
+  const reference = str(formData, "reference").toUpperCase();
+  const phone = str(formData, "phone");
+  const method = str(formData, "method");
+  const paymentReference = str(formData, "paymentReference").slice(0, 80);
+  const proof = str(formData, "proofDataUrl");
+  if (!(COURIER_PAYMENT_METHODS as readonly string[]).includes(method)) return { ok: false, error: "Please choose GCash or Bank Transfer." };
+  if (!proof.startsWith("data:image/")) return { ok: false, error: "Please upload a screenshot or photo of your payment receipt." };
+  const req = await getCourierRequestByReference(reference);
+  if (!req || normalizePhone(req.phone) !== normalizePhone(phone)) return { ok: false, error: "We couldn't find that request." };
+  if (req.status !== "ready_to_ship") return { ok: false, error: "This request isn't waiting for payment." };
+  if (req.paidAt) return { ok: false, error: "Your payment was already confirmed." };
+  await query("update courier_requests set payment_method=$1, payment_reference=$2, payment_proof_data_url=$3, payment_proof_at=now() where id=$4", [
+    method,
+    paymentReference,
+    proof,
+    req.id,
+  ]);
+  await logActivity("courier_request", req.id, `Customer uploaded proof of payment (${method}${paymentReference ? `, ref ${paymentReference}` : ""})`, req.name);
+  revalidatePath("/admin/courier");
+  revalidatePath(`/admin/courier/${req.id}`);
+  revalidatePath("/courier-service/track");
+  return { ok: true };
+}
+
 // What each admin action may move a request from, and to.
 const COURIER_TRANSITIONS: Record<string, { from: CourierStatus[]; to: CourierStatus }> = {
   received: { from: ["awaiting_unit"], to: "received" },
@@ -3551,17 +3579,18 @@ export async function updateCourierRequest(formData: FormData) {
     const repairCost = courierAmount(formData, "repairCost");
     const returnShippingFee = courierAmount(formData, "returnShippingFee");
     if (repairCost === null || returnShippingFee === null) return;
-    // Changing the amounts after payment was recorded would leave a stale
-    // "paid" mark against a different total.
-    await query("update courier_requests set repair_cost=$1, return_shipping_fee=$2, paid_at=null where id=$3", [repairCost, returnShippingFee, id]);
+    // Changing the amounts after payment would leave a stale "paid" mark and
+    // proof against a different total, so the customer must pay/upload again.
+    await query("update courier_requests set repair_cost=$1, return_shipping_fee=$2, paid_at=null, payment_proof_data_url=null, payment_proof_at=null, payment_method='', payment_reference='' where id=$3", [repairCost, returnShippingFee, id]);
     await logActivity("courier_request", id, `Amounts set by ${actor}: repair ₱${repairCost}, return shipping ₱${returnShippingFee}`, actor);
     revalidate();
     return;
   }
   if (intent === "mark_paid") {
-    if (req.status !== "ready_to_ship" || req.repairCost === null || req.returnShippingFee === null || req.paidAt) return;
+    // Staff confirm only after seeing the customer's uploaded proof.
+    if (req.status !== "ready_to_ship" || req.repairCost === null || req.returnShippingFee === null || req.paidAt || !req.paymentProofAt) return;
     await query("update courier_requests set paid_at=now() where id=$1", [id]);
-    await logActivity("courier_request", id, `Payment of ₱${req.repairCost + req.returnShippingFee} recorded by ${actor}`, actor);
+    await logActivity("courier_request", id, `Payment of ₱${req.repairCost + req.returnShippingFee} (${req.paymentMethod || "proof uploaded"}) confirmed by ${actor}`, actor);
     revalidate();
     return;
   }

@@ -146,15 +146,28 @@ export default async function CourierDetailPage({ params }: { params: Promise<{ 
 
             {req.status === "ready_to_ship" && (
               <>
-                <p className="text-sm text-slate-700">Customer owes {formatPesos(total)}.</p>
+                <p className="text-sm text-slate-700">Customer owes {formatPesos(total)} (GCash / bank transfer).</p>
+                {req.paymentProofDataUrl ? (
+                  <div className="space-y-1">
+                    <p className="text-xs text-slate-500">
+                      Proof uploaded {req.paymentProofAt ? formatDateTime(req.paymentProofAt) : ""}
+                      {req.paymentMethod ? ` · ${req.paymentMethod}` : ""}
+                      {req.paymentReference ? ` · Ref ${req.paymentReference}` : ""}
+                    </p>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={req.paymentProofDataUrl} alt="Proof of payment" className="max-h-64 rounded-lg border border-slate-200 object-contain" />
+                  </div>
+                ) : (
+                  <p className="text-xs text-slate-400">Waiting for the customer to upload proof of payment.</p>
+                )}
                 {req.paidAt ? (
-                  <p className="text-xs text-green-700">Paid {formatDateTime(req.paidAt)}</p>
+                  <p className="text-xs text-green-700">Payment confirmed {formatDateTime(req.paidAt)}</p>
                 ) : (
                   <form action={updateCourierRequest}>
                     <input type="hidden" name="id" value={req.id} />
                     <input type="hidden" name="intent" value="mark_paid" />
-                    <button type="submit" className="btn-secondary w-full">
-                      Record Payment Received
+                    <button type="submit" disabled={!req.paymentProofAt} className="btn-secondary w-full">
+                      Confirm Payment Received
                     </button>
                   </form>
                 )}
@@ -166,7 +179,7 @@ export default async function CourierDetailPage({ params }: { params: Promise<{ 
                   <button type="submit" disabled={!req.paidAt} className="btn-primary w-full">
                     Mark Shipped Back
                   </button>
-                  {!req.paidAt && <p className="text-[11px] text-slate-400">Record the customer&apos;s payment before shipping.</p>}
+                  {!req.paidAt && <p className="text-[11px] text-slate-400">Confirm the customer&apos;s payment before shipping.</p>}
                 </form>
               </>
             )}
