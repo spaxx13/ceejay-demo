@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getBranches, getLookups, getDeviceModels } from "@/lib/db";
 import CourierForm from "@/components/site/CourierForm";
 import { isCourierReceivingBranch } from "@/lib/courierService";
+import { emailConfigured } from "@/lib/email";
 
 // Mail-in repair for customers outside the Home Service and Pickup &
 // Delivery areas — anywhere in the Philippines. The customer ships the
@@ -49,7 +50,7 @@ export default async function CourierServicePage() {
           {!branch ? (
             <p className="card text-center text-sm text-slate-400">Courier Service is temporarily unavailable. Please contact a branch directly.</p>
           ) : (
-            <CourierForm branch={branch} brands={brands} models={models} serviceTypes={serviceTypes} />
+            <CourierForm branch={branch} brands={brands} models={models} serviceTypes={serviceTypes} emailAvailable={emailConfigured()} />
           )}
         </div>
         <p className="mt-4 text-center text-sm">

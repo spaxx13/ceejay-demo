@@ -1,8 +1,9 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
-import { submitCourierRequest } from "@/lib/actions";
-import { COURIER_AGREEMENT_TERMS, COURIER_PACKING_TIPS } from "@/lib/courierService";
+import { useActionState, useEffect, useRef, useState } from "react";
+import { submitCourierRequest, sendWalkInOtp, verifyWalkInOtp } from "@/lib/actions";
+import { OTP_GATE_ENABLED } from "@/lib/config";
+import { COURIER_AGREEMENT_TERMS, COURIER_LIST, COURIER_PACKING_TIPS, COURIER_SELF_SHIP_NOTICE } from "@/lib/courierService";
 import PhotoUpload from "@/components/PhotoUpload";
 import type { Branch } from "@/lib/types";
 
@@ -17,15 +18,78 @@ export default function CourierForm({
   brands,
   models,
   serviceTypes,
+  emailAvailable,
 }: {
   branch: Pick<Branch, "id" | "name" | "address">;
   brands: Brand[];
   models: Model[];
   serviceTypes: ServiceType[];
+  emailAvailable: boolean;
 }) {
   const [state, formAction, pending] = useActionState(submitCourierRequest, undefined);
   const [brandId, setBrandId] = useState("");
   const [agreed, setAgreed] = useState(false);
+  const formRef = useRef<HTMLFormElement>(null);
+
+  // Email OTP — anti-spam gate run at submit time, same as the walk-in form:
+  // the customer fills out the form, then enters the code emailed to them,
+  // and only then is the booking written. (The OTP actions are the shared
+  // email ones; they're named for the walk-in form they were built for.)
+  const [otpStage, setOtpStage] = useState<"idle" | "sent">("idle");
+  const [sentEmail, setSentEmail] = useState("");
+  const [otpCode, setOtpCode] = useState("");
+  const [sendingOtp, setSendingOtp] = useState(false);
+  const [verifyingOtp, setVerifyingOtp] = useState(false);
+  const [otpError, setOtpError] = useState("");
+  const emailGateActive = OTP_GATE_ENABLED && emailAvailable;
+
+  async function sendCode(email: string, firstTime: boolean) {
+    setOtpError("");
+    setSendingOtp(true);
+    try {
+      const res = await sendWalkInOtp(email);
+      if (res.ok) {
+        if (firstTime) setSentEmail(email);
+        setOtpCode("");
+        if (firstTime) setOtpStage("sent");
+      } else {
+        setOtpError(res.error);
+      }
+    } catch {
+      setOtpError("Something went wrong sending the code — please try again.");
+    } finally {
+      setSendingOtp(false);
+    }
+  }
+
+  function handleProceedToOtp() {
+    const form = formRef.current;
+    if (!form || !form.reportValidity()) return; // surfaces the browser's native "please fill this in"
+    void sendCode(String(new FormData(form).get("email") ?? "").trim(), true);
+  }
+
+  async function handleVerifyAndSubmit() {
+    setOtpError("");
+    setVerifyingOtp(true);
+    try {
+      const res = await verifyWalkInOtp(sentEmail, otpCode);
+      if (!res.ok) {
+        setOtpError(res.error);
+        return;
+      }
+      const form = formRef.current;
+      if (!form) return;
+      if (!form.reportValidity()) {
+        setOtpError("Some details above are missing or invalid — please scroll up, fix the highlighted field, and try again.");
+        return;
+      }
+      form.requestSubmit();
+    } catch {
+      setOtpError("Something went wrong submitting your request — please try again.");
+    } finally {
+      setVerifyingOtp(false);
+    }
+  }
 
   // Every province / city / barangay in the Philippines, loaded on demand.
   // If it can't load, or the customer's address isn't in the list, the same
@@ -59,13 +123,19 @@ export default function CourierForm({
           {state.branch.contactNumber && <p>Contact: {state.branch.contactNumber}</p>}
           <p>Attn: {state.reference}</p>
         </div>
+        <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+          <p className="font-semibold">{COURIER_SELF_SHIP_NOTICE}</p>
+          <p className="mt-2">
+            <span className="font-semibold">Couriers na pwede mong gamitin:</span> {COURIER_LIST.join(", ")}
+          </p>
+        </div>
         <ul className="list-disc space-y-1 pl-5 text-sm text-slate-500">
           {COURIER_PACKING_TIPS.map((t) => (
             <li key={t}>{t}</li>
           ))}
         </ul>
         <a href={`/courier-service/track?reference=${encodeURIComponent(state.reference)}`} className="btn-primary block text-center">
-          Track This Request
+          Track This Request & Enter Your Tracking Number
         </a>
       </div>
     );
@@ -75,7 +145,7 @@ export default function CourierForm({
   const showOther = brandId === "other" || (brandId !== "" && modelsForBrand.length === 0);
 
   return (
-    <form action={formAction} className="card space-y-4">
+    <form ref={formRef} action={formAction} className="card space-y-4">
       <input type="hidden" name="courierAgreed" value={agreed ? "1" : "0"} />
       <h3 className="text-sm font-semibold text-slate-800">Your Details</h3>
       <div className="space-y-1.5">
@@ -266,9 +336,58 @@ export default function CourierForm({
       </div>
 
       {state && !state.ok && <p className="text-sm text-red-600">{state.error}</p>}
-      <button type="submit" disabled={pending || !agreed} className="btn-primary w-full">
-        {pending ? "Submitting..." : "Book Courier Service"}
-      </button>
+      {!emailGateActive && (
+        <button type="submit" disabled={pending || !agreed} className="btn-primary w-full">
+          {pending ? "Submitting..." : "Book Courier Service"}
+        </button>
+      )}
+
+      {emailGateActive && otpStage === "idle" && (
+        <>
+          <button type="button" onClick={handleProceedToOtp} disabled={sendingOtp || !agreed} className="btn-primary w-full">
+            {sendingOtp ? "Sending verification code..." : "Book Courier Service"}
+          </button>
+          {otpError && <p className="text-center text-sm text-red-600">{otpError}</p>}
+        </>
+      )}
+
+      {emailGateActive && otpStage === "sent" && (
+        <div className="space-y-3 rounded-lg border-2 border-blue-300 bg-blue-50 p-4">
+          <p className="text-sm font-semibold text-blue-900">🔒 Verify your email to complete this booking</p>
+          <p className="text-sm font-medium text-blue-900">
+            Enter the code we sent by email to {sentEmail}. This helps us make sure the booking is from a real person.
+          </p>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              maxLength={6}
+              value={otpCode}
+              onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ""))}
+              placeholder="6-digit code"
+              className="input flex-1"
+            />
+            <button
+              type="button"
+              onClick={handleVerifyAndSubmit}
+              disabled={verifyingOtp || pending || otpCode.length !== 6}
+              className="btn-primary shrink-0 !px-4"
+            >
+              {verifyingOtp ? "Verifying..." : pending ? "Submitting..." : "Verify & Submit"}
+            </button>
+          </div>
+          {otpError && <p className="text-sm text-red-600">{otpError}</p>}
+          <div className="flex items-center justify-between text-xs">
+            <button type="button" onClick={() => void sendCode(sentEmail, false)} disabled={sendingOtp} className="font-medium text-blue-700 hover:underline">
+              {sendingOtp ? "Resending..." : "Resend code"}
+            </button>
+            <button type="button" onClick={() => setOtpStage("idle")} className="text-slate-500 hover:underline">
+              ← Edit booking details
+            </button>
+          </div>
+        </div>
+      )}
     </form>
   );
 }
