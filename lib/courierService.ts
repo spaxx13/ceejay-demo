@@ -40,6 +40,10 @@ export function isCourierReceivingBranch(name: string): boolean {
 // the shipment to us themselves — we don't book a courier for them.
 export const COURIER_SELF_SHIP_NOTICE =
   "Ikaw mismo ang magpapadala ng device sa branch namin. Hindi kami ang magbo-book ng courier para sa iyo. Pumili ng courier sa baba, ibigay ang address ng branch, at ikaw ang magbabayad ng shipping.";
+// Shown after booking (screen + email): the company only knows the device
+// is on its way once the customer enters the courier's tracking number.
+export const COURIER_TRACKING_REMINDER =
+  "Pagkatapos mong ipadala ang unit sa courier, kailangan mong ilagay ang tracking number na ibinigay ng courier sa \"Track This Request\" para malaman namin na naipadala mo na ito.";
 export const COURIER_LIST = COURIER_OPTIONS.filter((c) => c !== "Other");
 
 export const COURIER_AGREEMENT_VERSION = "2026-10";

@@ -96,7 +96,7 @@ import {
   emailConfigured,
 } from "./email";
 import { isOnTheWayStatus, distanceKm } from "./technicianTracking";
-import { COURIER_AGREEMENT_VERSION, COURIER_LIST, COURIER_SELF_SHIP_NOTICE, COURIER_PACKING_TIPS, isCourierReceivingBranch, COURIER_PAYMENT_METHODS, COURIER_STATUS_LABELS } from "./courierService";
+import { COURIER_AGREEMENT_VERSION, COURIER_LIST, COURIER_SELF_SHIP_NOTICE, COURIER_TRACKING_REMINDER, COURIER_PACKING_TIPS, isCourierReceivingBranch, COURIER_PAYMENT_METHODS, COURIER_STATUS_LABELS } from "./courierService";
 import type { CourierStatus } from "./types";
 import { storageConfigured, createSignedUploadUrl, deleteStorageObject, UPDATES_BUCKET } from "./storage";
 import { PICKUP_DELIVERY_AGREEMENT_VERSION } from "./pickupDeliveryAgreement";
@@ -3478,6 +3478,7 @@ export async function submitCourierRequest(_prev: CourierBookingResult | undefin
         tips: COURIER_PACKING_TIPS,
         couriers: COURIER_LIST,
         selfShipNotice: COURIER_SELF_SHIP_NOTICE,
+        trackingReminder: COURIER_TRACKING_REMINDER,
       });
     } catch {
       // Best-effort — the success screen shows the same instructions.
