@@ -550,12 +550,18 @@ export async function sendPickupDeliveryBookingConfirmedEmail(
         <p style="font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8;">Ceejay Cellphone Repair Shop</p>
         <h2 style="margin: 4px 0 16px;">Your booking is confirmed!</h2>
         <p style="font-size: 14px; line-height: 1.5;">
-          Hi ${escapeHtml(opts.customerName)}, your ${peso(opts.amountPaid)} payment went through and your Pickup &amp; Delivery booking is
-          confirmed. We're assigning a rider now — you'll get another email once they're on the way.
+          ${
+            opts.amountPaid > 0
+              ? `Hi ${escapeHtml(opts.customerName)}, your ${peso(opts.amountPaid)} payment went through and your Pickup &amp; Delivery booking is confirmed.`
+              : `Hi ${escapeHtml(opts.customerName)}, your Pickup &amp; Delivery booking is confirmed — no payment is needed now.`
+          }
+          We're assigning a rider now — you'll get another email once they're on the way.
         </p>
         <p style="font-size: 13px; line-height: 1.5; color: #64748b;">
           ${
-            opts.serviceFee != null && opts.serviceFee > opts.amountPaid
+            opts.amountPaid <= 0 && opts.serviceFee != null
+              ? `Your ${peso(opts.serviceFee)} Booking, Diagnostic &amp; Delivery Fee (pickup trip, diagnosis, and delivery back to you) is paid together with the repair cost when your repaired device is delivered back to you.`
+              : opts.serviceFee != null && opts.serviceFee > opts.amountPaid
               ? `This ${peso(opts.amountPaid)} is a down payment toward your ${peso(opts.serviceFee)} Booking, Diagnostic &amp; Delivery Fee. The remaining ${peso(opts.serviceFee - opts.amountPaid)} is paid together with the repair cost when your repaired device is delivered back to you.`
               : "This payment covers pickup, diagnosis, and delivery back to you — nothing more to pay when your repaired device comes back."
           }
@@ -565,7 +571,7 @@ export async function sendPickupDeliveryBookingConfirmedEmail(
           <tr><td style="padding: 4px 0; color: #64748b;">Device</td><td style="padding: 4px 0; text-align: right;">${escapeHtml(opts.deviceLabel)}</td></tr>
           <tr><td style="padding: 4px 0; color: #64748b;">Pickup Schedule</td><td style="padding: 4px 0; text-align: right;">${escapeHtml(opts.preferredDate)}</td></tr>
           <tr><td style="padding: 4px 0; color: #64748b;">Pickup Address</td><td style="padding: 4px 0; text-align: right;">${escapeHtml(opts.address)}</td></tr>
-          <tr><td style="padding: 4px 0; color: #64748b;">Amount Paid</td><td style="padding: 4px 0; text-align: right;">${peso(opts.amountPaid)}</td></tr>
+          ${opts.amountPaid > 0 ? `<tr><td style="padding: 4px 0; color: #64748b;">Amount Paid</td><td style="padding: 4px 0; text-align: right;">${peso(opts.amountPaid)}</td></tr>` : opts.serviceFee != null ? `<tr><td style="padding: 4px 0; color: #64748b;">Fee (pay on delivery)</td><td style="padding: 4px 0; text-align: right;">${peso(opts.serviceFee)}</td></tr>` : ""}
         </table>
         <p style="margin: 20px 0;">
           <a href="${trackingUrl}" style="display: inline-block; background: #0071e3; color: #fff; padding: 10px 20px; border-radius: 999px; text-decoration: none; font-size: 14px; font-weight: 600;">

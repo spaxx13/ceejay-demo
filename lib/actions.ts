@@ -13,7 +13,6 @@ import {
   ICLOUD_CHECK_PRICE_PESOS,
   PICKUP_DELIVERY_PUBLIC_ENABLED,
   PICKUP_DELIVERY_MOBILE_ENABLED,
-  PICKUP_DELIVERY_SKIP_PAYMENT,
   PICKUP_DELIVERY_SKIP_OTP,
 } from "@/lib/config";
 import { CHECKLIST_TEMPLATE } from "./checklist";
@@ -83,6 +82,7 @@ import {
   sendRepairReceiptEmail,
   sendCancellationEmail,
   sendQuotationEmail,
+  sendPickupDeliveryBookingConfirmedEmail,
   sendLeadReplyEmail,
   sendBroadcastEmail,
   sendWalkInOtpEmail,
@@ -108,7 +108,6 @@ import {
   EXCLUDED_FROM_PICKUP_DELIVERY,
   PICKUP_DELIVERY_COVERAGE_LABEL,
   pickupDeliveryMinDateStr,
-  PICKUP_DELIVERY_DOWNPAYMENT_PESOS,
 } from "./homeServiceFees";
 import { getRepairQuote } from "./servicePricing";
 import { formatDate, isCheckInOpen, todayDateStr, toManilaDateStr } from "./format";
@@ -2512,14 +2511,13 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
   // own confirmation_token (below) needs to be distinct.
   const pendingStatus = requestStatuses.find((s) => s.label === "Pending") ?? requestStatuses[0];
   const pendingConfirmationStatus = requestStatuses.find((s) => s.label === "Pending Confirmation");
-  // Pickup & Delivery always requires its flat Booking + Diagnostic Fee
-  // (distance-tiered, see pickupDeliveryQuote) — same QR Ph down-payment gate as
-  // DOWNPAYMENT_PROVINCES, just always on instead of province-gated.
-  // TEMPORARY: PICKUP_DELIVERY_SKIP_PAYMENT bypasses this (and the email-
-  // confirmation gate below) entirely, straight to "Pending" — see
-  // lib/config.ts for why.
-  const pickupDeliverySkipPayment = (fulfillmentMode === "pickup_delivery" && PICKUP_DELIVERY_SKIP_PAYMENT) || staffPreview;
-  const requiresDownpayment = !pickupDeliverySkipPayment && (DOWNPAYMENT_PROVINCES.has(province) || fulfillmentMode === "pickup_delivery");
+  // Pickup & Delivery takes no payment and no confirmation step at booking:
+  // once the customer passes the SMS OTP the booking is "Pending", ready for an
+  // admin to assign a rider, and its whole distance-tiered fee is paid with the
+  // repair cost on delivery. (Bookings made earlier with a QR Ph down payment
+  // keep working through the confirm-booking flow.)
+  const pickupDeliverySkipPayment = fulfillmentMode === "pickup_delivery";
+  const requiresDownpayment = !pickupDeliverySkipPayment && DOWNPAYMENT_PROVINCES.has(province);
   const initialStatus =
     !pickupDeliverySkipPayment && (email || requiresDownpayment) && pendingConfirmationStatus ? pendingConfirmationStatus : pendingStatus;
   const needsConfirmation = initialStatus.id === pendingConfirmationStatus?.id;
@@ -2527,14 +2525,9 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
   // a "Pending Confirmation" status exists) — otherwise there's no gate to
   // attach a down payment requirement to at all.
   const downpaymentActive = requiresDownpayment && needsConfirmation;
-  // P&D confirms with a flat ₱100 down payment; the balance of its
-  // distance-tiered fee (pdFee, recorded on the request) is settled with the
-  // repair cost on delivery. Home Service keeps "down payment = visit fee".
-  const downpaymentAmount = downpaymentActive
-    ? fulfillmentMode === "pickup_delivery"
-      ? Math.min(PICKUP_DELIVERY_DOWNPAYMENT_PESOS, pdFee)
-      : serviceFeeAmount(province, city)
-    : null;
+  // Home Service keeps "down payment = visit fee"; Pickup & Delivery never
+  // reaches here with downpaymentActive (see above).
+  const downpaymentAmount = downpaymentActive ? serviceFeeAmount(province, city) : null;
   const cancelledStatus = requestStatuses.find((s) => s.label === "Cancelled");
 
   // A customer can book several devices in one submission (the "+ Add
@@ -2780,7 +2773,7 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
       ]);
     }
     await query(
-      "update home_service_requests set pickup_delivery_fee_pesos=$1, pickup_delivery_distance_km=$2, pickup_delivery_nearest_branch_id=$3 where id = any($4::uuid[])",
+      "update home_service_requests set pickup_delivery_fee_pesos=$1, pickup_delivery_distance_km=$2, pickup_delivery_nearest_branch_id=$3, confirmed_at=coalesce(confirmed_at, now()) where id = any($4::uuid[])",
       // The fee/distance stay by the nearest branch; the recommended
       // branch follows the owner's code-only share rule
       // (lib/pickupDeliveryRouting.ts) when set, else the nearest branch.
@@ -2824,7 +2817,9 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
   let smsNote = "";
   if (phone && smsConfigured()) {
     const confirmMessage =
-      createdRequests.length > 1
+      fulfillmentMode === "pickup_delivery"
+        ? `Hi ${name || "there"}, your Ceejay Pickup & Delivery booking ${referenceList} is confirmed! No payment is needed now. We'll assign a rider and keep you updated.`
+        : createdRequests.length > 1
         ? `Hi ${name || "there"}, your Ceejay repair requests ${referenceList} have been received! Please confirm your booking within ${BOOKING_CONFIRMATION_WINDOW_MINUTES} minutes on the confirmation page shown after you submitted, or it will be automatically cancelled.`
         : `Hi ${name || "there"}, your Ceejay repair request ${referenceList} has been received! Please confirm your booking within ${BOOKING_CONFIRMATION_WINDOW_MINUTES} minutes on the confirmation page shown after you submitted, or it will be automatically cancelled.`;
     try {
@@ -2844,7 +2839,23 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
   // a down-payment booking (where paying via QR Ph, not a plain click, is
   // still the real next step and worth a reminder if they navigate away).
   let quoteNote = "";
-  if (email) {
+  if (email && fulfillmentMode === "pickup_delivery") {
+    try {
+      await sendPickupDeliveryBookingConfirmedEmail(email, {
+        customerName: name || "Customer",
+        reference: createdRequests[0].reference,
+        phone,
+        deviceLabel: createdRequests.map((r) => `${r.device.finalDeviceOther || "Device not specified"} (${r.reference})`).join(", "),
+        preferredDate: preferredDatetime ? formatDate(preferredDatetime) : "To be scheduled",
+        address,
+        amountPaid: 0,
+        serviceFee: pdFee,
+      });
+      quoteNote = " — booking confirmation emailed";
+    } catch (err) {
+      quoteNote = ` — booking confirmation email failed to send (${err instanceof Error ? err.message : "unknown error"})`;
+    }
+  } else if (email) {
     try {
       await sendQuotationEmail(email, {
         customerName: name || "Customer",
