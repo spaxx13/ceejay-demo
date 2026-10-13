@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { Map as LeafletMap, Marker } from "leaflet";
 import "leaflet/dist/leaflet.css";
+import { chromeIntentUrl, detectFacebookInAppBrowser, geoFailureMessage, requestCurrentPosition } from "@/lib/currentLocation";
 
 export type LatLng = { lat: number; lng: number };
 // Optional box the address search is limited to (Pickup & Delivery's
@@ -203,15 +204,52 @@ function loadGoogleMaps(onReady: () => void) {
   document.head.appendChild(script);
 }
 
-function requestCurrentPosition(onPos: (pos: LatLng) => void, onError: (msg: string) => void) {
-  if (!navigator.geolocation) {
-    onError("This browser can't share your location.");
-    return;
+// State for the "Use my current location" button. `locate` always ends with
+// the button back to normal — a pin, or a message telling the customer to
+// search / tap the map instead (lib/currentLocation.ts guarantees an answer
+// even when the browser never responds).
+function useCurrentLocation(onPos: (pos: LatLng) => void) {
+  const [locating, setLocating] = useState(false);
+  const [geoError, setGeoError] = useState<string | null>(null);
+  const cancelRef = useRef<(() => void) | null>(null);
+  useEffect(() => () => cancelRef.current?.(), []);
+
+  function locate() {
+    cancelRef.current?.();
+    setLocating(true);
+    setGeoError(null);
+    cancelRef.current = requestCurrentPosition(
+      (pos) => {
+        setLocating(false);
+        onPos(pos);
+      },
+      (reason) => {
+        setLocating(false);
+        setGeoError(geoFailureMessage(reason));
+      }
+    );
   }
-  navigator.geolocation.getCurrentPosition(
-    (p) => onPos({ lat: p.coords.latitude, lng: p.coords.longitude }),
-    (err) => onError(err.code === err.PERMISSION_DENIED ? "Location permission was denied." : "Couldn't get your location. Try searching instead."),
-    { enableHighAccuracy: true, timeout: 15000 }
+
+  return { locating, geoError, setGeoError, locate };
+}
+
+// Messenger's / Facebook's built-in browser usually can't share the phone's
+// location with a website, so point the customer at their real browser.
+function InAppBrowserNotice() {
+  const [inApp] = useState(() => detectFacebookInAppBrowser(navigator.userAgent));
+  if (!inApp) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+      <p className="min-w-0 flex-1">
+        Para gumana ang &apos;Use my current location&apos;, buksan ang page na ito sa {inApp.platform === "android" ? "Chrome" : "browser mo"}.
+        {inApp.platform !== "android" && <> I-tap ang ••• sa itaas at piliin ang &apos;Open in browser&apos;.</>}
+      </p>
+      {inApp.platform === "android" && (
+        <a href={chromeIntentUrl(window.location)} className="btn-secondary shrink-0 !px-3 !py-1.5 text-xs">
+          Open in Chrome
+        </a>
+      )}
+    </div>
   );
 }
 
@@ -335,8 +373,7 @@ function GooglePinMap({
     bounds: searchBounds,
   });
   const queryReady = query.trim().length >= 3;
-  const [locating, setLocating] = useState(false);
-  const [geoError, setGeoError] = useState<string | null>(null);
+  const { locating, geoError, setGeoError, locate } = useCurrentLocation((pos) => placePin(pos, null, 18));
 
   function showMarker(pos: LatLng, zoom?: number) {
     const g = googleRef.current;
@@ -456,26 +493,18 @@ function GooglePinMap({
           type="button"
           disabled={locating || !ready}
           className="btn-secondary !px-3 !py-1.5 text-xs"
-          onClick={() => {
-            setLocating(true);
-            setGeoError(null);
-            requestCurrentPosition(
-              (pos) => {
-                setLocating(false);
-                placePin(pos, null, 18);
-              },
-              (msg) => {
-                setLocating(false);
-                setGeoError(msg);
-              }
-            );
-          }}
+          onClick={locate}
         >
           {locating ? "Locating…" : "📍 Use my current location"}
         </button>
         <p className="text-xs text-slate-400">Tap the map or drag the pin to adjust.</p>
       </div>
-      {geoError && <p className="text-xs text-red-600">{geoError}</p>}
+      {geoError && (
+        <p role="alert" className="text-xs text-red-600">
+          {geoError}
+        </p>
+      )}
+      <InAppBrowserNotice />
       <div ref={containerRef} className="h-80 w-full overflow-hidden rounded-xl border border-slate-200 bg-slate-100" />
     </div>
   );
@@ -504,8 +533,7 @@ function OsmPinMap({
   const [searching, setSearching] = useState(false);
   const [showResults, setShowResults] = useState(false);
   const queryReady = query.trim().length >= 3;
-  const [locating, setLocating] = useState(false);
-  const [geoError, setGeoError] = useState<string | null>(null);
+  const { locating, geoError, locate } = useCurrentLocation((pos) => placePin(pos, null, 17));
 
   // Leaflet touches `window` on import, so it's loaded client-side only.
   useEffect(() => {
@@ -596,21 +624,6 @@ function OsmPinMap({
     };
   }, [query, searchBounds]);
 
-  function useMyLocation() {
-    setLocating(true);
-    setGeoError(null);
-    requestCurrentPosition(
-      (pos) => {
-        setLocating(false);
-        placePin(pos, null, 17);
-      },
-      (msg) => {
-        setLocating(false);
-        setGeoError(msg);
-      }
-    );
-  }
-
   return (
     <div className="space-y-2">
       <div className="relative">
@@ -652,12 +665,17 @@ function OsmPinMap({
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <button type="button" onClick={useMyLocation} disabled={locating} className="btn-secondary !px-3 !py-1.5 text-xs">
+        <button type="button" onClick={locate} disabled={locating} className="btn-secondary !px-3 !py-1.5 text-xs">
           {locating ? "Locating…" : "📍 Use my current location"}
         </button>
         <p className="text-xs text-slate-400">Tap the map or drag the pin to adjust.</p>
       </div>
-      {geoError && <p className="text-xs text-red-600">{geoError}</p>}
+      {geoError && (
+        <p role="alert" className="text-xs text-red-600">
+          {geoError}
+        </p>
+      )}
+      <InAppBrowserNotice />
 
       <div ref={containerRef} className="relative z-0 h-80 w-full overflow-hidden rounded-xl border border-slate-200" />
     </div>
