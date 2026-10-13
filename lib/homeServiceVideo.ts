@@ -14,6 +14,7 @@ export function resolveVideoSource(url: string): VideoSource {
     const host = u.hostname.replace(/^www\./, "");
     if (host === "youtu.be") return { kind: "embed", src: `https://www.youtube.com/embed/${u.pathname.slice(1)}?rel=0` };
     if (host === "youtube.com" || host === "m.youtube.com") {
+      // Also covers /shorts/<id> links.
       const id = u.searchParams.get("v") ?? u.pathname.split("/").filter(Boolean).pop();
       if (id) return { kind: "embed", src: `https://www.youtube.com/embed/${id}?rel=0` };
     }

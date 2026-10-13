@@ -4,7 +4,11 @@ import { useState } from "react";
 import { trackMetaEvent } from "@/lib/metaPixel";
 import { resolveVideoSource } from "@/lib/homeServiceVideo";
 
-// Landing-page video. Plain files autoplay muted (the only autoplay mobile
+// Vertical (9:16) frame, capped in width so it doesn't fill the whole phone
+// screen and push the booking form out of reach.
+const FRAME = "mx-auto aspect-[9/16] w-full max-w-[320px] rounded-2xl bg-slate-900 shadow-lg";
+
+// Landing-page video. Vertical 9:16 video. Plain files autoplay muted (the only autoplay mobile
 // browsers allow, and what most people arriving from a Facebook ad expect);
 // YouTube/Facebook links render as an embed. The first play is reported to
 // the Meta Pixel so ad performance can be judged on video engagement too.
@@ -15,7 +19,7 @@ export default function HomeServiceVideo({ url }: { url: string }) {
 
   if (source.kind === "embed") {
     return (
-      <div className="aspect-video w-full overflow-hidden rounded-2xl bg-slate-900 shadow-lg">
+      <div className={`${FRAME} overflow-hidden`}>
         <iframe
           src={source.src}
           title="Ceejay home service"
@@ -32,7 +36,7 @@ export default function HomeServiceVideo({ url }: { url: string }) {
 
   return (
     <video
-      className="aspect-video w-full rounded-2xl bg-slate-900 object-cover shadow-lg"
+      className={`${FRAME} object-cover`}
       src={source.src}
       controls
       muted
