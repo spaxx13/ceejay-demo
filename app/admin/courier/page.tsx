@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { getBranches, getCourierRequests, canManageHomeServiceRequests, isBranchHidden } from "@/lib/db";
+import { getBranches, getCourierRequests, canManageCourier, isBranchHidden } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import StatusBadge from "@/components/StatusBadge";
 import { COURIER_STATUS_LABELS, COURIER_STATUS_ORDER } from "@/lib/courierService";
@@ -11,7 +11,7 @@ import { deleteCourierRequest } from "@/lib/actions";
 
 export default async function CourierRequestsPage({ searchParams }: { searchParams: Promise<{ status?: string; branch?: string }> }) {
   const user = await getCurrentUser();
-  if (!canManageHomeServiceRequests(user)) redirect("/admin");
+  if (!canManageCourier(user)) redirect("/admin");
 
   const sp = await searchParams;
   const [branches, all] = await Promise.all([getBranches(), getCourierRequests()]);

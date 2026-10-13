@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { getCourierRequestById, getLookups, getDeviceModels, getBranches, getActivity, canManageHomeServiceRequests, isBranchHidden } from "@/lib/db";
+import { getCourierRequestById, getLookups, getDeviceModels, getBranches, getActivity, canManageCourier, isBranchHidden } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import StatusBadge from "@/components/StatusBadge";
 import { updateCourierRequest, deleteCourierRequest } from "@/lib/actions";
@@ -23,7 +23,7 @@ function CourierSelect({ name, defaultValue }: { name: string; defaultValue?: st
 
 export default async function CourierDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const user = await getCurrentUser();
-  if (!canManageHomeServiceRequests(user)) redirect("/admin");
+  if (!canManageCourier(user)) redirect("/admin");
 
   const { id } = await params;
   const req = await getCourierRequestById(id);

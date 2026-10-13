@@ -116,6 +116,7 @@ type UserRow = {
   can_access_crm: boolean;
   can_manage_walkins: boolean;
   can_manage_pickup_delivery: boolean | null | undefined;
+  can_manage_courier: boolean | null | undefined;
   can_waive_service_fee: boolean;
   can_manage_repair_pricing: boolean;
   can_edit_repair_price: boolean;
@@ -143,6 +144,8 @@ function mapUser(r: UserRow): User {
     // `?? false` so the column missing (migration 0086 not applied yet)
     // reads as "no access", never as a crash or an accidental grant.
     canManagePickupDelivery: r.can_manage_pickup_delivery ?? false,
+    // `?? false` so this still maps cleanly before migration 0094 is applied.
+    canManageCourier: r.can_manage_courier ?? false,
     canWaiveServiceFee: r.can_waive_service_fee,
     canManageRepairPricing: r.can_manage_repair_pricing,
     canEditRepairPrice: r.can_edit_repair_price,
@@ -285,6 +288,15 @@ export function canManageWalkIns(user: Pick<User, "role" | "canManageWalkIns"> |
 export function canManagePickupDelivery(user: Pick<User, "role" | "canManagePickupDelivery"> | null) {
   if (!user) return false;
   return user.role === "owner_admin" || (user.role === "branch_admin" && user.canManagePickupDelivery);
+}
+
+// True when this account is allowed to access/manage Courier Service —
+// Admin > Courier Service, its request pages and every action on them.
+// Owner admins always can; branch admins need the canManageCourier flag,
+// which the owner sets per account in Settings > Staff Accounts.
+export function canManageCourier(user: Pick<User, "role" | "canManageCourier"> | null) {
+  if (!user) return false;
+  return user.role === "owner_admin" || (user.role === "branch_admin" && user.canManageCourier);
 }
 
 // True when this account is allowed to waive a Home Service request's

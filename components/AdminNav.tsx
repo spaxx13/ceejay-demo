@@ -16,6 +16,7 @@ const NAV_GROUPS: {
     requestsGated?: boolean;
     walkinsGated?: boolean;
     pickupDeliveryGated?: boolean;
+    courierGated?: boolean;
     salesGated?: boolean;
     crmGated?: boolean;
     repairPricingGated?: boolean;
@@ -27,7 +28,7 @@ const NAV_GROUPS: {
     links: [
       { href: "/admin/requests", label: "Home Service Requests", requestsGated: true },
       { href: "/admin/pickup-delivery", label: "Pickup & Delivery", pickupDeliveryGated: true },
-      { href: "/admin/courier", label: "Courier Service", requestsGated: true },
+      { href: "/admin/courier", label: "Courier Service", courierGated: true },
       { href: "/admin/walk-ins", label: "Walk-In Registrations", walkinsGated: true },
       { href: "/admin/pos", label: "POS" },
       { href: "/admin/manual-checklists", label: "Manual Checklist & Receipt" },
@@ -67,6 +68,7 @@ export default function AdminNav({
   canManageRequests = true,
   canManageWalkIns = true,
   canManagePickupDelivery = true,
+  canManageCourier = true,
   canViewSales = true,
   canAccessCrm = true,
   canManageRepairPricing = true,
@@ -78,6 +80,7 @@ export default function AdminNav({
   canManageRequests?: boolean;
   canManageWalkIns?: boolean;
   canManagePickupDelivery?: boolean;
+  canManageCourier?: boolean;
   canViewSales?: boolean;
   canAccessCrm?: boolean;
   canManageRepairPricing?: boolean;
@@ -99,6 +102,7 @@ export default function AdminNav({
             .filter((l) => !l.requestsGated || canManageRequests)
             .filter((l) => !l.walkinsGated || canManageWalkIns)
             .filter((l) => !l.pickupDeliveryGated || canManagePickupDelivery)
+            .filter((l) => !l.courierGated || canManageCourier)
             .filter((l) => !l.salesGated || canViewSales)
             .filter((l) => !l.crmGated || canAccessCrm)
             .filter((l) => !l.repairPricingGated || canManageRepairPricing)
