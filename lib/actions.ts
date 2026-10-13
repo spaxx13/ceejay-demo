@@ -114,6 +114,7 @@ import {
   EXCLUDED_FROM_PICKUP_DELIVERY,
   PICKUP_DELIVERY_COVERAGE_LABEL,
   pickupDeliveryMinDateStr,
+  EXCLUDED_FROM_HOME_SERVICE,
 } from "./homeServiceFees";
 import { getRepairQuote } from "./servicePricing";
 import { formatDate, isCheckInOpen, todayDateStr, toManilaDateStr } from "./format";
@@ -3146,6 +3147,86 @@ export async function submitPublicQuote(_prev: PublicQuoteResult | undefined, fo
   });
 
   return { ok: true };
+}
+
+export type InstantQuoteResult =
+  | {
+      ok: true;
+      deviceLabel: string;
+      serviceTypeLabel: string;
+      screenQuality: string;
+      repairCost: number;
+      serviceFee: number | null;
+      total: number | null;
+      downpaymentRequired: boolean;
+      sundayOnly: boolean;
+      emailed: boolean;
+    }
+  | { ok: false; error: string };
+
+// Home Service quote for the /home-service ad landing page: an exact price on
+// screen right away (so a visitor from an ad doesn't have to fill the whole
+// booking form to learn the cost), with the email required and a copy of the
+// same quotation sent to it. Like submitPublicQuote this is stateless — the
+// price is recomputed here and nothing is stored.
+export async function getInstantHomeQuote(_prev: InstantQuoteResult | undefined, formData: FormData): Promise<InstantQuoteResult> {
+  const email = str(formData, "email").toLowerCase();
+  const deviceBrandId = str(formData, "deviceBrandId");
+  const deviceModelId = str(formData, "deviceModelId");
+  const serviceTypeId = str(formData, "serviceTypeId");
+  const screenQuality = str(formData, "screenQuality");
+  const province = str(formData, "province");
+  const city = str(formData, "city");
+
+  if (!email || !isValidEmail(email)) return { ok: false, error: "Please enter a valid email address." };
+  if (!deviceBrandId || !deviceModelId || !serviceTypeId) return { ok: false, error: "Please choose your device and repair type." };
+  if (!province || !city) return { ok: false, error: "Please choose your province and city." };
+
+  const [lookups, deviceModels, prices] = await Promise.all([getLookups(), getDeviceModels(), getServicePrices()]);
+  const brand = lookups.find((l) => l.id === deviceBrandId && l.kind === "device_brand");
+  const model = deviceModels.find((m) => m.id === deviceModelId && m.brandId === deviceBrandId);
+  const serviceType = lookups.find((l) => l.id === serviceTypeId && l.kind === "service_type");
+  if (!brand || !model || !serviceType) return { ok: false, error: "Something went wrong with your selection. Please try again." };
+  if (EXCLUDED_FROM_HOME_SERVICE.has(serviceType.label)) {
+    return { ok: false, error: "That repair can't be done as a home service. Please visit a branch." };
+  }
+
+  const repairCost = getRepairQuote(prices, serviceType.label, deviceModelId, screenQuality);
+  if (repairCost === null) {
+    return { ok: false, error: "We don't have a price on file for that combination yet — please contact a branch directly." };
+  }
+  const serviceFee = serviceFeeAmount(province, city);
+  const deviceLabel = `${brand.label} ${model.name}`.trim();
+
+  let emailed = false;
+  try {
+    await sendPublicQuoteEmail(email, {
+      customerName: "",
+      deviceLabel,
+      serviceTypeLabel: serviceType.label,
+      screenQuality: screenQuality || undefined,
+      repairCost,
+      serviceMode: "home_service",
+      address: [city, province].join(", "),
+      serviceFee,
+    });
+    emailed = true;
+  } catch {
+    // The price is already on screen — a failed email must not hide it.
+  }
+
+  return {
+    ok: true,
+    deviceLabel,
+    serviceTypeLabel: serviceType.label,
+    screenQuality,
+    repairCost,
+    serviceFee,
+    total: serviceFee === null ? null : repairCost + serviceFee,
+    downpaymentRequired: DOWNPAYMENT_PROVINCES.has(province),
+    sundayOnly: SUNDAY_ONLY_PROVINCES.has(province),
+    emailed,
+  };
 }
 
 // ---------- Walk-In Registration: Email OTP Verification ----------

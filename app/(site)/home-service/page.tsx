@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import HomeServiceVideo from "@/components/site/HomeServiceVideo";
 import HomeServiceForm from "@/components/HomeServiceForm";
+import InstantQuote from "@/components/site/InstantQuote";
 import { HOME_SERVICE_VIDEO_URL } from "@/lib/homeServiceVideo";
 import { getLookups, getDeviceModels, getRequestFormContent, getCustomFormFields } from "@/lib/db";
 import { smsConfigured } from "@/lib/sms";
@@ -59,11 +60,25 @@ export default async function HomeServiceLandingPage() {
               Book home service
             </a>
           </div>
+          <a href="#price" className="mt-3 inline-block text-sm text-blue-500 hover:underline">
+            See your exact price first ↓
+          </a>
           <ul className="mt-5 flex flex-wrap justify-center gap-x-5 gap-y-1 text-xs text-slate-500">
             {BENEFITS.map((b) => (
               <li key={b}>✓ {b}</li>
             ))}
           </ul>
+        </div>
+      </section>
+
+      <section id="price" className="scroll-mt-4 px-4 py-12 sm:px-6">
+        <div className="mx-auto max-w-xl space-y-6">
+          <div className="text-center">
+            <p className="kicker">How much?</p>
+            <h2 className="mt-1 text-2xl font-bold text-slate-900">See your exact price</h2>
+            <p className="mt-2 text-sm text-slate-400">Pick your phone and repair — we&apos;ll show your price and email you a copy.</p>
+          </div>
+          <InstantQuote brands={brands} models={models} serviceTypes={serviceTypes} bookHref={formAvailable ? "#book" : "/request"} />
         </div>
       </section>
 
