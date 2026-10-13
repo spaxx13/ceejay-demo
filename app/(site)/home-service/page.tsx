@@ -1,7 +1,10 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import HomeServiceVideo from "@/components/site/HomeServiceVideo";
+import HomeServiceForm from "@/components/HomeServiceForm";
 import { HOME_SERVICE_VIDEO_URL } from "@/lib/homeServiceVideo";
+import { getLookups, getDeviceModels, getRequestFormContent, getCustomFormFields } from "@/lib/db";
+import { smsConfigured } from "@/lib/sms";
 
 export const metadata: Metadata = {
   title: "Cellphone Repair at Your Doorstep | Ceejay Home Service",
@@ -16,7 +19,27 @@ const STEPS = [
 
 const BENEFITS = ["No travel, no queueing", "Repair done in front of you", "Daily service, nationwide", "Free diagnostic"];
 
-export default function HomeServiceLandingPage() {
+export default async function HomeServiceLandingPage() {
+  const [lookups, deviceModels, content, customFormFields] = await Promise.all([
+    getLookups(),
+    getDeviceModels(),
+    getRequestFormContent(),
+    getCustomFormFields(),
+  ]);
+  // Same inputs as app/(site)/request/page.tsx's "near" area, the one with
+  // the online booking form.
+  const brands = lookups
+    .filter((l) => l.kind === "device_brand" && l.active)
+    .sort((a, b) => a.order - b.order)
+    .map((l) => ({ id: l.id, label: l.label }));
+  const models = deviceModels.filter((m) => m.active).map((m) => ({ id: m.id, brandId: m.brandId, name: m.name }));
+  const serviceTypes = lookups
+    .filter((l) => l.kind === "service_type" && l.active)
+    .sort((a, b) => a.order - b.order)
+    .map((l) => ({ id: l.id, label: l.label }));
+  const fields = customFormFields.filter((f) => f.active).sort((a, b) => a.order - b.order);
+  const formAvailable = content.nearAreaEnabled && fields.length > 0;
+
   return (
     <main>
       <section className="grid-bg px-4 py-10 sm:px-6 sm:py-16">
@@ -32,15 +55,44 @@ export default function HomeServiceLandingPage() {
             <HomeServiceVideo url={HOME_SERVICE_VIDEO_URL} />
           </div>
           <div className="mt-6 flex justify-center">
-            <Link href="/request" className="btn-primary w-full sm:w-auto">
+            <a href={formAvailable ? "#book" : "/request"} className="btn-primary w-full sm:w-auto">
               Book home service
-            </Link>
+            </a>
           </div>
           <ul className="mt-5 flex flex-wrap justify-center gap-x-5 gap-y-1 text-xs text-slate-500">
             {BENEFITS.map((b) => (
               <li key={b}>✓ {b}</li>
             ))}
           </ul>
+        </div>
+      </section>
+
+      <section id="book" className="grid-bg scroll-mt-4 px-4 py-12 sm:px-6">
+        <div className="mx-auto max-w-xl space-y-6">
+          <div className="text-center">
+            <p className="kicker">{content.pageKicker}</p>
+            <h2 className="mt-1 text-2xl font-bold text-slate-900">{content.pageTitle}</h2>
+            <p className="mt-2 text-sm text-slate-400">{content.pageSubtitle}</p>
+            <p className="mt-1 text-xs text-slate-400">Area: Metro Manila, Laguna, Batangas, Rizal, Bulacan, Cavite, and Pampanga</p>
+          </div>
+          {formAvailable ? (
+            <HomeServiceForm
+              brands={brands}
+              models={models}
+              serviceTypes={serviceTypes}
+              content={content}
+              fields={fields}
+              area="near"
+              smsAvailable={smsConfigured()}
+            />
+          ) : (
+            <div className="card text-center">
+              <p className="text-sm text-slate-400">Online booking isn&apos;t available right now.</p>
+              <Link href="/request" className="btn-primary mt-4 inline-block">
+                See booking options
+              </Link>
+            </div>
+          )}
         </div>
       </section>
 
@@ -57,11 +109,6 @@ export default function HomeServiceLandingPage() {
               <p className="mt-1 text-sm text-slate-400">{s.body}</p>
             </div>
           ))}
-        </div>
-        <div className="mt-10 flex justify-center">
-          <Link href="/request" className="btn-primary w-full sm:w-auto">
-            Book home service now
-          </Link>
         </div>
       </section>
     </main>
