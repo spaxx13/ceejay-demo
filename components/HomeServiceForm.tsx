@@ -133,6 +133,13 @@ export default function HomeServiceForm({
   useEffect(() => {
     if (bookingOk) trackMetaEvent("Lead", { content_name: mode === "pickup_delivery" ? "Pickup & Delivery" : "Home Service" });
   }, [bookingOk, mode]);
+  // The long form collapses into the (much shorter) success card, which can
+  // leave the viewport at the very bottom of the page on a phone — bring the
+  // quotation / Confirm Booking into view instead.
+  const successRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (bookingOk) successRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [bookingOk]);
 
   // One or more devices per booking — starts with a single blank block;
   // "+ Add Another Device" appends another, sharing the contact/address
@@ -335,7 +342,7 @@ export default function HomeServiceForm({
 
   if (state?.ok) {
     return (
-      <div className="card space-y-3 text-center">
+      <div ref={successRef} className="card scroll-mt-4 space-y-3 text-center">
         <p className="text-3xl">✅</p>
         <h2 className="text-lg font-semibold text-slate-800">{content.successTitle}</h2>
         <p className="text-sm text-slate-400">
