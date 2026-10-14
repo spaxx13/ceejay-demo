@@ -355,12 +355,18 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
   const grandPickupDelivery = sumHomeServiceSales(pickupDeliverySalesByTechnician(visibleAgreements, inRange, requests, technicians));
   const grandPickupDeliveryNet = grandPickupDelivery.companyShare;
 
+  // Courier Service, all branches — repair-cost-only revenue from mail-in
+  // requests marked paid in range (each branch's own courierTotal above,
+  // summed). No technician/branch split and no expense bucket of its own,
+  // so its net is the total itself — same shape as Pickup & Delivery's net.
+  const grandCourierTotal = rowsWithExpenses.reduce((s, r) => s + r.courierTotal, 0);
+
   // The one true bottom-line figure — what the business actually keeps
   // across every revenue stream (every branch's POS/walk-in business share,
   // already net of all expenses, plus Home Service's own business share,
   // also net of its expenses) — since the two waterfalls above are never
   // otherwise added together anywhere on this page.
-  const grandTotalBusinessShare = grandBusinessShareNet + grandHomeServiceNet + grandPickupDeliveryNet;
+  const grandTotalBusinessShare = grandBusinessShareNet + grandHomeServiceNet + grandPickupDeliveryNet + grandCourierTotal;
 
   // Home Service technicians are usually tied only to the backend "Home
   // Service" queue branch(es) (near/far), not a real addressed branch — so
@@ -1091,6 +1097,10 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
                 <li className="flex items-center justify-between gap-2">
                   <span className="text-slate-600">Pickup &amp; Delivery</span>
                   <span className="font-medium text-slate-800">{peso(grandPickupDeliveryNet)}</span>
+                </li>
+                <li className="flex items-center justify-between gap-2">
+                  <span className="text-slate-600">Courier Service</span>
+                  <span className="font-medium text-slate-800">{peso(grandCourierTotal)}</span>
                 </li>
               </ul>
               <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 pt-2">
