@@ -125,6 +125,14 @@ export default function UserManager({
       <div className="card space-y-4">
         <h3 className="text-sm font-semibold text-slate-800">{editingId ? `Edit "${editing?.name}"` : "Add Staff Account"}</h3>
         <form
+          // Remounts the whole form whenever which account is being edited
+          // changes (including back to "Add Account", id "new") — every
+          // field below is an uncontrolled input (defaultChecked/
+          // defaultValue), which React only applies on mount. Without this
+          // key, switching from editing one account straight to another
+          // left every checkbox showing whatever was last on screen instead
+          // of that account's actual saved permissions.
+          key={editingId ?? "new"}
           ref={formRef}
           action={(fd) => {
             if (editingId) {
