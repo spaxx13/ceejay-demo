@@ -38,6 +38,37 @@ const ROLE_LABELS: Record<Role, string> = {
   rider: "Rider",
 };
 
+function branchNames(ids: string[], branches: Branch[]) {
+  if (ids.length === 0) return "All Branches";
+  return ids.map((id) => branches.find((b) => b.id === id)?.name ?? "Unknown branch").join(", ");
+}
+
+// A quick-glance summary of what each account can actually do — so "what
+// access does this person have" doesn't require opening Edit and scrolling
+// through every checkbox. Owner admins and riders have a fixed, non-toggled
+// access shape; branch admins and technicians vary by the checkboxes above.
+function accessBadges(u: UserRow, technicians: Technician[], branches: Branch[]): string[] {
+  if (u.role === "owner_admin") return ["Full access — all branches"];
+  if (u.role === "rider") return ["Pickup & Delivery jobs assigned to them"];
+  if (u.role === "technician") {
+    const tech = technicians.find((t) => t.id === u.technicianId);
+    const badges = [`Own jobs — ${branchNames(tech?.branchIds ?? [], branches)}`];
+    if (u.canManageManualChecklists) badges.push("Manual Checklist & Receipt");
+    return badges;
+  }
+  const badges: string[] = [branchNames(u.assignedBranchIds, branches)];
+  if (u.canManageRequests) badges.push("Requests");
+  if (u.canDeleteRequests) badges.push("Delete Requests");
+  if (u.canViewSales) badges.push(u.canViewAllBranches ? "Sales (All Branches)" : "Sales");
+  if (u.canAccessCrm) badges.push("CRM");
+  if (u.canManageWalkIns) badges.push("Walk-Ins");
+  if (u.canManagePickupDelivery) badges.push("Pickup & Delivery");
+  if (u.canWaiveServiceFee) badges.push("Waive Service Fee");
+  if (u.canManageRepairPricing) badges.push("Repair Pricing");
+  if (u.canEditRepairPrice) badges.push("Edit Repair Price");
+  return badges;
+}
+
 export default function UserManager({
   users,
   technicians,
@@ -545,6 +576,13 @@ export default function UserManager({
               <span className="text-slate-400">Role</span>
               <span className="text-right text-slate-600">{ROLE_LABELS[u.role]}</span>
             </div>
+            <div className="flex flex-wrap gap-1">
+              {accessBadges(u, technicians, branches).map((b) => (
+                <span key={b} className="badge border border-slate-200 bg-slate-50 text-[10px] text-slate-500">
+                  {b}
+                </span>
+              ))}
+            </div>
             <div className="flex gap-1.5 pt-1">
               <button className="btn-secondary flex-1 !py-1.5 text-xs" onClick={() => startEdit(u)}>
                 Edit
@@ -575,6 +613,7 @@ export default function UserManager({
               <th className="pb-2 pr-3">Name</th>
               <th className="pb-2 pr-3">Email</th>
               <th className="pb-2 pr-3">Role</th>
+              <th className="pb-2 pr-3">Access</th>
               <th className="pb-2 pr-3">Status</th>
               <th className="pb-2">Actions</th>
             </tr>
@@ -582,7 +621,7 @@ export default function UserManager({
           <tbody>
             {users.length === 0 && (
               <tr>
-                <td colSpan={5} className="py-6 text-center text-slate-400">
+                <td colSpan={6} className="py-6 text-center text-slate-400">
                   No staff accounts yet.
                 </td>
               </tr>
@@ -595,6 +634,15 @@ export default function UserManager({
                 </td>
                 <td className="py-3 pr-3 text-slate-500">{u.email}</td>
                 <td className="py-3 pr-3 text-slate-500">{ROLE_LABELS[u.role]}</td>
+                <td className="py-3 pr-3">
+                  <div className="flex max-w-xs flex-wrap gap-1">
+                    {accessBadges(u, technicians, branches).map((b) => (
+                      <span key={b} className="badge border border-slate-200 bg-slate-50 text-[10px] text-slate-500">
+                        {b}
+                      </span>
+                    ))}
+                  </div>
+                </td>
                 <td className="py-3 pr-3">
                   {u.id === currentUserId ? (
                     <span className="badge border border-green-200 bg-green-50 text-green-700">Active</span>
