@@ -22,6 +22,7 @@ type UserRow = {
   canAccessCrm: boolean;
   canManageWalkIns: boolean;
   canManagePickupDelivery: boolean;
+  canManageCourier: boolean;
   canWaiveServiceFee: boolean;
   canManageRepairPricing: boolean;
   canEditRepairPrice: boolean;
@@ -426,6 +427,24 @@ export default function UserManager({
                 Off by default — independent of &quot;Can Manage Requests&quot; above. Check this to let the account see Admin &gt; Pickup &amp;
                 Delivery, open its jobs, assign riders and technicians, moderate unboxing videos and repair updates, use the staff preview of
                 the booking form, and view Sales &gt; Pickup &amp; Delivery. Owner admins always have this.
+              </p>
+            </div>
+          )}
+          {role === "branch_admin" && (
+            <div className="space-y-1.5">
+              <label className="flex items-center gap-1.5 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  name="canManageCourier"
+                  defaultChecked={editing?.canManageCourier ?? false}
+                  className="h-4 w-4 rounded border-slate-300"
+                />
+                Can access Courier Service
+              </label>
+              <p className="text-[11px] text-slate-400">
+                Off by default — independent of &quot;Can Manage Requests&quot; above. Check this to let the account see Admin &gt; Courier
+                Service and manage its mail-in requests: mark them received, set the repair cost and shipping fee, confirm payment, and ship
+                them back. Owner admins always have this, and only they can move requests to Trash.
               </p>
             </div>
           )}
