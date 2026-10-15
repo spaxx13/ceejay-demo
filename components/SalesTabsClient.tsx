@@ -11,11 +11,20 @@ const TABS = [
   { href: "/admin/sales/pickup-delivery", label: "Pickup & Delivery", pickupDeliveryGated: true },
   { href: "/admin/sales/materials", label: "Parts/Material Cost" },
   { href: "/admin/sales/expenses", label: "Expenses" },
+  { href: "/admin/sales/bir-records", label: "BIR Records", ownerOnly: true },
 ];
 
-export default function SalesTabsClient({ canManagePickupDelivery = true }: { canManagePickupDelivery?: boolean }) {
+export default function SalesTabsClient({
+  canManagePickupDelivery = true,
+  isOwnerAdmin = true,
+}: {
+  canManagePickupDelivery?: boolean;
+  isOwnerAdmin?: boolean;
+}) {
   const pathname = usePathname();
-  const tabs = TABS.filter((t) => !("pickupDeliveryGated" in t && t.pickupDeliveryGated) || canManagePickupDelivery);
+  const tabs = TABS.filter((t) => !("pickupDeliveryGated" in t && t.pickupDeliveryGated) || canManagePickupDelivery).filter(
+    (t) => !("ownerOnly" in t && t.ownerOnly) || isOwnerAdmin
+  );
 
   return (
     <div className="card !p-3">
