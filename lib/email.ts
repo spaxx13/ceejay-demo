@@ -44,6 +44,41 @@ export function emailConfigured() {
   return Boolean(process.env.RESEND_API_KEY);
 }
 
+export type EmailAccountStatus =
+  | { ok: true; domain: string; status: string; verified: boolean }
+  | { ok: false; error: string };
+
+// Hits Resend's own domains endpoint to confirm the configured API key is
+// live AND that the sending domain (FROM, above) is actually verified —
+// used by the admin Settings "Check status" action, not by any
+// customer-facing flow. An unverified/pending domain is why a receipt
+// email can appear to succeed in the activity log (the API call itself
+// didn't error) while never actually reaching the customer's inbox.
+export async function getEmailAccountStatus(): Promise<EmailAccountStatus> {
+  if (!emailConfigured()) return { ok: false, error: "RESEND_API_KEY is not set." };
+  const fromDomain = FROM.match(/@([^>]+)>/)?.[1] ?? "";
+
+  let res: Response;
+  try {
+    res = await fetch("https://api.resend.com/domains", {
+      headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}` },
+      cache: "no-store",
+    });
+  } catch {
+    return { ok: false, error: "Couldn't reach Resend — check network/DNS." };
+  }
+  const data = await res.json().catch(() => null);
+  if (!res.ok) {
+    return { ok: false, error: data?.message ? `Resend: ${data.message}` : `Resend domains check failed (${res.status}).` };
+  }
+  const domains: { name: string; status: string }[] = data?.data ?? [];
+  const domain = domains.find((d) => d.name === fromDomain);
+  if (!domain) {
+    return { ok: false, error: `API key is valid, but "${fromDomain}" isn't registered as a sending domain on this Resend account.` };
+  }
+  return { ok: true, domain: domain.name, status: domain.status, verified: domain.status === "verified" };
+}
+
 export async function sendRepairReceiptEmail(
   to: string,
   opts: {

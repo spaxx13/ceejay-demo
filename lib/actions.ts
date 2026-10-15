@@ -95,6 +95,8 @@ import {
   sendCourierBookingEmail,
   sendCourierShippedEmail,
   emailConfigured,
+  getEmailAccountStatus,
+  type EmailAccountStatus,
 } from "./email";
 import { isOnTheWayStatus, distanceKm } from "./technicianTracking";
 import { COURIER_AGREEMENT_VERSION, COURIER_LIST, COURIER_SELF_SHIP_NOTICE, COURIER_TRACKING_REMINDER, COURIER_PACKING_TIPS, isCourierReceivingBranch, COURIER_PAYMENT_METHODS, COURIER_STATUS_LABELS } from "./courierService";
@@ -5071,6 +5073,12 @@ export async function checkSmsStatus(): Promise<SmsAccountStatus> {
   const user = await getCurrentUser();
   if (!user || user.role !== "owner_admin") return { ok: false, error: "Owner admin access required." };
   return getAccountStatus();
+}
+
+export async function checkEmailStatus(): Promise<EmailAccountStatus> {
+  const user = await getCurrentUser();
+  if (!user || user.role !== "owner_admin") return { ok: false, error: "Owner admin access required." };
+  return getEmailAccountStatus();
 }
 
 export type ResendReceiptResult = { ok: true; email: string } | { ok: false; error: string };
