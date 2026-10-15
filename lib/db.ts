@@ -1421,6 +1421,84 @@ export function sumHomeServiceSales(rows: HomeServiceSalesRow[]) {
   );
 }
 
+export type GrossSalesRecord = {
+  id: string;
+  date: string; // Manila YYYY-MM-DD
+  source: "POS" | "Home Service" | "Pickup & Delivery" | "Courier Service";
+  reference: string;
+  customerName: string;
+  branchName: string;
+  deviceLabel: string;
+  amount: number;
+};
+
+// Every peso actually billed to a customer, across every revenue stream,
+// as one flat per-transaction list — built for Admin > Sales > BIR Records,
+// where all four streams count toward the same taxable gross regardless of
+// how the rest of this app's Sales reports keep them in separate tabs. Uses
+// the exact same per-job amount formulas already used elsewhere (POS cost,
+// salesByTechnicianForMode's waived-fee-aware Home Service/Pickup & Delivery
+// total, Branch Sales' own Courier Service courierTotal), so this list's
+// sum can never disagree with what those reports already show.
+export function grossSalesRecords(
+  repairRecords: Pick<RepairRecord, "id" | "serviceDate" | "reference" | "customerName" | "branchId" | "deviceModel" | "cost" | "cancelled">[],
+  agreements: ServiceAgreement[],
+  requests: (SalesRequestPick & Pick<HomeServiceRequest, "reference"> & { downpaymentAmount: number | null; pickupDeliveryFeePesos: number | null })[],
+  courierRequests: Pick<CourierRequest, "id" | "branchId" | "name" | "reference" | "deviceOther" | "status" | "paidAt" | "repairCost">[],
+  branches: Pick<Branch, "id" | "name">[],
+  technicians: Pick<Technician, "id" | "branchIds">[],
+  inRange: (date: string) => boolean
+): GrossSalesRecord[] {
+  const branchName = (id: string | null) => branches.find((b) => b.id === id)?.name ?? "—";
+  const requestById = new Map(requests.map((r) => [r.id, r]));
+
+  const posRecords: GrossSalesRecord[] = repairRecords
+    .filter((r) => !r.cancelled && inRange(r.serviceDate))
+    .map((r) => ({
+      id: r.id,
+      date: r.serviceDate,
+      source: "POS",
+      reference: r.reference,
+      customerName: r.customerName,
+      branchName: branchName(r.branchId),
+      deviceLabel: r.deviceModel || "—",
+      amount: r.cost,
+    }));
+
+  const homeServiceRecords: GrossSalesRecord[] = agreements
+    .filter((a) => a.phase === "post_repair" && a.requestId && requestById.has(a.requestId) && inRange(toManilaDateStr(a.completedAt)))
+    .map((a) => {
+      const req = requestById.get(a.requestId!)!;
+      const waivedFee = req.serviceFeeWaived ? quotedServiceFee(req) : 0;
+      const amount = Math.max(0, a.cost + Math.max(0, a.laborCost - waivedFee));
+      return {
+        id: a.id,
+        date: toManilaDateStr(a.completedAt),
+        source: (req.fulfillmentMode === "pickup_delivery" ? "Pickup & Delivery" : "Home Service") as GrossSalesRecord["source"],
+        reference: req.reference,
+        customerName: a.customerName,
+        branchName: branchName(homeServiceBranchId(a.technicianId, a.branchId, technicians)),
+        deviceLabel: a.deviceLabel || "—",
+        amount,
+      };
+    });
+
+  const courierRecords: GrossSalesRecord[] = courierRequests
+    .filter((c) => c.status !== "cancelled" && c.paidAt && c.repairCost !== null && inRange(toManilaDateStr(c.paidAt)))
+    .map((c) => ({
+      id: c.id,
+      date: toManilaDateStr(c.paidAt!),
+      source: "Courier Service",
+      reference: c.reference,
+      customerName: c.name,
+      branchName: branchName(c.branchId),
+      deviceLabel: c.deviceOther || "—",
+      amount: c.repairCost ?? 0,
+    }));
+
+  return [...posRecords, ...homeServiceRecords, ...courierRecords].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+}
+
 // "Owner's Final Total Sales" expenses (Sales > Expenses) explicitly tied to
 // one of the backend Home Service queue branches — the same deduction a
 // real branch's own "Owner's Final Total Sales" expenses already get on

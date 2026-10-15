@@ -7,5 +7,5 @@ import SalesTabsClient from "./SalesTabsClient";
 // (the page itself also redirects — this just keeps the tab honest).
 export default async function SalesTabs() {
   const user = await getCurrentUser();
-  return <SalesTabsClient canManagePickupDelivery={canManagePickupDelivery(user)} />;
+  return <SalesTabsClient canManagePickupDelivery={canManagePickupDelivery(user)} isOwnerAdmin={user?.role === "owner_admin"} />;
 }
