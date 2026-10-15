@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { getBranches, getTechnicians, getRiders, getLookups, getUsers, getLoginLogs, getActivity } from "@/lib/db";
 import { requireRole } from "@/lib/auth";
 import SmsStatusCheck from "@/components/SmsStatusCheck";
+import EmailStatusCheck from "@/components/EmailStatusCheck";
 import { todayDateStr, toManilaDateStr } from "@/lib/format";
 
 const GROUPS = [
@@ -107,6 +108,7 @@ export default async function SettingsHubPage() {
           <p className="text-xs text-slate-400">Third-party services this app talks to.</p>
         </div>
         <SmsStatusCheck />
+        <EmailStatusCheck />
       </section>
     </div>
   );
