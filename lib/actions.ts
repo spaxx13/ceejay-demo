@@ -2848,11 +2848,14 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
   // Automatic quotation email — best-effort, same as the SMS confirmation
   // above: a missing RESEND_API_KEY or any other failure here must never
   // block the request itself from saving, so this always falls through to
-  // logActivity below. Sent as a record/reference copy only now — the
-  // customer confirms right on the success screen instead of clicking a
-  // link in this email, so confirmationUrl is only ever passed through for
-  // a down-payment booking (where paying via QR Ph, not a plain click, is
-  // still the real next step and worth a reminder if they navigate away).
+  // logActivity below. The customer normally confirms right on the success
+  // screen, but that screen is only ever shown once — if they refresh,
+  // close the tab, or lose connection before clicking Confirm, the on-screen
+  // button is gone and the booking is still "Pending Confirmation" until it
+  // auto-voids (see the void-unconfirmed-requests cron). confirmationUrl is
+  // passed through here whenever needsConfirmation produced a token at all
+  // (not just for a down-payment booking), so this email is always a working
+  // fallback to the same /confirm-booking page the success screen uses.
   let quoteNote = "";
   if (email && fulfillmentMode === "pickup_delivery") {
     try {
@@ -2881,7 +2884,7 @@ export async function submitHomeServiceRequest(_prev: SubmitResult | undefined, 
         address,
         serviceFee,
         phone,
-        confirmationUrl: downpaymentActive && confirmationToken ? `${SITE_URL}/confirm-booking/${confirmationToken}` : null,
+        confirmationUrl: confirmationToken ? `${SITE_URL}/confirm-booking/${confirmationToken}` : null,
         confirmationWindowMinutes: BOOKING_CONFIRMATION_WINDOW_MINUTES,
         downpaymentRequired: downpaymentActive,
         downpaymentAmount,
