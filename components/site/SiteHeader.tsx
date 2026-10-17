@@ -9,13 +9,13 @@ import { PICKUP_DELIVERY_PUBLIC_ENABLED } from "@/lib/config";
 const LINKS = [
   { href: "/", label: "Home" },
   { href: "/services", label: "Services" },
+  { href: "/branches", label: "Branches" },
   { href: "/request", label: "Home Service" },
   ...(PICKUP_DELIVERY_PUBLIC_ENABLED ? [{ href: "/pickup-delivery", label: "Pickup & Delivery" }] : []),
-  { href: "/quote", label: "Get a Quote" },
-  { href: "/branches", label: "Branches" },
   { href: "/courier-service", label: "Courier Service" },
-  { href: "/panic-log-checker", label: "Panic Log Checker" },
   ...(PICKUP_DELIVERY_PUBLIC_ENABLED ? [{ href: "/track", label: "Track Order" }] : []),
+  { href: "/quote", label: "Get a Quote" },
+  { href: "/panic-log-checker", label: "Panic Log Checker" },
   { href: "/about", label: "About" },
   { href: "/contact", label: "Contact" },
 ];
