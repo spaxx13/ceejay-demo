@@ -1,10 +1,24 @@
 import Link from "next/link";
 import { getCourierRequestByReference, getBranches } from "@/lib/db";
 import { normalizePhone } from "@/lib/sms";
-import { COURIER_STATUS_LABELS, COURIER_STATUS_ORDER, COURIER_LIST, COURIER_PACKING_TIPS, COURIER_PAYMENT_ACCOUNTS, COURIER_SELF_SHIP_NOTICE, COURIER_PAYMENT_QR_IMAGE, formatPesos } from "@/lib/courierService";
+import {
+  courierStatusLabel,
+  COURIER_STATUS_ORDER,
+  COURIER_LIST,
+  COURIER_PACKING_TIPS,
+  COURIER_PAYMENT_ACCOUNTS,
+  COURIER_SELF_SHIP_NOTICE,
+  COURIER_PAYMENT_QR_IMAGE,
+  SELF_BOOK_LINKS,
+  SELF_BOOK_NOTICE,
+  SELF_BOOK_PACKING_TIPS,
+  SELF_BOOK_RETURN_NOTICE,
+  formatPesos,
+} from "@/lib/courierService";
 import CourierInboundForm from "@/components/site/CourierInboundForm";
 import CourierPaymentForm from "@/components/site/CourierPaymentForm";
 import CourierReceivedForm from "@/components/site/CourierReceivedForm";
+import CourierReturnBookingForm from "@/components/site/CourierReturnBookingForm";
 import { formatDateTime } from "@/lib/format";
 
 // Customer-facing tracking for a Courier Service request: reference number
@@ -58,6 +72,8 @@ export default async function CourierTrackPage({ searchParams }: { searchParams:
   }
 
   const branch = branches.find((b) => b.id === req.branchId);
+  const selfBook = req.deliveryMode === "self_book";
+  const kicker = selfBook ? "Pickup & Delivery" : "Courier Service";
   const cancelled = req.status === "cancelled";
   const currentIdx = COURIER_STATUS_ORDER.indexOf(req.status);
   const total = req.repairCost !== null && req.returnShippingFee !== null ? req.repairCost + req.returnShippingFee : null;
@@ -66,16 +82,24 @@ export default async function CourierTrackPage({ searchParams }: { searchParams:
     <main className="grid-bg px-4 py-10 sm:px-6">
       <div className="mx-auto max-w-md space-y-4">
         <div className="text-center">
-          <p className="kicker">Courier Service</p>
+          <p className="kicker">{kicker}</p>
           <h1 className="mt-1 font-mono text-xl font-bold text-slate-900">{req.reference}</h1>
-          <p className="mt-1 text-sm font-semibold text-slate-700">{COURIER_STATUS_LABELS[req.status]}</p>
+          <p className="mt-1 text-sm font-semibold text-slate-700">{courierStatusLabel(req.deliveryMode, req.status)}</p>
         </div>
+
+        {selfBook && req.handoverCode && !cancelled && req.status !== "delivered" && (
+          <div className="card text-center">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Hand-over code</p>
+            <p className="font-mono text-3xl font-bold tracking-widest text-slate-900">{req.handoverCode}</p>
+            <p className="mt-1 text-xs text-slate-500">Ibigay sa driver mo. Hihingin ito ng branch kasama ang plate number bago ilabas ang device.</p>
+          </div>
+        )}
 
         {!cancelled && (
           <ol className="card space-y-2 text-sm">
             {COURIER_STATUS_ORDER.map((s, i) => (
               <li key={s} className={i <= currentIdx ? "font-medium text-slate-800" : "text-slate-300"}>
-                {i <= currentIdx ? "✅" : "○"} {COURIER_STATUS_LABELS[s]}
+                {i <= currentIdx ? "✅" : "○"} {courierStatusLabel(req.deliveryMode, s)}
               </li>
             ))}
           </ol>
@@ -84,30 +108,44 @@ export default async function CourierTrackPage({ searchParams }: { searchParams:
         {req.status === "awaiting_unit" && branch && (
           <div className="card space-y-3">
             <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
-              <p className="font-semibold">Ship your device to:</p>
+              <p className="font-semibold">{selfBook ? "Drop-off address para sa driver mo:" : "Ship your device to:"}</p>
               <p>Ceejay Cellphone Repair Shop — {branch.name}</p>
               <p>{branch.address}</p>
               {branch.contactNumber && <p>Contact: {branch.contactNumber}</p>}
-              <p>Attn: {req.reference}</p>
+              <p>{selfBook ? "Sa notes ng booking ilagay:" : "Attn:"} {req.reference}</p>
             </div>
             <ul className="list-disc space-y-1 pl-5 text-xs text-slate-500">
-              {COURIER_PACKING_TIPS.map((t) => (
+              {(selfBook ? SELF_BOOK_PACKING_TIPS : COURIER_PACKING_TIPS).map((t) => (
                 <li key={t}>{t}</li>
               ))}
             </ul>
             <p className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm font-medium text-amber-900">
-              {COURIER_SELF_SHIP_NOTICE}
+              {selfBook ? SELF_BOOK_NOTICE : COURIER_SELF_SHIP_NOTICE}
             </p>
-            <p className="text-xs text-slate-500">Couriers na pwede mong gamitin: {COURIER_LIST.join(", ")}.</p>
+            {selfBook ? (
+              <div className="flex flex-wrap gap-2">
+                {SELF_BOOK_LINKS.map((l) => (
+                  <a key={l.label} href={l.href} target="_blank" rel="noopener noreferrer" className="btn-secondary !px-3 !py-1.5 text-xs">
+                    Mag-book sa {l.label}
+                  </a>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-slate-500">Couriers na pwede mong gamitin: {COURIER_LIST.join(", ")}.</p>
+            )}
             {req.inboundTracking ? (
               <p className="text-sm text-slate-600">
-                Your shipment: {req.inboundCourier} — <span className="font-mono">{req.inboundTracking}</span>
+                {selfBook ? "Your booking:" : "Your shipment:"} {req.inboundCourier} — <span className="font-mono">{req.inboundTracking}</span>
               </p>
             ) : (
               <div className="space-y-2 border-t border-slate-200 pt-3">
-                <p className="text-sm font-semibold text-slate-800">Kailangan ang tracking number</p>
-                <p className="text-xs text-slate-500">Pagkatapos mong ipadala, ilagay ang courier at ang tracking number na ibinigay nila sa iyo.</p>
-                <CourierInboundForm reference={req.reference} phone={phone} />
+                <p className="text-sm font-semibold text-slate-800">{selfBook ? "Kailangan ang booking details" : "Kailangan ang tracking number"}</p>
+                <p className="text-xs text-slate-500">
+                  {selfBook
+                    ? "Pagkatapos mong mag-book, ilagay ang tracking link o booking number at ang plate number ng driver."
+                    : "Pagkatapos mong ipadala, ilagay ang courier at ang tracking number na ibinigay nila sa iyo."}
+                </p>
+                <CourierInboundForm reference={req.reference} phone={phone} mode={req.deliveryMode} />
               </div>
             )}
           </div>
@@ -118,11 +156,30 @@ export default async function CourierTrackPage({ searchParams }: { searchParams:
             <div className="space-y-1">
               <p className="font-semibold text-slate-800">Your device is repaired!</p>
               <p className="text-slate-500">Repair cost: {formatPesos(req.repairCost)}</p>
-              <p className="text-slate-500">Return shipping: {formatPesos(req.returnShippingFee)}</p>
+              <p className="text-slate-500">{selfBook ? "Delivery fee (binabayaran mo sa Lalamove/Grab)" : "Return shipping"}: {formatPesos(req.returnShippingFee)}</p>
               <p className="font-semibold text-slate-800">Total: {formatPesos(total)}</p>
             </div>
             {req.paidAt ? (
-              <p className="text-xs text-green-700">Payment confirmed — we&apos;ll ship your device back shortly.</p>
+              selfBook ? (
+                <div className="space-y-3">
+                  <p className="text-xs text-green-700">Payment confirmed.</p>
+                  <p className="rounded-lg border border-amber-300 bg-amber-50 p-3 font-medium text-amber-900">{SELF_BOOK_RETURN_NOTICE}</p>
+                  <div className="flex flex-wrap gap-2">
+                    {SELF_BOOK_LINKS.map((l) => (
+                      <a key={l.label} href={l.href} target="_blank" rel="noopener noreferrer" className="btn-secondary !px-3 !py-1.5 text-xs">
+                        Mag-book sa {l.label}
+                      </a>
+                    ))}
+                  </div>
+                  <p className="text-xs text-slate-500">
+                    Pickup: Ceejay {branch?.name ?? "branch"}{branch?.address ? `, ${branch.address}` : ""}. Drop-off:{" "}
+                    {[req.street, req.barangay, req.city, req.province].filter(Boolean).join(", ")}. Sa notes: {req.reference}.
+                  </p>
+                  <CourierReturnBookingForm reference={req.reference} phone={phone} defaultCourier={req.outboundCourier} defaultTracking={req.outboundTracking} />
+                </div>
+              ) : (
+                <p className="text-xs text-green-700">Payment confirmed — we&apos;ll ship your device back shortly.</p>
+              )
             ) : (
               <>
                 <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-blue-900">
@@ -159,11 +216,11 @@ export default async function CourierTrackPage({ searchParams }: { searchParams:
 
         {(req.status === "shipped" || req.status === "delivered") && (
           <div className="card space-y-1 text-sm">
-            <p className="font-semibold text-slate-800">Shipped back to you</p>
+            <p className="font-semibold text-slate-800">{selfBook ? "Released to your driver" : "Shipped back to you"}</p>
             <p className="text-slate-500">
               {req.outboundCourier} — <span className="font-mono">{req.outboundTracking}</span>
             </p>
-            {req.shippedAt && <p className="text-xs text-slate-400">Shipped {formatDateTime(req.shippedAt)}</p>}
+            {req.shippedAt && <p className="text-xs text-slate-400">{selfBook ? "Released" : "Shipped"} {formatDateTime(req.shippedAt)}</p>}
             {req.status === "shipped" && (
               <div className="space-y-2 border-t border-slate-200 pt-3">
                 <p className="text-xs text-slate-500">Dumating na ba ang device mo? Pindutin ito para ma-confirm.</p>

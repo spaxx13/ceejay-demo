@@ -619,29 +619,30 @@ export async function sendTechnicianOnTheWayEmail(
 // to ship the device, then again once the branch ships it back.
 export async function sendCourierBookingEmail(
   to: string,
-  opts: { customerName: string; reference: string; branchName: string; branchAddress: string; branchContact: string; tips: string[]; couriers: string[]; selfShipNotice: string; trackingReminder: string }
+  opts: { customerName: string; reference: string; branchName: string; branchAddress: string; branchContact: string; tips: string[]; couriers: string[]; selfShipNotice: string; trackingReminder: string; selfBook?: boolean; handoverCode?: string }
 ) {
   const client = getClient();
   const { error } = await client.emails.send({
     from: FROM,
     to,
-    subject: `Ship your device to Ceejay — ${opts.reference}`,
+    subject: opts.selfBook ? `Book your driver to Ceejay — ${opts.reference}` : `Ship your device to Ceejay — ${opts.reference}`,
     html: `
       <div style="font-family: -apple-system, sans-serif; max-width: 480px; margin: 0 auto; color: #1e293b;">
         <p style="font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8;">Ceejay Cellphone Repair Shop</p>
-        <h2 style="margin: 4px 0 16px;">Courier Service booking received</h2>
+        <h2 style="margin: 4px 0 16px;">${opts.selfBook ? "Pickup &amp; Delivery booking received" : "Courier Service booking received"}</h2>
         <p style="font-size: 14px; line-height: 1.5;">Hi ${escapeHtml(opts.customerName)}, your reference number is <strong>${escapeHtml(opts.reference)}</strong>.</p>
-        <p style="font-size: 14px; line-height: 1.5;"><strong>Ship your device to:</strong><br/>
+        <p style="font-size: 14px; line-height: 1.5;"><strong>${opts.selfBook ? "Have your driver bring the device to:" : "Ship your device to:"}</strong><br/>
           Ceejay Cellphone Repair Shop — ${escapeHtml(opts.branchName)}<br/>
           ${escapeHtml(opts.branchAddress)}<br/>
           ${opts.branchContact ? `Contact: ${escapeHtml(opts.branchContact)}<br/>` : ""}
           Attn: ${escapeHtml(opts.reference)}
         </p>
+        ${opts.selfBook && opts.handoverCode ? `<p style="font-size: 14px; line-height: 1.5;">Your hand-over code: <strong style="font-size: 20px; letter-spacing: 2px;">${escapeHtml(opts.handoverCode)}</strong><br/>Keep it. The branch asks for it, together with your driver's plate number, before releasing your device later.</p>` : ""}
         <p style="font-size: 14px; line-height: 1.5; background: #fff6d6; padding: 10px 12px; border-radius: 6px;"><strong>${escapeHtml(opts.selfShipNotice)}</strong></p>
-        <p style="font-size: 14px; line-height: 1.5;"><strong>Couriers you can use:</strong> ${opts.couriers.map(escapeHtml).join(", ")}</p>
+        <p style="font-size: 14px; line-height: 1.5;"><strong>${opts.selfBook ? "Apps you can use:" : "Couriers you can use:"}</strong> ${opts.couriers.map(escapeHtml).join(", ")}</p>
         <ul style="font-size: 13px; line-height: 1.5; padding-left: 18px;">${opts.tips.map((t) => `<li>${escapeHtml(t)}</li>`).join("")}</ul>
         <p style="font-size: 14px; line-height: 1.5; background: #e6effb; padding: 10px 12px; border-radius: 6px;"><strong>${escapeHtml(opts.trackingReminder)}</strong></p>
-        <p style="font-size: 14px;"><a href="${SITE_URL}/courier-service/track?reference=${encodeURIComponent(opts.reference)}">Track this request and enter your tracking number</a></p>
+        <p style="font-size: 14px;"><a href="${SITE_URL}/courier-service/track?reference=${encodeURIComponent(opts.reference)}">${opts.selfBook ? "Track this request and enter your booking details" : "Track this request and enter your tracking number"}</a></p>
       </div>
     `,
   });

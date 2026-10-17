@@ -1,5 +1,6 @@
 "use server";
 
+import { randomInt } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
@@ -96,7 +97,7 @@ import {
   emailConfigured,
 } from "./email";
 import { isOnTheWayStatus, distanceKm } from "./technicianTracking";
-import { COURIER_AGREEMENT_VERSION, COURIER_LIST, COURIER_SELF_SHIP_NOTICE, COURIER_TRACKING_REMINDER, COURIER_PACKING_TIPS, isCourierReceivingBranch, COURIER_PAYMENT_METHODS, COURIER_STATUS_LABELS } from "./courierService";
+import { COURIER_AGREEMENT_VERSION, COURIER_LIST, COURIER_SELF_SHIP_NOTICE, COURIER_TRACKING_REMINDER, COURIER_PACKING_TIPS, isCourierReceivingBranch, COURIER_PAYMENT_METHODS, courierStatusLabel, SELF_BOOK_COURIER_LIST, SELF_BOOK_NOTICE, SELF_BOOK_TRACKING_REMINDER, SELF_BOOK_PACKING_TIPS } from "./courierService";
 import type { CourierStatus } from "./types";
 import { storageConfigured, createSignedUploadUrl, deleteStorageObject, UPDATES_BUCKET } from "./storage";
 import { PICKUP_DELIVERY_AGREEMENT_VERSION } from "./pickupDeliveryAgreement";
@@ -3380,7 +3381,7 @@ export async function permanentlyDeleteWalkInRequest(formData: FormData) {
 // ---------- Courier Service (mail-in repair, nationwide) ----------
 
 export type CourierBookingResult =
-  | { ok: true; reference: string; branch: { name: string; address: string; contactNumber: string } }
+  | { ok: true; reference: string; handoverCode: string; branch: { name: string; address: string; contactNumber: string } }
   | { ok: false; error: string };
 
 // A customer outside the Home Service / Pickup & Delivery areas ships the
@@ -3406,10 +3407,15 @@ export async function submitCourierRequest(_prev: CourierBookingResult | undefin
   const issue = str(formData, "issue");
   const photoDataUrlRaw = str(formData, "photoDataUrl");
   const photoDataUrl = photoDataUrlRaw.startsWith("data:image/") ? photoDataUrlRaw : null;
+  // Pickup & Delivery option 2: the customer books their own Lalamove / Grab
+  // driver both ways instead of mailing the device in by parcel courier.
+  const deliveryMode = str(formData, "deliveryMode") === "self_book" ? "self_book" : "courier";
+  // Shown to the driver and checked by the branch before release.
+  const handoverCode = deliveryMode === "self_book" ? String(randomInt(1000, 10000)) : "";
 
   if (!name) return { ok: false, error: "Please share your name." };
   if (!phone || !isValidPhone(phone)) return { ok: false, error: "Please enter a valid PH mobile number, e.g. 0917 123 4567." };
-  if (!email || !isValidEmail(email)) return { ok: false, error: "Please enter a valid email address — we send the shipping instructions there." };
+  if (!email || !isValidEmail(email)) return { ok: false, error: "Please enter a valid email address — we send the booking instructions there." };
   if (!street || !city || !province) return { ok: false, error: "Please fill in the address we should ship your repaired device back to." };
   if (!branchId || !UUID_RE.test(branchId)) return { ok: false, error: "Something went wrong with your submission. Please try again." };
   if (!rawDeviceBrandId) return { ok: false, error: "Please select your device brand." };
@@ -3448,10 +3454,10 @@ export async function submitCourierRequest(_prev: CourierBookingResult | undefin
       created = await queryOne<{ id: string }>(
         `insert into courier_requests
            (reference, name, phone, email, street, barangay, city, province, zip_code, landmark, branch_id,
-            device_brand_id, device_model_id, device_other, service_type_id, issue_description, photo_data_url, agreed_at)
-         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17, now()) returning id`,
+            device_brand_id, device_model_id, device_other, service_type_id, issue_description, photo_data_url, delivery_mode, handover_code, agreed_at)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19, now()) returning id`,
         [reference, name, phone, email, street, barangay, city, province, zipCode, landmark, branchId,
-         deviceBrandId, deviceModelId, deviceOther, serviceTypeId, issue, photoDataUrl]
+         deviceBrandId, deviceModelId, deviceOther, serviceTypeId, issue, photoDataUrl, deliveryMode, handoverCode]
       );
       break;
     } catch (err) {
@@ -3464,7 +3470,9 @@ export async function submitCourierRequest(_prev: CourierBookingResult | undefin
   await logActivity(
     "courier_request",
     created!.id,
-    `Courier Service ${reference} booked via website — ship to ${branch.name}, return to ${[city, province].filter(Boolean).join(", ")} (agreement ${COURIER_AGREEMENT_VERSION})`,
+    deliveryMode === "self_book"
+      ? `Pickup & Delivery (book your own Lalamove/Grab) ${reference} booked via website — customer brings the device to ${branch.name}, return to ${[city, province].filter(Boolean).join(", ")} (agreement ${COURIER_AGREEMENT_VERSION})`
+      : `Courier Service ${reference} booked via website — ship to ${branch.name}, return to ${[city, province].filter(Boolean).join(", ")} (agreement ${COURIER_AGREEMENT_VERSION})`,
     "System"
   );
   if (emailConfigured()) {
@@ -3475,10 +3483,12 @@ export async function submitCourierRequest(_prev: CourierBookingResult | undefin
         branchName: branch.name,
         branchAddress: branch.address,
         branchContact: branch.contactNumber,
-        tips: COURIER_PACKING_TIPS,
-        couriers: COURIER_LIST,
-        selfShipNotice: COURIER_SELF_SHIP_NOTICE,
-        trackingReminder: COURIER_TRACKING_REMINDER,
+        tips: deliveryMode === "self_book" ? SELF_BOOK_PACKING_TIPS : COURIER_PACKING_TIPS,
+        couriers: deliveryMode === "self_book" ? SELF_BOOK_COURIER_LIST : COURIER_LIST,
+        selfShipNotice: deliveryMode === "self_book" ? SELF_BOOK_NOTICE : COURIER_SELF_SHIP_NOTICE,
+        trackingReminder: deliveryMode === "self_book" ? SELF_BOOK_TRACKING_REMINDER : COURIER_TRACKING_REMINDER,
+        selfBook: deliveryMode === "self_book",
+        handoverCode,
       });
     } catch {
       // Best-effort — the success screen shows the same instructions.
@@ -3487,7 +3497,7 @@ export async function submitCourierRequest(_prev: CourierBookingResult | undefin
   // A submitted, verified code has done its job and shouldn't linger for reuse.
   await query("delete from email_otp_codes where email=$1", [email.trim().toLowerCase()]);
   revalidatePath("/admin/courier");
-  return { ok: true, reference, branch: { name: branch.name, address: branch.address, contactNumber: branch.contactNumber } };
+  return { ok: true, reference, handoverCode, branch: { name: branch.name, address: branch.address, contactNumber: branch.contactNumber } };
 }
 
 export type CourierInboundResult = { ok: true } | { ok: false; error: string };
@@ -3499,13 +3509,45 @@ export async function submitCourierInboundTracking(_prev: CourierInboundResult |
   const reference = str(formData, "reference").toUpperCase();
   const phone = str(formData, "phone");
   const courier = str(formData, "courier").slice(0, 80);
-  const tracking = str(formData, "trackingNumber").slice(0, 80);
+  const plate = str(formData, "plate").slice(0, 20);
+  const tracking = withPlate(str(formData, "trackingNumber").slice(0, 80), plate);
   if (!courier || !tracking) return { ok: false, error: "Please enter the courier and the tracking number." };
   const req = await getCourierRequestByReference(reference);
   if (!req || normalizePhone(req.phone) !== normalizePhone(phone)) return { ok: false, error: "We couldn't find that request." };
   if (req.status !== "awaiting_unit") return { ok: false, error: "This request no longer accepts shipment details." };
   await query("update courier_requests set inbound_courier=$1, inbound_tracking=$2 where id=$3", [courier, tracking, req.id]);
   await logActivity("courier_request", req.id, `Customer shipped via ${courier}, tracking ${tracking}`, req.name);
+  revalidatePath("/admin/courier");
+  revalidatePath(`/admin/courier/${req.id}`);
+  revalidatePath("/courier-service/track");
+  return { ok: true };
+}
+
+// Self-book requests carry the driver's plate number inside the tracking
+// text, so the branch sees it next to the booking link when it verifies the
+// driver at the counter.
+function withPlate(tracking: string, plate: string): string {
+  return plate ? `${tracking} · Plate ${plate.toUpperCase()}` : tracking;
+}
+
+// Self-book only: after paying, the customer books their own Lalamove / Grab
+// driver for the trip back and tells us who is coming, so the branch can check
+// the plate number and hand-over code before releasing the device. Stored in
+// the outbound columns that staff otherwise fill in when they ship it back.
+export async function submitCourierReturnBooking(_prev: CourierInboundResult | undefined, formData: FormData): Promise<CourierInboundResult> {
+  const reference = str(formData, "reference").toUpperCase();
+  const phone = str(formData, "phone");
+  const courier = str(formData, "courier").slice(0, 80);
+  const plate = str(formData, "plate").slice(0, 20);
+  const tracking = withPlate(str(formData, "trackingNumber").slice(0, 80), plate);
+  if (!courier || !str(formData, "trackingNumber")) return { ok: false, error: "Please enter the courier and your booking link or number." };
+  if (!plate) return { ok: false, error: "Please enter the driver's plate number." };
+  const req = await getCourierRequestByReference(reference);
+  if (!req || normalizePhone(req.phone) !== normalizePhone(phone)) return { ok: false, error: "We couldn't find that request." };
+  if (req.deliveryMode !== "self_book") return { ok: false, error: "This request doesn't use a customer-booked driver." };
+  if (req.status !== "ready_to_ship" || !req.paidAt) return { ok: false, error: "You can book your return driver once your payment is confirmed." };
+  await query("update courier_requests set outbound_courier=$1, outbound_tracking=$2 where id=$3", [courier, tracking, req.id]);
+  await logActivity("courier_request", req.id, `Customer booked the return driver via ${courier}, ${tracking}`, req.name);
   revalidatePath("/admin/courier");
   revalidatePath(`/admin/courier/${req.id}`);
   revalidatePath("/courier-service/track");
@@ -3687,7 +3729,8 @@ export async function updateCourierRequest(formData: FormData) {
       tracking,
       id,
     ]);
-    if (req.email && emailConfigured()) {
+    // Self-book customers already know their driver; no "shipped" email.
+    if (req.deliveryMode === "courier" && req.email && emailConfigured()) {
       try {
         await sendCourierShippedEmail(req.email, { customerName: req.name, reference: req.reference, courier, trackingNumber: tracking });
       } catch {
@@ -3699,7 +3742,7 @@ export async function updateCourierRequest(formData: FormData) {
   } else {
     await query("update courier_requests set status=$1 where id=$2", [step.to, id]);
   }
-  await logActivity("courier_request", id, `Status changed to "${COURIER_STATUS_LABELS[step.to]}" by ${actor}`, actor);
+  await logActivity("courier_request", id, `Status changed to "${courierStatusLabel(req.deliveryMode, step.to)}" by ${actor}`, actor);
   revalidate();
 }
 
