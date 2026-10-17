@@ -3704,9 +3704,11 @@ export async function deleteCourierRequest(formData: FormData) {
   await query("update courier_requests set deleted_at=now() where id=$1", [id]);
   await logActivity("courier_request", id, `Moved to Trash by ${user.name}`, user.name);
   revalidatePath("/admin/courier");
+  revalidatePath("/admin/pickup-delivery");
   revalidatePath("/admin/trash");
   revalidatePath("/courier-service/track");
-  redirect("/admin/courier");
+  // Customer-booked Lalamove / Grab requests are listed under Pickup & Delivery.
+  redirect(req.deliveryMode === "self_book" ? "/admin/pickup-delivery" : "/admin/courier");
 }
 
 export async function restoreCourierRequest(formData: FormData) {
@@ -3716,6 +3718,7 @@ export async function restoreCourierRequest(formData: FormData) {
   await query("update courier_requests set deleted_at=null where id=$1", [id]);
   await logActivity("courier_request", id, `Restored from Trash by ${user.name}`, user.name);
   revalidatePath("/admin/courier");
+  revalidatePath("/admin/pickup-delivery");
   revalidatePath("/admin/trash");
   revalidatePath("/courier-service/track");
 }

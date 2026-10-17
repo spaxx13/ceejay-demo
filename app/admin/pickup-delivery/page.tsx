@@ -16,7 +16,7 @@ import {
   type PickupDeliveryStage,
 } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
-import { deleteHomeServiceRequest } from "@/lib/actions";
+import { deleteHomeServiceRequest, deleteCourierRequest } from "@/lib/actions";
 import { PICKUP_DELIVERY_FEE_MIN_PESOS, PICKUP_DELIVERY_FEE_MAX_PESOS } from "@/lib/homeServiceFees";
 import { courierStatusLabel } from "@/lib/courierService";
 import { formatDateTime } from "@/lib/format";
@@ -182,9 +182,20 @@ export default async function PickupDeliveryPage({ searchParams }: { searchParam
                     </td>
                     <td className="py-3 pr-3 text-xs text-slate-400">{formatDateTime(r.createdAt)}</td>
                     <td className="py-3">
-                      <Link href={`/admin/courier/${r.id}`} className="btn-secondary !px-3 !py-1 text-xs">
-                        View
-                      </Link>
+                      <div className="flex gap-1.5">
+                        <Link href={`/admin/courier/${r.id}`} className="btn-secondary !px-3 !py-1 text-xs">
+                          View
+                        </Link>
+                        {/* Owner admins only — same rule as the Trash action itself. */}
+                        {user?.role === "owner_admin" && (
+                          <DeleteButton
+                            id={r.id}
+                            action={deleteCourierRequest}
+                            confirmMessage={`Move Pickup & Delivery request ${r.reference} to Trash? You can restore it later from Trash.`}
+                            label="Move to Trash"
+                          />
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
