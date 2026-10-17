@@ -316,9 +316,14 @@ export type WalkInRequest = {
 // Philippines, outside the Home Service / Pickup & Delivery areas. See
 // lib/courierService.ts for the status flow and supabase/migrations/0091.
 export type CourierStatus = "awaiting_unit" | "received" | "in_repair" | "ready_to_ship" | "shipped" | "delivered" | "cancelled";
+// "courier" = mail-in by a parcel courier; "self_book" = the customer books
+// their own Lalamove / Grab driver both ways (Pickup & Delivery option 2).
+export type CourierDeliveryMode = "courier" | "self_book";
 export type CourierRequest = {
   id: string;
   reference: string; // CS-<year>-<seq>
+  deliveryMode: CourierDeliveryMode;
+  handoverCode: string; // self_book only — "" otherwise
   customerId: string | null;
   name: string;
   phone: string;

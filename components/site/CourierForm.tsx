@@ -3,9 +3,20 @@
 import { useActionState, useEffect, useRef, useState } from "react";
 import { submitCourierRequest, sendWalkInOtp, verifyWalkInOtp } from "@/lib/actions";
 import { OTP_GATE_ENABLED } from "@/lib/config";
-import { COURIER_AGREEMENT_TERMS, COURIER_LIST, COURIER_PACKING_TIPS, COURIER_SELF_SHIP_NOTICE, COURIER_TRACKING_REMINDER } from "@/lib/courierService";
+import {
+  COURIER_AGREEMENT_TERMS,
+  COURIER_LIST,
+  COURIER_PACKING_TIPS,
+  COURIER_SELF_SHIP_NOTICE,
+  COURIER_TRACKING_REMINDER,
+  SELF_BOOK_AGREEMENT_TERMS,
+  SELF_BOOK_LINKS,
+  SELF_BOOK_NOTICE,
+  SELF_BOOK_PACKING_TIPS,
+  SELF_BOOK_TRACKING_REMINDER,
+} from "@/lib/courierService";
 import PhotoUpload from "@/components/PhotoUpload";
-import type { Branch } from "@/lib/types";
+import type { Branch, CourierDeliveryMode } from "@/lib/types";
 
 type Brand = { id: string; label: string };
 type Model = { id: string; brandId: string; name: string };
@@ -19,13 +30,18 @@ export default function CourierForm({
   models,
   serviceTypes,
   emailAvailable,
+  mode = "courier",
 }: {
   branch: Pick<Branch, "id" | "name" | "address">;
   brands: Brand[];
   models: Model[];
   serviceTypes: ServiceType[];
   emailAvailable: boolean;
+  // "self_book" = Pickup & Delivery option 2: the customer books their own
+  // Lalamove / Grab driver both ways. Same request, different wording.
+  mode?: CourierDeliveryMode;
 }) {
+  const selfBook = mode === "self_book";
   const [state, formAction, pending] = useActionState(submitCourierRequest, undefined);
   const [brandId, setBrandId] = useState("");
   const [agreed, setAgreed] = useState(false);
@@ -121,30 +137,49 @@ export default function CourierForm({
           <p className="mt-1 text-sm text-slate-400">Your reference number</p>
           <p className="font-mono text-xl font-bold text-slate-900">{state.reference}</p>
         </div>
+        {selfBook && state.handoverCode && (
+          <div className="rounded-lg border-2 border-slate-800 bg-white p-3 text-center">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Hand-over code</p>
+            <p className="font-mono text-3xl font-bold tracking-widest text-slate-900">{state.handoverCode}</p>
+            <p className="mt-1 text-xs text-slate-500">
+              I-save ito. Hihingin ng branch ang code na ito at ang plate number ng driver bago ilabas ang device mo. Naka-email din ito sa iyo.
+            </p>
+          </div>
+        )}
         <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
-          <p className="font-semibold">Ship your device to:</p>
+          <p className="font-semibold">{selfBook ? "Drop-off address para sa driver mo:" : "Ship your device to:"}</p>
           <p>Ceejay Cellphone Repair Shop — {state.branch.name}</p>
           <p>{state.branch.address}</p>
           {state.branch.contactNumber && <p>Contact: {state.branch.contactNumber}</p>}
-          <p>Attn: {state.reference}</p>
+          <p>{selfBook ? "Sa notes ng booking ilagay:" : "Attn:"} {state.reference}</p>
         </div>
         <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
-          <p className="font-semibold">{COURIER_SELF_SHIP_NOTICE}</p>
-          <p className="mt-2">
-            <span className="font-semibold">Couriers na pwede mong gamitin:</span> {COURIER_LIST.join(", ")}
-          </p>
+          <p className="font-semibold">{selfBook ? SELF_BOOK_NOTICE : COURIER_SELF_SHIP_NOTICE}</p>
+          {selfBook ? (
+            <div className="mt-2 flex flex-wrap gap-2">
+              {SELF_BOOK_LINKS.map((l) => (
+                <a key={l.label} href={l.href} target="_blank" rel="noopener noreferrer" className="btn-secondary !px-3 !py-1.5 text-xs">
+                  Mag-book sa {l.label}
+                </a>
+              ))}
+            </div>
+          ) : (
+            <p className="mt-2">
+              <span className="font-semibold">Couriers na pwede mong gamitin:</span> {COURIER_LIST.join(", ")}
+            </p>
+          )}
         </div>
         <ul className="list-disc space-y-1 pl-5 text-sm text-slate-500">
-          {COURIER_PACKING_TIPS.map((t) => (
+          {(selfBook ? SELF_BOOK_PACKING_TIPS : COURIER_PACKING_TIPS).map((t) => (
             <li key={t}>{t}</li>
           ))}
         </ul>
         <div className="rounded-lg border-2 border-blue-400 bg-blue-50 p-3 text-sm text-blue-900">
-          <p className="font-semibold">📦 Huwag kalimutan: ilagay ang tracking number</p>
-          <p className="mt-1">{COURIER_TRACKING_REMINDER}</p>
+          <p className="font-semibold">{selfBook ? "📍 Huwag kalimutan: ilagay ang booking details" : "📦 Huwag kalimutan: ilagay ang tracking number"}</p>
+          <p className="mt-1">{selfBook ? SELF_BOOK_TRACKING_REMINDER : COURIER_TRACKING_REMINDER}</p>
         </div>
         <a href={`/courier-service/track?reference=${encodeURIComponent(state.reference)}`} className="btn-primary block text-center">
-          Track This Request & Enter Your Tracking Number
+          {selfBook ? "Track This Request & Enter Your Booking Details" : "Track This Request & Enter Your Tracking Number"}
         </a>
       </div>
     );
@@ -156,6 +191,7 @@ export default function CourierForm({
   return (
     <form ref={formRef} action={formAction} className="card space-y-4">
       <input type="hidden" name="courierAgreed" value={agreed ? "1" : "0"} />
+      <input type="hidden" name="deliveryMode" value={mode} />
       <h3 className="text-sm font-semibold text-slate-800">Your Details</h3>
       <div className="space-y-1.5">
         <label className="text-xs font-medium text-slate-500">
@@ -179,7 +215,11 @@ export default function CourierForm({
       </div>
 
       <h3 className="pt-2 text-sm font-semibold text-slate-800">Return Address</h3>
-      <p className="-mt-2 text-xs text-slate-400">Where we ship your repaired device back to — anywhere in the Philippines.</p>
+      <p className="-mt-2 text-xs text-slate-400">
+        {selfBook
+          ? "Where your driver delivers the repaired device. Lalamove at Grab ay sa loob lang ng service area nila."
+          : "Where we ship your repaired device back to — anywhere in the Philippines."}
+      </p>
       <div className="space-y-1.5">
         <label className="text-xs font-medium text-slate-500">
           House No. / Street <span className="text-red-600">*</span>
@@ -277,7 +317,7 @@ export default function CourierForm({
       <h3 className="pt-2 text-sm font-semibold text-slate-800">Your Device</h3>
       <input type="hidden" name="branchId" value={branch.id} />
       <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
-        <p className="font-semibold">You&apos;ll ship your device to:</p>
+        <p className="font-semibold">{selfBook ? "Your Lalamove / Grab driver brings the device to:" : "You\u2019ll ship your device to:"}</p>
         <p>Ceejay Cellphone Repair Shop — {branch.name}</p>
         <p>{branch.address}</p>
       </div>
@@ -332,29 +372,29 @@ export default function CourierForm({
       <PhotoUpload label="Photo of Your Device" required />
 
       <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
-        <p className="text-xs font-semibold text-slate-700">Courier Service Agreement</p>
+        <p className="text-xs font-semibold text-slate-700">{selfBook ? "Book-Your-Own-Driver Agreement" : "Courier Service Agreement"}</p>
         <ul className="list-disc space-y-1 pl-5 text-xs text-slate-500">
-          {COURIER_AGREEMENT_TERMS.map((t) => (
+          {(selfBook ? SELF_BOOK_AGREEMENT_TERMS : COURIER_AGREEMENT_TERMS).map((t) => (
             <li key={t}>{t}</li>
           ))}
         </ul>
         <label className="flex items-start gap-2 text-xs font-medium text-slate-700">
           <input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} className="mt-0.5" />
-          <span>I have read and accept the Courier Service Agreement.</span>
+          <span>I have read and accept the {selfBook ? "Book-Your-Own-Driver Agreement" : "Courier Service Agreement"}.</span>
         </label>
       </div>
 
       {state && !state.ok && <p className="text-sm text-red-600">{state.error}</p>}
       {!emailGateActive && (
         <button type="submit" disabled={pending || !agreed} className="btn-primary w-full">
-          {pending ? "Submitting..." : "Book Courier Service"}
+          {pending ? "Submitting..." : selfBook ? "Submit Request" : "Book Courier Service"}
         </button>
       )}
 
       {emailGateActive && otpStage === "idle" && (
         <>
           <button type="button" onClick={handleProceedToOtp} disabled={sendingOtp || !agreed} className="btn-primary w-full">
-            {sendingOtp ? "Sending verification code..." : "Book Courier Service"}
+            {sendingOtp ? "Sending verification code..." : selfBook ? "Submit Request" : "Book Courier Service"}
           </button>
           {otpError && <p className="text-center text-sm text-red-600">{otpError}</p>}
         </>

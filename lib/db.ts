@@ -876,10 +876,11 @@ type CourierRequestRow = {
   payment_method: string; payment_reference: string; payment_proof_data_url: string | null; payment_proof_at: Date | null;
   outbound_courier: string; outbound_tracking: string; shipped_at: Date | null; delivered_at: Date | null;
   admin_notes: string; agreed_at: Date | null; deleted_at?: Date | null; created_at: Date;
+  delivery_mode: CourierRequest["deliveryMode"]; handover_code?: string;
 };
 function mapCourierRequest(r: CourierRequestRow): CourierRequest {
   return {
-    id: r.id, reference: r.reference, customerId: r.customer_id, name: r.name, phone: r.phone, email: r.email,
+    id: r.id, reference: r.reference, deliveryMode: r.delivery_mode, handoverCode: r.handover_code ?? "", customerId: r.customer_id, name: r.name, phone: r.phone, email: r.email,
     street: r.street, barangay: r.barangay, city: r.city, province: r.province, zipCode: r.zip_code, landmark: r.landmark, branchId: r.branch_id,
     deviceBrandId: r.device_brand_id, deviceModelId: r.device_model_id, deviceOther: r.device_other, serviceTypeId: r.service_type_id,
     issueDescription: r.issue_description, photoDataUrl: r.photo_data_url ?? null, status: r.status,
@@ -895,7 +896,7 @@ function mapCourierRequest(r: CourierRequestRow): CourierRequest {
 // Same egress reasoning as getWalkInRequests(): the inline issue photo
 // stays out of list reads and comes with getCourierRequestById.
 const COURIER_LIGHT_COLUMNS =
-  "id, reference, customer_id, name, phone, email, street, barangay, city, province, zip_code, landmark, branch_id, device_brand_id, " +
+  "id, reference, delivery_mode, customer_id, name, phone, email, street, barangay, city, province, zip_code, landmark, branch_id, device_brand_id, " +
   "device_model_id, device_other, service_type_id, issue_description, status, inbound_courier, inbound_tracking, received_at, " +
   "repair_cost, return_shipping_fee, paid_at, payment_method, payment_reference, payment_proof_at, outbound_courier, outbound_tracking, shipped_at, delivered_at, admin_notes, agreed_at, deleted_at, created_at";
 export async function getCourierRequests() {
