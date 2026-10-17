@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
+import ZoomableImage from "@/components/ZoomableImage";
 import {
   getRequestById,
   getLookups,
@@ -388,8 +389,7 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
           {req.photoDataUrl && (
             <div>
               <p className="mb-1.5 text-sm text-slate-400">Photo</p>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={req.photoDataUrl} alt="Device issue" className="max-h-72 rounded-lg border border-slate-200 object-contain" />
+              <ZoomableImage src={req.photoDataUrl} alt="Device issue" className="max-h-72 rounded-lg border border-slate-200 object-contain" />
             </div>
           )}
           {customFieldEntries.length > 0 && (
