@@ -9,6 +9,8 @@ import { PICKUP_DELIVERY_PUBLIC_ENABLED } from "@/lib/config";
 const LINKS = [
   { href: "/", label: "Home" },
   { href: "/services", label: "Services" },
+  { href: "/request", label: "Home Service" },
+  ...(PICKUP_DELIVERY_PUBLIC_ENABLED ? [{ href: "/pickup-delivery", label: "Pickup & Delivery" }] : []),
   { href: "/quote", label: "Get a Quote" },
   { href: "/branches", label: "Branches" },
   { href: "/courier-service", label: "Courier Service" },
