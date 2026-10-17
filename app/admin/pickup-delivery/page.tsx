@@ -2,6 +2,8 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import {
   getRequests,
+  getCourierRequests,
+  isBranchHidden,
   getRiders,
   getLookups,
   getRequestExceptions,
@@ -16,6 +18,8 @@ import {
 import { getCurrentUser } from "@/lib/auth";
 import { deleteHomeServiceRequest } from "@/lib/actions";
 import { PICKUP_DELIVERY_FEE_MIN_PESOS, PICKUP_DELIVERY_FEE_MAX_PESOS } from "@/lib/homeServiceFees";
+import { courierStatusLabel } from "@/lib/courierService";
+import { formatDateTime } from "@/lib/format";
 import StatusBadge from "@/components/StatusBadge";
 import BarBreakdownChart from "@/components/BarBreakdownChart";
 import OpenIssuesList from "@/components/OpenIssuesList";
@@ -29,13 +33,17 @@ export default async function PickupDeliveryPage({ searchParams }: { searchParam
   if (!canManagePickupDelivery(user)) redirect("/admin");
   const sp = await searchParams;
 
-  const [allRequests, riders, lookups, exceptions, branches] = await Promise.all([
+  const [allRequests, riders, lookups, exceptions, branches, courierRequests] = await Promise.all([
     getRequests(),
     getRiders(),
     getLookups(),
     getRequestExceptions(),
     getBranches(),
+    getCourierRequests(),
   ]);
+  // Option 2: the customer books and pays their own Lalamove / Grab driver.
+  // Stored as self-book Courier Service requests; opened on /admin/courier/[id].
+  const selfBookJobs = courierRequests.filter((r) => r.deliveryMode === "self_book" && !isBranchHidden(user, r.branchId));
   // Distance-tiered pricing and "nearest branch" both need every physical
   // branch pinned — surface the gap here, where the owner will see it.
   const branchesWithoutPins = branches.filter((b) => b.active && b.address && (b.lat === null || b.lng === null));
@@ -137,6 +145,54 @@ export default async function PickupDeliveryPage({ searchParams }: { searchParam
       </div>
 
       <OpenIssuesList issues={openIssues} />
+
+      <div className="card space-y-3">
+        <div>
+          <h3 className="text-sm font-semibold text-slate-800">Option 2 — Customer-booked Lalamove / Grab</h3>
+          <p className="mt-1 text-xs text-slate-400">
+            The customer books and pays their own driver both ways. Check the driver&apos;s plate number and the customer&apos;s hand-over code before releasing a repaired device.
+          </p>
+        </div>
+        {selfBookJobs.length === 0 ? (
+          <p className="text-sm text-slate-400">No Lalamove / Grab requests yet.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-400">
+                  <th className="pb-2 pr-3">Reference</th>
+                  <th className="pb-2 pr-3">Customer</th>
+                  <th className="pb-2 pr-3">Return To</th>
+                  <th className="pb-2 pr-3">Status</th>
+                  <th className="pb-2 pr-3">Booked</th>
+                  <th className="pb-2">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {selfBookJobs.map((r) => (
+                  <tr key={r.id} className="border-b border-slate-200 last:border-0">
+                    <td className="py-3 pr-3 font-mono text-xs text-blue-300">{r.reference}</td>
+                    <td className="py-3 pr-3 text-slate-800">
+                      {r.name}
+                      <span className="block text-xs text-slate-400">{r.phone}</span>
+                    </td>
+                    <td className="py-3 pr-3 text-slate-500">{[r.city, r.province].filter(Boolean).join(", ") || "—"}</td>
+                    <td className="py-3 pr-3">
+                      <StatusBadge label={courierStatusLabel(r.deliveryMode, r.status)} />
+                    </td>
+                    <td className="py-3 pr-3 text-xs text-slate-400">{formatDateTime(r.createdAt)}</td>
+                    <td className="py-3">
+                      <Link href={`/admin/courier/${r.id}`} className="btn-secondary !px-3 !py-1 text-xs">
+                        View
+                      </Link>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
 
       {sp.stage && (
         <div className="card flex flex-wrap items-center justify-between gap-2">

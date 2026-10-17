@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { getCourierRequestById, getLookups, getDeviceModels, getBranches, getActivity, canManageCourier, isBranchHidden } from "@/lib/db";
+import { getCourierRequestById, getLookups, getDeviceModels, getBranches, getActivity, canManageCourierRequest, isBranchHidden } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import StatusBadge from "@/components/StatusBadge";
 import { updateCourierRequest, deleteCourierRequest } from "@/lib/actions";
@@ -23,12 +23,13 @@ function CourierSelect({ name, defaultValue, selfBook }: { name: string; default
 
 export default async function CourierDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const user = await getCurrentUser();
-  if (!canManageCourier(user)) redirect("/admin");
-
   const { id } = await params;
   const req = await getCourierRequestById(id);
   if (!req) notFound();
-  if (isBranchHidden(user, req.branchId)) redirect("/admin/courier");
+  if (!canManageCourierRequest(user, req.deliveryMode)) redirect("/admin");
+  // Option 2 (customer-booked Lalamove / Grab) lives under Pickup & Delivery.
+  const listHref = req.deliveryMode === "self_book" ? "/admin/pickup-delivery" : "/admin/courier";
+  if (isBranchHidden(user, req.branchId)) redirect(listHref);
 
   const [lookups, deviceModels, branches, activityLog] = await Promise.all([getLookups(), getDeviceModels(), getBranches(), getActivity()]);
   const branch = branches.find((b) => b.id === req.branchId);
@@ -44,8 +45,8 @@ export default async function CourierDetailPage({ params }: { params: Promise<{ 
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <Link href="/admin/courier" className="text-xs text-slate-400 hover:text-slate-600">
-            ← Back to Courier Service
+          <Link href={listHref} className="text-xs text-slate-400 hover:text-slate-600">
+            ← Back to {req.deliveryMode === "self_book" ? "Pickup & Delivery" : "Courier Service"}
           </Link>
           <h1 className="mt-1 font-mono text-lg font-bold text-slate-900">{req.reference}</h1>
           {selfBook && <p className="mt-0.5 text-xs font-semibold text-blue-600">Pickup &amp; Delivery — customer books Lalamove / Grab</p>}

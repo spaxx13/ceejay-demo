@@ -290,6 +290,16 @@ export function canManagePickupDelivery(user: Pick<User, "role" | "canManagePick
   return user.role === "owner_admin" || (user.role === "branch_admin" && user.canManagePickupDelivery);
 }
 
+// Courier requests booked as Pickup & Delivery option 2 (the customer books
+// their own Lalamove / Grab) are listed under Admin > Pickup & Delivery, so
+// either permission opens them; plain mail-in requests need canManageCourier.
+export function canManageCourierRequest(
+  user: Pick<User, "role" | "canManageCourier" | "canManagePickupDelivery"> | null,
+  deliveryMode: CourierRequest["deliveryMode"]
+) {
+  return canManageCourier(user) || (deliveryMode === "self_book" && canManagePickupDelivery(user));
+}
+
 // True when this account is allowed to access/manage Courier Service —
 // Admin > Courier Service, its request pages and every action on them.
 // Owner admins always can; branch admins need the canManageCourier flag,
