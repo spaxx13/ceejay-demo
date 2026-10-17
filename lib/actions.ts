@@ -59,7 +59,7 @@ import {
   canAccessCrm,
   canManageWalkIns,
   canManagePickupDelivery,
-  canManageCourier,
+  canManageCourierRequest,
   canWaiveServiceFee,
   canManageRepairPricing,
   canEditRepairPrice,
@@ -3753,11 +3753,10 @@ function courierAmount(fd: FormData, key: string): number | null {
 // and scoped to the receiving branch.
 export async function updateCourierRequest(formData: FormData) {
   const user = await getCurrentUser();
-  if (!canManageCourier(user)) return;
   const id = str(formData, "id");
   const intent = str(formData, "intent");
   const req = await getCourierRequestById(id);
-  if (!req || req.deletedAt || isBranchHidden(user, req.branchId)) return;
+  if (!req || req.deletedAt || !canManageCourierRequest(user, req.deliveryMode) || isBranchHidden(user, req.branchId)) return;
   const actor = user?.name ?? "Admin";
   const revalidate = () => {
     revalidatePath("/admin/courier");

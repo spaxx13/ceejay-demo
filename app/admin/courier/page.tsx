@@ -16,7 +16,8 @@ export default async function CourierRequestsPage({ searchParams }: { searchPara
   const sp = await searchParams;
   const [branches, all] = await Promise.all([getBranches(), getCourierRequests()]);
   // A branch admin only sees shipments headed to their own branch(es).
-  const visible = all.filter((r) => !isBranchHidden(user, r.branchId));
+  // Customer-booked Lalamove / Grab requests (option 2) are listed under Pickup & Delivery.
+  const visible = all.filter((r) => r.deliveryMode === "courier" && !isBranchHidden(user, r.branchId));
   let requests = visible;
   if (sp.status) requests = requests.filter((r) => r.status === sp.status);
   if (sp.branch) requests = requests.filter((r) => r.branchId === sp.branch);
@@ -28,7 +29,7 @@ export default async function CourierRequestsPage({ searchParams }: { searchPara
       <div>
         <h1 className="text-xl font-bold text-slate-900">Courier Service</h1>
         <p className="mt-1 text-sm text-slate-400">
-          Mail-in repairs from customers anywhere in the Philippines — they ship the device to a branch, we repair it and ship it back. Requests marked Lalamove / Grab are Pickup &amp; Delivery option 2: the customer books and pays their own driver both ways.
+          Mail-in repairs from customers anywhere in the Philippines — they ship the device to a branch, we repair it and ship it back. Requests where the customer books their own Lalamove / Grab are under Pickup &amp; Delivery.
         </p>
       </div>
 
@@ -88,7 +89,6 @@ export default async function CourierRequestsPage({ searchParams }: { searchPara
                   <Link href={`/admin/courier/${r.id}`} className="text-blue-500 hover:underline">
                     {r.reference}
                   </Link>
-                  {r.deliveryMode === "self_book" && <span className="block font-sans text-[11px] text-blue-600">Lalamove / Grab (self-book)</span>}
                 </td>
                 <td className="py-2 pr-3">
                   {r.name}
