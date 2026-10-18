@@ -636,9 +636,15 @@ function mapLoginLog(r: LoginLogRow): LoginLog {
   return { id: r.id, userId: r.user_id, userName: r.user_name, userEmail: r.user_email, role: r.role, at: toIso(r.at) };
 }
 
-type CheckInRow = { id: string; user_id: string | null; user_name: string; role: CheckIn["role"]; branch_id: string | null; branch_name: string; checked_in_at: Date };
+type CheckInRow = {
+  id: string; user_id: string | null; user_name: string; role: CheckIn["role"]; branch_id: string | null; branch_name: string;
+  checked_in_at: Date; photo_data_url: string | null;
+};
 function mapCheckIn(r: CheckInRow): CheckIn {
-  return { id: r.id, userId: r.user_id, userName: r.user_name, role: r.role, branchId: r.branch_id, branchName: r.branch_name, checkedInAt: toIso(r.checked_in_at) };
+  return {
+    id: r.id, userId: r.user_id, userName: r.user_name, role: r.role, branchId: r.branch_id, branchName: r.branch_name,
+    checkedInAt: toIso(r.checked_in_at), photoDataUrl: r.photo_data_url,
+  };
 }
 
 type SaleRow = { id: string; reference: string; branch_id: string; customer_id: string | null; customer_name: string; customer_phone: string; home_service_request_id: string | null; discount: string; subtotal: string; total: string; payment_method: Sale["paymentMethod"]; cashier_name: string; created_at: Date };

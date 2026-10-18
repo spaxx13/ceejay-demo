@@ -1,5 +1,9 @@
+"use client";
+
+import { useActionState, useState } from "react";
 import { checkIn } from "@/lib/actions";
 import { formatTime, isCheckInOpen } from "@/lib/format";
+import SelfieCapture from "./SelfieCapture";
 
 type Branch = { id: string; name: string };
 
@@ -10,6 +14,9 @@ export default function CheckInWidget({
   branches: Branch[];
   todayCheckIn: { branchName: string; checkedInAt: string } | null;
 }) {
+  const [state, formAction, pending] = useActionState(checkIn, undefined);
+  const [hasPhoto, setHasPhoto] = useState(false);
+
   if (todayCheckIn) {
     return (
       <div className="card flex items-center gap-2 border-green-200 bg-green-50">
@@ -30,8 +37,9 @@ export default function CheckInWidget({
   }
 
   return (
-    <form action={checkIn} className="card flex flex-wrap items-center gap-3">
-      <p className="text-sm font-semibold text-slate-800">Check in for today</p>
+    <form action={formAction} className="card flex flex-wrap items-center gap-3">
+      <p className="w-full text-sm font-semibold text-slate-800">Check in for today</p>
+      <SelfieCapture name="photoDataUrl" disabled={pending} onCapture={(dataUrl) => setHasPhoto(!!dataUrl)} />
       {branches.length === 1 ? (
         <input type="hidden" name="branchId" value={branches[0].id} />
       ) : (
@@ -46,9 +54,11 @@ export default function CheckInWidget({
           ))}
         </select>
       )}
-      <button type="submit" className="btn-primary !px-4 !py-1.5 text-sm">
-        {branches.length === 1 ? `Check In at ${branches[0].name}` : "Check In"}
+      <button type="submit" disabled={pending || !hasPhoto} className="btn-primary !px-4 !py-1.5 text-sm">
+        {pending ? "Checking In..." : branches.length === 1 ? `Check In at ${branches[0].name}` : "Check In"}
       </button>
+      {!hasPhoto && <p className="w-full text-xs text-slate-400">Take a selfie above to enable Check In.</p>}
+      {state && !state.ok && <p className="w-full text-xs text-red-600">{state.error}</p>}
     </form>
   );
 }
