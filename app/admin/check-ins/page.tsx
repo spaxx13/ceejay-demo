@@ -138,7 +138,9 @@ function CheckInGroup({ title, checkIns }: { title: string; checkIns: CheckIn[] 
         {checkIns.map((c) => (
           <div key={c.id} className="card flex gap-3">
             {c.photoDataUrl && (
-              <ZoomableImage src={c.photoDataUrl} alt={`${c.userName}'s selfie`} className="h-14 w-14 shrink-0 rounded-lg border border-slate-200 object-cover" />
+              <div className="h-14 w-14 shrink-0">
+                <ZoomableImage src={c.photoDataUrl} alt={`${c.userName}'s selfie`} className="h-14 w-14 rounded-lg border border-slate-200 object-cover" />
+              </div>
             )}
             <div className="min-w-0 flex-1 space-y-1.5">
               <div className="flex items-start justify-between gap-2">
@@ -175,7 +177,9 @@ function CheckInGroup({ title, checkIns }: { title: string; checkIns: CheckIn[] 
               <tr key={c.id} className="border-b border-slate-200 last:border-0">
                 <td className="py-3 pr-3">
                   {c.photoDataUrl ? (
-                    <ZoomableImage src={c.photoDataUrl} alt={`${c.userName}'s selfie`} className="h-10 w-10 rounded-lg border border-slate-200 object-cover" />
+                    <div className="h-10 w-10">
+                      <ZoomableImage src={c.photoDataUrl} alt={`${c.userName}'s selfie`} className="h-10 w-10 rounded-lg border border-slate-200 object-cover" />
+                    </div>
                   ) : (
                     <span className="text-slate-300">—</span>
                   )}
