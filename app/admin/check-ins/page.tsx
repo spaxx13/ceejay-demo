@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { getCheckIns, getBranches, isBranchHidden } from "@/lib/db";
 import { getCurrentUser, requireRole } from "@/lib/auth";
 import { formatDateTime, todayDateStr, toManilaDateStr } from "@/lib/format";
+import ZoomableImage from "@/components/ZoomableImage";
 import type { CheckIn, Role } from "@/lib/types";
 
 const ROLE_LABELS: Record<Role, string> = {
@@ -135,13 +136,18 @@ function CheckInGroup({ title, checkIns }: { title: string; checkIns: CheckIn[] 
       <div className="space-y-3 sm:hidden">
         {checkIns.length === 0 && <p className="card text-center text-sm text-slate-400">No check-ins recorded for this filter.</p>}
         {checkIns.map((c) => (
-          <div key={c.id} className="card space-y-1.5">
-            <div className="flex items-start justify-between gap-2">
-              <p className="text-sm font-medium text-slate-800">{c.userName}</p>
-              <span className="shrink-0 text-xs text-slate-500">{ROLE_LABELS[c.role]}</span>
+          <div key={c.id} className="card flex gap-3">
+            {c.photoDataUrl && (
+              <ZoomableImage src={c.photoDataUrl} alt={`${c.userName}'s selfie`} className="h-14 w-14 shrink-0 rounded-lg border border-slate-200 object-cover" />
+            )}
+            <div className="min-w-0 flex-1 space-y-1.5">
+              <div className="flex items-start justify-between gap-2">
+                <p className="text-sm font-medium text-slate-800">{c.userName}</p>
+                <span className="shrink-0 text-xs text-slate-500">{ROLE_LABELS[c.role]}</span>
+              </div>
+              <p className="text-xs text-slate-500">{c.branchName}</p>
+              <p className="text-xs text-slate-400">{formatDateTime(c.checkedInAt)}</p>
             </div>
-            <p className="text-xs text-slate-500">{c.branchName}</p>
-            <p className="text-xs text-slate-400">{formatDateTime(c.checkedInAt)}</p>
           </div>
         ))}
       </div>
@@ -150,6 +156,7 @@ function CheckInGroup({ title, checkIns }: { title: string; checkIns: CheckIn[] 
         <table className="w-full text-left text-sm">
           <thead>
             <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-400">
+              <th className="pb-2 pr-3">Selfie</th>
               <th className="pb-2 pr-3">Staff</th>
               <th className="pb-2 pr-3">Role</th>
               <th className="pb-2 pr-3">Branch</th>
@@ -159,13 +166,20 @@ function CheckInGroup({ title, checkIns }: { title: string; checkIns: CheckIn[] 
           <tbody>
             {checkIns.length === 0 && (
               <tr>
-                <td colSpan={4} className="py-6 text-center text-slate-400">
+                <td colSpan={5} className="py-6 text-center text-slate-400">
                   No check-ins recorded for this filter.
                 </td>
               </tr>
             )}
             {checkIns.map((c) => (
               <tr key={c.id} className="border-b border-slate-200 last:border-0">
+                <td className="py-3 pr-3">
+                  {c.photoDataUrl ? (
+                    <ZoomableImage src={c.photoDataUrl} alt={`${c.userName}'s selfie`} className="h-10 w-10 rounded-lg border border-slate-200 object-cover" />
+                  ) : (
+                    <span className="text-slate-300">—</span>
+                  )}
+                </td>
                 <td className="py-3 pr-3 font-medium text-slate-800">{c.userName}</td>
                 <td className="py-3 pr-3 text-slate-500">{ROLE_LABELS[c.role]}</td>
                 <td className="py-3 pr-3 text-slate-500">{c.branchName}</td>

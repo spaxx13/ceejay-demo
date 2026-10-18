@@ -184,39 +184,49 @@ export async function logoutAction() {
   redirect("/login");
 }
 
+export type CheckInResult = { ok: true } | { ok: false; error: string };
+
 // Marks a technician or branch admin as checked in at a branch for today —
-// distinct from login_logs (see 0060_check_ins.sql). Silently no-ops on any
-// invalid input rather than surfacing an error: the form only ever offers
+// distinct from login_logs (see 0060_check_ins.sql). A live selfie is
+// required (see SelfieCapture, which never offers picking an existing
+// photo — only the device's own camera) to confirm the person physically
+// there is who they say they are. The other failure cases stay silent
+// no-ops rather than surfacing an error: the form only ever offers
 // branches the account is actually allowed to check into, so a mismatch
-// here means a stale page (already checked in elsewhere, or a branch the
+// there means a stale page (already checked in elsewhere, or a branch the
 // account lost access to since the page loaded) rather than a real error
 // worth showing.
-export async function checkIn(formData: FormData) {
+export async function checkIn(_prev: CheckInResult | undefined, formData: FormData): Promise<CheckInResult> {
   const user = await getCurrentUser();
-  if (!user || (user.role !== "technician" && user.role !== "branch_admin")) return;
-  if (!isCheckInOpen()) return; // branches open at 6:00 AM — see isCheckInOpen (lib/format.ts)
+  if (!user || (user.role !== "technician" && user.role !== "branch_admin")) return { ok: false, error: "Not signed in." };
+  if (!isCheckInOpen()) return { ok: false, error: "Check-in opens at 6:00 AM." };
+
+  const photoDataUrl = str(formData, "photoDataUrl");
+  if (!photoDataUrl.startsWith("data:image/")) return { ok: false, error: "Take a selfie to check in." };
 
   const branchId = str(formData, "branchId");
   const branches = await getBranches();
   const branch = branches.find((b) => b.id === branchId && b.active);
-  if (!branch) return;
+  if (!branch) return { ok: false, error: "Select a branch to check in at." };
 
   const allowed =
     user.role === "technician"
       ? (await getTechnicians()).find((t) => t.id === user.technicianId)?.branchIds.includes(branchId)
       : user.assignedBranchIds.length === 0 || user.assignedBranchIds.includes(branchId);
-  if (!allowed) return;
+  if (!allowed) return { ok: false, error: "You're not assigned to that branch." };
 
-  if (await getTodayCheckIn(user.id)) return; // already checked in today
+  if (await getTodayCheckIn(user.id)) return { ok: true }; // already checked in today — treat as success, not an error
 
-  await query("insert into check_ins (user_id, user_name, role, branch_id, branch_name) values ($1,$2,$3,$4,$5)", [
+  await query("insert into check_ins (user_id, user_name, role, branch_id, branch_name, photo_data_url) values ($1,$2,$3,$4,$5,$6)", [
     user.id,
     user.name,
     user.role,
     branch.id,
     branch.name,
+    photoDataUrl,
   ]);
   revalidatePath(user.role === "technician" ? "/technician" : "/admin");
+  return { ok: true };
 }
 
 // ---------- Staff Accounts ----------

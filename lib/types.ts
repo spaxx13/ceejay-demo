@@ -711,6 +711,7 @@ export type CheckIn = {
   branchId: string | null;
   branchName: string;
   checkedInAt: string;
+  photoDataUrl: string | null;
 };
 
 // Digital pre-repair and post-repair checklists, filled out by the
