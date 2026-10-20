@@ -35,6 +35,7 @@ import { directionsUrl, isTrackingClosed } from "@/lib/technicianTracking";
 import { getTrackingSnapshotForRequest } from "@/lib/trackingSnapshot";
 import AdminLiveMap from "@/components/AdminLiveMap";
 import EditAgreementPriceAdminForm from "@/components/EditAgreementPriceAdminForm";
+import AddAgreementPriceAdminForm from "@/components/AddAgreementPriceAdminForm";
 
 const peso = (n: number) => `₱${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
@@ -299,6 +300,13 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
                   />
                 </div>
               )}
+            </div>
+          )}
+          {!postAgreement && currentStatus?.label === "Completed" && canEditRepairPrice(user) && (
+            <div className="space-y-1.5 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Repair Price</p>
+              <p className="text-xs text-slate-500">No Post-Repair checklist is on file for this completed job.</p>
+              <AddAgreementPriceAdminForm requestId={req.id} />
             </div>
           )}
           {canWaiveServiceFee(user) && quotedServiceFee !== null && !req.serviceFeeWaived && (
