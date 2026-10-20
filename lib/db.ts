@@ -648,25 +648,33 @@ function mapCheckIn(r: CheckInRow): CheckIn {
   };
 }
 
-type StaffChatMessageRow = { id: string; user_id: string | null; user_name: string; role: StaffChatMessage["role"]; body: string; created_at: Date };
+type StaffChatMessageRow = {
+  id: string; user_id: string | null; user_name: string; role: StaffChatMessage["role"]; room: StaffChatMessage["room"]; body: string; created_at: Date;
+};
 function mapStaffChatMessage(r: StaffChatMessageRow): StaffChatMessage {
-  return { id: r.id, userId: r.user_id, userName: r.user_name, role: r.role, body: r.body, createdAt: toIso(r.created_at) };
+  return { id: r.id, userId: r.user_id, userName: r.user_name, role: r.role, room: r.room, body: r.body, createdAt: toIso(r.created_at) };
 }
-// Shared staff-only group chat (/staff-chat) — one room, every owner
-// admin, branch admin, technician, and rider reads/posts to the same list.
-// With afterId, only messages posted after that one (oldest-first) — the
-// client's poll-for-new-messages loop; without it, the most recent 100
-// (oldest-first, so they render top-to-bottom like a normal chat log).
-export async function getStaffChatMessages(afterId?: string): Promise<StaffChatMessage[]> {
+// Staff-only group chat — "all" (/staff-chat, every owner admin, branch
+// admin, technician, and rider) or "admin" (/admin/admin-chat, owner
+// admin + branch admin only), scoped by `room`. With afterId, only
+// messages posted after that one within the same room (oldest-first) —
+// the client's poll-for-new-messages loop; without it, the most recent
+// 100 in that room (oldest-first, so they render top-to-bottom like a
+// normal chat log).
+export async function getStaffChatMessages(room: StaffChatMessage["room"], afterId?: string): Promise<StaffChatMessage[]> {
   if (afterId) {
     return (
       await query<StaffChatMessageRow>(
-        "select * from staff_chat_messages where created_at > (select created_at from staff_chat_messages where id=$1) order by created_at asc",
-        [afterId]
+        "select * from staff_chat_messages where room=$1 and created_at > (select created_at from staff_chat_messages where id=$2) order by created_at asc",
+        [room, afterId]
       )
     ).map(mapStaffChatMessage);
   }
-  return (await query<StaffChatMessageRow>("select * from staff_chat_messages order by created_at desc limit 100")).map(mapStaffChatMessage).reverse();
+  return (
+    await query<StaffChatMessageRow>("select * from staff_chat_messages where room=$1 order by created_at desc limit 100", [room])
+  )
+    .map(mapStaffChatMessage)
+    .reverse();
 }
 
 type SaleRow = { id: string; reference: string; branch_id: string; customer_id: string | null; customer_name: string; customer_phone: string; home_service_request_id: string | null; discount: string; subtotal: string; total: string; payment_method: Sale["paymentMethod"]; cashier_name: string; created_at: Date };
@@ -2011,27 +2019,33 @@ export async function notifyRider(riderId: string, message: string, url: string)
   }
 }
 
-// Push alert to every other active staff account (owner admin, branch
-// admin, technician, rider — everyone with access to /staff-chat) when
-// someone posts a message, so staff who aren't currently looking at the
-// chat still get pinged. Unlike notifyAdmins, there's no in-app
-// notifications-table row — that list is admin-only (/admin/notifications),
-// and every recipient here already has somewhere to read the message
-// (/staff-chat itself). Best-effort, same as notifyAdmins/notifyTechnician/
-// notifyRider: a delivery failure here never fails the post that triggered
-// it.
-export async function notifyStaffChatMessage(senderUserId: string, senderName: string, body: string) {
+// Push alert to every other active staff account with access to the given
+// chat room — "all" (owner admin, branch admin, technician, rider) or
+// "admin" (owner admin + branch admin only) — when someone posts a
+// message, so staff who aren't currently looking at the chat still get
+// pinged. Unlike notifyAdmins, there's no in-app notifications-table row —
+// that list is admin-only (/admin/notifications) and wouldn't fit the
+// "all" room's audience anyway, and every recipient here already has the
+// chat page itself to read the message in. Best-effort, same as
+// notifyAdmins/notifyTechnician/notifyRider: a delivery failure here never
+// fails the post that triggered it.
+export async function notifyStaffChatMessage(senderUserId: string, senderName: string, room: StaffChatMessage["room"], body: string) {
   try {
-    const recipientIds = (await getUsers()).filter((u) => u.active && u.id !== senderUserId).map((u) => u.id);
+    const recipientIds = (await getUsers())
+      .filter((u) => u.active && u.id !== senderUserId)
+      .filter((u) => room === "all" || u.role === "owner_admin" || u.role === "branch_admin")
+      .map((u) => u.id);
     if (recipientIds.length === 0) return;
 
     const preview = body.length > 120 ? `${body.slice(0, 120)}…` : body;
     const message = `${senderName}: ${preview}`;
+    const title = room === "admin" ? "Ceejay Admin Chat" : "Ceejay Staff Chat";
+    const url = room === "admin" ? "/admin/admin-chat" : "/staff-chat";
 
     const recipientIdSet = new Set(recipientIds);
     const subs = (await getPushSubscriptions()).filter((s) => recipientIdSet.has(s.userId));
     if (subs.length > 0) {
-      const { expiredEndpoints } = await sendPushToUsers(subs, { title: "Ceejay Staff Chat", body: message, url: "/staff-chat" });
+      const { expiredEndpoints } = await sendPushToUsers(subs, { title, body: message, url });
       if (expiredEndpoints.length > 0) {
         await query("delete from push_subscriptions where endpoint = any($1)", [expiredEndpoints]);
       }
@@ -2041,7 +2055,7 @@ export async function notifyStaffChatMessage(senderUserId: string, senderName: s
     // doesn't reach them.
     const staffTokens = await getStaffPushTokens(recipientIds);
     if (staffTokens.length > 0) {
-      const { expiredTokens } = await sendPushToTokens(staffTokens, "Ceejay Staff Chat", message, "/staff-chat");
+      const { expiredTokens } = await sendPushToTokens(staffTokens, title, message, url);
       if (expiredTokens.length > 0) {
         await Promise.all(expiredTokens.map((token) => deleteStaffPushToken(token)));
       }

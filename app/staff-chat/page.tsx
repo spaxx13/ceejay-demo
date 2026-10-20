@@ -7,7 +7,7 @@ export default async function StaffChatPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
-  const messages = await getStaffChatMessages();
+  const messages = await getStaffChatMessages("all");
 
-  return <StaffChatView initial={messages} currentUserId={user.id} />;
+  return <StaffChatView initial={messages} currentUserId={user.id} room="all" />;
 }
