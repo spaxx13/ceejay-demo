@@ -14,6 +14,17 @@ const ROLE_LABELS: Record<Role, string> = {
 
 const POLL_MS = 4000;
 
+// Merges newly fetched messages onto the existing list, skipping any id
+// already present — the interval poll and the right-after-send poll can
+// land close enough together to both fetch the same just-posted message,
+// so a plain append would show it twice.
+function mergeMessages(prev: StaffChatMessage[], fresh: StaffChatMessage[]): StaffChatMessage[] {
+  if (fresh.length === 0) return prev;
+  const existingIds = new Set(prev.map((m) => m.id));
+  const toAdd = fresh.filter((m) => !existingIds.has(m.id));
+  return toAdd.length > 0 ? [...prev, ...toAdd] : prev;
+}
+
 // The one shared staff group chat room (/staff-chat) — every owner admin,
 // branch admin, technician, and rider posts to and reads the same list.
 // Polls for new messages on an interval rather than a websocket/Realtime
@@ -38,7 +49,7 @@ export default function StaffChatView({ initial, currentUserId }: { initial: Sta
       const lastId = messagesRef.current[messagesRef.current.length - 1]?.id ?? null;
       try {
         const fresh = await pollStaffChatMessages(lastId);
-        if (fresh.length > 0) setMessages((prev) => (lastId ? [...prev, ...fresh] : fresh));
+        if (fresh.length > 0) setMessages((prev) => (lastId ? mergeMessages(prev, fresh) : fresh));
       } catch {
         // offline for a moment — try again next tick
       }
@@ -58,7 +69,7 @@ export default function StaffChatView({ initial, currentUserId }: { initial: Sta
     formRef.current?.reset();
     const lastId = messagesRef.current[messagesRef.current.length - 1]?.id ?? null;
     pollStaffChatMessages(lastId).then((fresh) => {
-      if (fresh.length > 0) setMessages((prev) => (lastId ? [...prev, ...fresh] : fresh));
+      if (fresh.length > 0) setMessages((prev) => (lastId ? mergeMessages(prev, fresh) : fresh));
     });
   }, [state]);
 
