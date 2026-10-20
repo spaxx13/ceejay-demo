@@ -46,7 +46,7 @@ const NAV_GROUPS: {
       { href: "/admin/trash", label: "Trash" },
     ],
   },
-  { label: null, links: [{ href: "/admin/notifications", label: "Notifications" }] },
+  { label: null, links: [{ href: "/staff-chat", label: "Staff Chat" }, { href: "/admin/notifications", label: "Notifications" }] },
 ];
 
 const SETTINGS_ROUTES = [

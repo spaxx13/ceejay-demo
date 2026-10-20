@@ -78,6 +78,7 @@ import {
   markHomeServiceDownpaymentPending,
   markRepairRecordQrPaymentPending,
   getTodayCheckIn,
+  getStaffChatMessages,
   pickupDeliveryStage,
   type PickupDeliveryStage,
 } from "./db";
@@ -101,7 +102,7 @@ import {
 } from "./email";
 import { isOnTheWayStatus, distanceKm } from "./technicianTracking";
 import { COURIER_AGREEMENT_VERSION, COURIER_LIST, COURIER_SELF_SHIP_NOTICE, COURIER_TRACKING_REMINDER, COURIER_PACKING_TIPS, isCourierReceivingBranch, COURIER_PAYMENT_METHODS, courierStatusLabel, SELF_BOOK_COURIER_LIST, SELF_BOOK_NOTICE, SELF_BOOK_TRACKING_REMINDER, SELF_BOOK_PACKING_TIPS } from "./courierService";
-import type { CourierStatus } from "./types";
+import type { CourierStatus, StaffChatMessage } from "./types";
 import { storageConfigured, createSignedUploadUrl, deleteStorageObject, UPDATES_BUCKET } from "./storage";
 import { PICKUP_DELIVERY_AGREEMENT_VERSION } from "./pickupDeliveryAgreement";
 import { getRequestUpdateById } from "./db";
@@ -226,6 +227,35 @@ export async function checkIn(_prev: CheckInResult | undefined, formData: FormDa
     photoDataUrl,
   ]);
   revalidatePath(user.role === "technician" ? "/technician" : "/admin");
+  return { ok: true };
+}
+
+// ---------- Staff Chat ----------
+// One shared group chat room every signed-in staff account (owner admin,
+// branch admin, technician, rider) can post to and read — not a customer
+// feature, and not scoped per branch/role. The client (StaffChatView)
+// polls pollStaffChatMessages on an interval, the same way live technician
+// tracking already polls for position updates — no websocket/Realtime
+// infra in this app.
+
+export async function pollStaffChatMessages(afterId: string | null): Promise<StaffChatMessage[]> {
+  const user = await getCurrentUser();
+  if (!user) return [];
+  return getStaffChatMessages(afterId ?? undefined);
+}
+
+export type PostStaffChatMessageResult = { ok: true } | { ok: false; error: string };
+
+export async function postStaffChatMessage(_prev: PostStaffChatMessageResult | undefined, formData: FormData): Promise<PostStaffChatMessageResult> {
+  const user = await getCurrentUser();
+  if (!user) return { ok: false, error: "You must be signed in." };
+
+  const body = str(formData, "body").trim();
+  if (!body) return { ok: false, error: "Type a message first." };
+  if (body.length > 2000) return { ok: false, error: "Message is too long (max 2000 characters)." };
+
+  await query("insert into staff_chat_messages (user_id, user_name, role, body) values ($1,$2,$3,$4)", [user.id, user.name, user.role, body]);
+  revalidatePath("/staff-chat");
   return { ok: true };
 }
 

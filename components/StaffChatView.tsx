@@ -1,0 +1,108 @@
+"use client";
+
+import { useActionState, useEffect, useRef, useState } from "react";
+import { pollStaffChatMessages, postStaffChatMessage } from "@/lib/actions";
+import { formatDateTime } from "@/lib/format";
+import type { Role, StaffChatMessage } from "@/lib/types";
+
+const ROLE_LABELS: Record<Role, string> = {
+  owner_admin: "Owner Admin",
+  branch_admin: "Branch Admin",
+  technician: "Technician",
+  rider: "Rider",
+};
+
+const POLL_MS = 4000;
+
+// The one shared staff group chat room (/staff-chat) — every owner admin,
+// branch admin, technician, and rider posts to and reads the same list.
+// Polls for new messages on an interval rather than a websocket/Realtime
+// subscription, same approach as live technician tracking elsewhere in
+// this app (see TechnicianTrackingView).
+export default function StaffChatView({ initial, currentUserId }: { initial: StaffChatMessage[]; currentUserId: string }) {
+  const [messages, setMessages] = useState(initial);
+  // Read inside the polling interval/effect without re-creating it on every
+  // new message — a plain `messages` dependency would restart the timer
+  // (and re-fire the post-success effect) on each incoming message.
+  const messagesRef = useRef(messages);
+  const [state, formAction, pending] = useActionState(postStaffChatMessage, undefined);
+  const formRef = useRef<HTMLFormElement>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+
+  useEffect(() => {
+    const timer = setInterval(async () => {
+      const lastId = messagesRef.current[messagesRef.current.length - 1]?.id ?? null;
+      try {
+        const fresh = await pollStaffChatMessages(lastId);
+        if (fresh.length > 0) setMessages((prev) => (lastId ? [...prev, ...fresh] : fresh));
+      } catch {
+        // offline for a moment — try again next tick
+      }
+    }, POLL_MS);
+    return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ block: "end" });
+  }, [messages.length]);
+
+  // The action doesn't hand back the row it just inserted — pick it up
+  // (and anything posted elsewhere in the meantime) from an immediate poll
+  // right after a successful send, instead of waiting for the next tick.
+  useEffect(() => {
+    if (!state?.ok) return;
+    formRef.current?.reset();
+    const lastId = messagesRef.current[messagesRef.current.length - 1]?.id ?? null;
+    pollStaffChatMessages(lastId).then((fresh) => {
+      if (fresh.length > 0) setMessages((prev) => (lastId ? [...prev, ...fresh] : fresh));
+    });
+  }, [state]);
+
+  return (
+    <div className="flex min-h-[70vh] flex-col">
+      <div className="flex-1 space-y-2 overflow-y-auto pb-3">
+        {messages.length === 0 && <p className="pt-8 text-center text-sm text-slate-400">No messages yet — say hi!</p>}
+        {messages.map((m) => {
+          const mine = m.userId === currentUserId;
+          return (
+            <div key={m.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
+              <div className={`max-w-[80%] rounded-2xl px-3 py-2 text-sm ${mine ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-800"}`}>
+                {!mine && (
+                  <p className="mb-0.5 text-xs font-semibold text-slate-500">
+                    {m.userName} <span className="font-normal text-slate-400">· {ROLE_LABELS[m.role]}</span>
+                  </p>
+                )}
+                <p className="whitespace-pre-line">{m.body}</p>
+                <p className={`mt-1 text-[10px] ${mine ? "text-blue-100" : "text-slate-400"}`}>{formatDateTime(m.createdAt)}</p>
+              </div>
+            </div>
+          );
+        })}
+        <div ref={bottomRef} />
+      </div>
+      <form ref={formRef} action={formAction} className="flex items-end gap-2 border-t border-slate-200 pt-3">
+        <textarea
+          name="body"
+          required
+          rows={1}
+          placeholder="Type a message..."
+          className="input flex-1 resize-none"
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              e.currentTarget.form?.requestSubmit();
+            }
+          }}
+        />
+        <button type="submit" disabled={pending} className="btn-primary !px-4 !py-2 text-sm">
+          Send
+        </button>
+      </form>
+      {state && !state.ok && <p className="pt-1 text-xs text-red-600">{state.error}</p>}
+    </div>
+  );
+}

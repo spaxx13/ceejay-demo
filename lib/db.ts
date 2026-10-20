@@ -30,6 +30,7 @@ import type {
   Expense,
   LoginLog,
   CheckIn,
+  StaffChatMessage,
   PushSubscription,
   ConversationMessage,
   CrmBroadcast,
@@ -645,6 +646,27 @@ function mapCheckIn(r: CheckInRow): CheckIn {
     id: r.id, userId: r.user_id, userName: r.user_name, role: r.role, branchId: r.branch_id, branchName: r.branch_name,
     checkedInAt: toIso(r.checked_in_at), photoDataUrl: r.photo_data_url,
   };
+}
+
+type StaffChatMessageRow = { id: string; user_id: string | null; user_name: string; role: StaffChatMessage["role"]; body: string; created_at: Date };
+function mapStaffChatMessage(r: StaffChatMessageRow): StaffChatMessage {
+  return { id: r.id, userId: r.user_id, userName: r.user_name, role: r.role, body: r.body, createdAt: toIso(r.created_at) };
+}
+// Shared staff-only group chat (/staff-chat) — one room, every owner
+// admin, branch admin, technician, and rider reads/posts to the same list.
+// With afterId, only messages posted after that one (oldest-first) — the
+// client's poll-for-new-messages loop; without it, the most recent 100
+// (oldest-first, so they render top-to-bottom like a normal chat log).
+export async function getStaffChatMessages(afterId?: string): Promise<StaffChatMessage[]> {
+  if (afterId) {
+    return (
+      await query<StaffChatMessageRow>(
+        "select * from staff_chat_messages where created_at > (select created_at from staff_chat_messages where id=$1) order by created_at asc",
+        [afterId]
+      )
+    ).map(mapStaffChatMessage);
+  }
+  return (await query<StaffChatMessageRow>("select * from staff_chat_messages order by created_at desc limit 100")).map(mapStaffChatMessage).reverse();
 }
 
 type SaleRow = { id: string; reference: string; branch_id: string; customer_id: string | null; customer_name: string; customer_phone: string; home_service_request_id: string | null; discount: string; subtotal: string; total: string; payment_method: Sale["paymentMethod"]; cashier_name: string; created_at: Date };
