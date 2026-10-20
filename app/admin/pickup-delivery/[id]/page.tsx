@@ -19,6 +19,7 @@ import {
 import { getCurrentUser } from "@/lib/auth";
 import { assignPickupRider, assignDeliveryRider, reassignRequest, changeRequestStatus, reportRequestException, resolveRequestException } from "@/lib/actions";
 import EditAgreementPriceAdminForm from "@/components/EditAgreementPriceAdminForm";
+import AddAgreementPriceAdminForm from "@/components/AddAgreementPriceAdminForm";
 import { getUnboxingVideoUrl } from "@/lib/storage";
 import UnboxingVideoRecorder from "@/components/UnboxingVideoRecorder";
 import UnboxingVideoReview from "@/components/UnboxingVideoReview";
@@ -369,7 +370,7 @@ export default async function PickupDeliveryDetailPage({ params }: { params: Pro
           </form>
         )}
 
-        {postAgreement && (
+        {postAgreement ? (
           <div className="space-y-2 border-t border-slate-200 pt-3">
             <p className="text-xs font-medium text-slate-500">Repair Price (from the Post-Repair Checklist)</p>
             <div className="grid grid-cols-2 gap-y-1 text-xs">
@@ -388,6 +389,13 @@ export default async function PickupDeliveryDetailPage({ params }: { params: Pro
               partsCost={postAgreement.partsCost}
             />
           </div>
+        ) : (
+          req.receivedAtShopAt && (
+            <div className="space-y-2 border-t border-slate-200 pt-3">
+              <p className="text-xs font-medium text-slate-500">Repair Price</p>
+              <AddAgreementPriceAdminForm requestId={req.id} />
+            </div>
+          )
         )}
 
         {req.receivedAtShopAt && (

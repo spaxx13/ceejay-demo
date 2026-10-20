@@ -5119,6 +5119,61 @@ export async function updateAgreementPriceAdmin(
   return { ok: true };
 }
 
+// Counterpart to updateAgreementPriceAdmin above for a job that never went
+// through the technician's Post-Repair checklist at all (e.g. its status
+// was advanced by hand), so there's no service_agreements row yet to edit.
+// Creates a minimal post_repair record carrying just the price fields —
+// same access rule, same derived Service Fee — so the request's revenue
+// split and Sales reports pick it up exactly like a checklist-completed job
+// would, without requiring a technician/customer signature it never had.
+export type CreateAgreementPriceAdminResult = { ok: true } | { ok: false; error: string };
+
+export async function createAgreementPriceAdmin(
+  _prev: CreateAgreementPriceAdminResult | undefined,
+  formData: FormData
+): Promise<CreateAgreementPriceAdminResult> {
+  const user = await getCurrentUser();
+  if (!user) return { ok: false, error: "You don't have access to set this." };
+
+  const requestId = str(formData, "requestId");
+  const req = await getRequestById(requestId);
+  if (!req) return { ok: false, error: "Request not found." };
+
+  const canEdit = canEditRepairPrice(user) || (req.fulfillmentMode === "pickup_delivery" && canManagePickupDelivery(user));
+  if (!canEdit) return { ok: false, error: "You don't have access to set this." };
+  const hidden = req.fulfillmentMode === "pickup_delivery" ? isPickupDeliveryJobHidden(user, req) : isBranchHidden(user, req.queueBranchId);
+  if (hidden) return { ok: false, error: "You don't have access to this request." };
+
+  const existing = (await getServiceAgreementsForRequest(requestId)).find((a) => a.phase === "post_repair");
+  if (existing) return { ok: false, error: "This job already has a repair price on file — edit it instead." };
+
+  const cost = Math.max(0, Number(str(formData, "cost")) || 0);
+  const partsCost = Math.max(0, Number(str(formData, "partsCost")) || 0);
+  const laborCost = requestServiceFee(req);
+
+  const technicians = await getTechnicians();
+  const technician = technicians.find((t) => t.id === req.assignedTechnicianId);
+  const lookups = await getLookups();
+  const brand = lookups.find((l) => l.id === req.deviceBrandId);
+  const deviceModels = await query<{ id: string; name: string }>("select id, name from device_models where id=$1", [req.deviceModelId]);
+  const deviceLabel = brand ? `${brand.label} ${deviceModels[0]?.name ?? ""}`.trim() : req.deviceOther || "Device";
+
+  const phaseCount = await queryOne<{ n: string }>("select count(*)::int as n from service_agreements where phase='post_repair'");
+  const reference = `SA-${new Date().getFullYear()}-${String(Number(phaseCount!.n) + 1).padStart(4, "0")}`;
+
+  await query(
+    `insert into service_agreements (request_id, phase, reference, customer_name, device_label, branch_id, technician_id, technician_name, cost, parts_cost, labor_cost)
+     values ($1,'post_repair',$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+    [requestId, reference, req.customerName, deviceLabel, req.branchId, req.assignedTechnicianId, technician?.name ?? "", cost, partsCost, laborCost]
+  );
+  await logActivity("home_service_request", req.id, `${user.name} recorded a repair price (${reference}) directly — no Post-Repair checklist was on file`, user.name);
+  revalidatePath(`/admin/requests/${req.id}`);
+  revalidatePath(`/admin/pickup-delivery/${req.id}`);
+  revalidatePath("/admin/sales/home-service");
+  revalidatePath("/admin/sales/pickup-delivery");
+  return { ok: true };
+}
+
 // Re-sends the same PDF receipt that was emailed when the Post-Repair
 // checklist was completed — for when a customer calls back asking for
 // another copy. Reads straight off the already-saved record/agreements
