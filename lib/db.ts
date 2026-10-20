@@ -2010,3 +2010,43 @@ export async function notifyRider(riderId: string, message: string, url: string)
     // Best-effort — see notifyAdmins above.
   }
 }
+
+// Push alert to every other active staff account (owner admin, branch
+// admin, technician, rider — everyone with access to /staff-chat) when
+// someone posts a message, so staff who aren't currently looking at the
+// chat still get pinged. Unlike notifyAdmins, there's no in-app
+// notifications-table row — that list is admin-only (/admin/notifications),
+// and every recipient here already has somewhere to read the message
+// (/staff-chat itself). Best-effort, same as notifyAdmins/notifyTechnician/
+// notifyRider: a delivery failure here never fails the post that triggered
+// it.
+export async function notifyStaffChatMessage(senderUserId: string, senderName: string, body: string) {
+  try {
+    const recipientIds = (await getUsers()).filter((u) => u.active && u.id !== senderUserId).map((u) => u.id);
+    if (recipientIds.length === 0) return;
+
+    const preview = body.length > 120 ? `${body.slice(0, 120)}…` : body;
+    const message = `${senderName}: ${preview}`;
+
+    const recipientIdSet = new Set(recipientIds);
+    const subs = (await getPushSubscriptions()).filter((s) => recipientIdSet.has(s.userId));
+    if (subs.length > 0) {
+      const { expiredEndpoints } = await sendPushToUsers(subs, { title: "Ceejay Staff Chat", body: message, url: "/staff-chat" });
+      if (expiredEndpoints.length > 0) {
+        await query("delete from push_subscriptions where endpoint = any($1)", [expiredEndpoints]);
+      }
+    }
+
+    // FCM, for the native Admin/Technician/Rider apps — Web Push above
+    // doesn't reach them.
+    const staffTokens = await getStaffPushTokens(recipientIds);
+    if (staffTokens.length > 0) {
+      const { expiredTokens } = await sendPushToTokens(staffTokens, "Ceejay Staff Chat", message, "/staff-chat");
+      if (expiredTokens.length > 0) {
+        await Promise.all(expiredTokens.map((token) => deleteStaffPushToken(token)));
+      }
+    }
+  } catch {
+    // Best-effort — see notifyAdmins above.
+  }
+}
