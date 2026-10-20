@@ -49,6 +49,12 @@ export default function StaffChatView({
   const [state, formAction, pending] = useActionState(postStaffChatMessage, undefined);
   const formRef = useRef<HTMLFormElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  // `pending` only flips after React commits the next render — too slow to
+  // block a second Enter keydown some mobile keyboards fire in the same
+  // burst as the first (IME composition quirk), which would otherwise post
+  // the same message twice as two genuinely separate rows. A ref updates
+  // synchronously, so it blocks the second call before that render happens.
+  const submittingRef = useRef(false);
 
   useEffect(() => {
     messagesRef.current = messages;
@@ -70,6 +76,10 @@ export default function StaffChatView({
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: "end" });
   }, [messages.length]);
+
+  useEffect(() => {
+    if (!pending) submittingRef.current = false;
+  }, [pending]);
 
   // The action doesn't hand back the row it just inserted — pick it up
   // (and anything posted elsewhere in the meantime) from an immediate poll
@@ -105,7 +115,18 @@ export default function StaffChatView({
         })}
         <div ref={bottomRef} />
       </div>
-      <form ref={formRef} action={formAction} className="flex items-end gap-2 border-t border-slate-200 pt-3">
+      <form
+        ref={formRef}
+        action={formAction}
+        onSubmit={(e) => {
+          if (submittingRef.current) {
+            e.preventDefault();
+            return;
+          }
+          submittingRef.current = true;
+        }}
+        className="flex items-end gap-2 border-t border-slate-200 pt-3"
+      >
         <input type="hidden" name="room" value={room} />
         <textarea
           name="body"
@@ -116,6 +137,7 @@ export default function StaffChatView({
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) {
               e.preventDefault();
+              if (submittingRef.current) return;
               e.currentTarget.form?.requestSubmit();
             }
           }}
