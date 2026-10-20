@@ -79,6 +79,7 @@ import {
   markRepairRecordQrPaymentPending,
   getTodayCheckIn,
   getStaffChatMessages,
+  notifyStaffChatMessage,
   pickupDeliveryStage,
   type PickupDeliveryStage,
 } from "./db";
@@ -256,6 +257,7 @@ export async function postStaffChatMessage(_prev: PostStaffChatMessageResult | u
 
   await query("insert into staff_chat_messages (user_id, user_name, role, body) values ($1,$2,$3,$4)", [user.id, user.name, user.role, body]);
   revalidatePath("/staff-chat");
+  await notifyStaffChatMessage(user.id, user.name, body);
   return { ok: true };
 }
 
