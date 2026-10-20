@@ -232,17 +232,23 @@ export async function checkIn(_prev: CheckInResult | undefined, formData: FormDa
 }
 
 // ---------- Staff Chat ----------
-// One shared group chat room every signed-in staff account (owner admin,
-// branch admin, technician, rider) can post to and read — not a customer
-// feature, and not scoped per branch/role. The client (StaffChatView)
+// Group chat rooms signed-in staff accounts can post to and read — not a
+// customer feature. "all" (/staff-chat) is every role (owner admin, branch
+// admin, technician, rider); "admin" (/admin/admin-chat) is owner admin +
+// branch admin only, enforced here server-side (never trust the room the
+// client claims to be posting/polling from). The client (StaffChatView)
 // polls pollStaffChatMessages on an interval, the same way live technician
 // tracking already polls for position updates — no websocket/Realtime
 // infra in this app.
 
-export async function pollStaffChatMessages(afterId: string | null): Promise<StaffChatMessage[]> {
+function canUseStaffChatRoom(user: User, room: StaffChatMessage["room"]) {
+  return room === "all" || user.role === "owner_admin" || user.role === "branch_admin";
+}
+
+export async function pollStaffChatMessages(afterId: string | null, room: StaffChatMessage["room"] = "all"): Promise<StaffChatMessage[]> {
   const user = await getCurrentUser();
-  if (!user) return [];
-  return getStaffChatMessages(afterId ?? undefined);
+  if (!user || !canUseStaffChatRoom(user, room)) return [];
+  return getStaffChatMessages(room, afterId ?? undefined);
 }
 
 export type PostStaffChatMessageResult = { ok: true } | { ok: false; error: string };
@@ -251,13 +257,22 @@ export async function postStaffChatMessage(_prev: PostStaffChatMessageResult | u
   const user = await getCurrentUser();
   if (!user) return { ok: false, error: "You must be signed in." };
 
+  const room: StaffChatMessage["room"] = str(formData, "room") === "admin" ? "admin" : "all";
+  if (!canUseStaffChatRoom(user, room)) return { ok: false, error: "You don't have access to this chat." };
+
   const body = str(formData, "body").trim();
   if (!body) return { ok: false, error: "Type a message first." };
   if (body.length > 2000) return { ok: false, error: "Message is too long (max 2000 characters)." };
 
-  await query("insert into staff_chat_messages (user_id, user_name, role, body) values ($1,$2,$3,$4)", [user.id, user.name, user.role, body]);
-  revalidatePath("/staff-chat");
-  await notifyStaffChatMessage(user.id, user.name, body);
+  await query("insert into staff_chat_messages (user_id, user_name, role, room, body) values ($1,$2,$3,$4,$5)", [
+    user.id,
+    user.name,
+    user.role,
+    room,
+    body,
+  ]);
+  revalidatePath(room === "admin" ? "/admin/admin-chat" : "/staff-chat");
+  await notifyStaffChatMessage(user.id, user.name, room, body);
   return { ok: true };
 }
 

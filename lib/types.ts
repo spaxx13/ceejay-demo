@@ -714,14 +714,20 @@ export type CheckIn = {
   photoDataUrl: string | null;
 };
 
-// One message in the shared staff-only group chat (/staff-chat) — every
-// owner admin, branch admin, technician, and rider posts to and reads the
-// same single room.
+// Which staff chat room a message belongs to — "all" is the original
+// /staff-chat room every staff role shares; "admin" (/admin/admin-chat) is
+// owner admin + branch admin only.
+export type StaffChatRoom = "all" | "admin";
+
+// One message in a staff-only group chat room. "all" is read/postable by
+// every owner admin, branch admin, technician, and rider; "admin" only by
+// owner admin and branch admin.
 export type StaffChatMessage = {
   id: string;
   userId: string | null;
   userName: string;
   role: Role;
+  room: StaffChatRoom;
   body: string;
   createdAt: string;
 };

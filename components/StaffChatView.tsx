@@ -3,7 +3,7 @@
 import { useActionState, useEffect, useRef, useState } from "react";
 import { pollStaffChatMessages, postStaffChatMessage } from "@/lib/actions";
 import { formatDateTime } from "@/lib/format";
-import type { Role, StaffChatMessage } from "@/lib/types";
+import type { Role, StaffChatMessage, StaffChatRoom } from "@/lib/types";
 
 const ROLE_LABELS: Record<Role, string> = {
   owner_admin: "Owner Admin",
@@ -25,12 +25,22 @@ function mergeMessages(prev: StaffChatMessage[], fresh: StaffChatMessage[]): Sta
   return toAdd.length > 0 ? [...prev, ...toAdd] : prev;
 }
 
-// The one shared staff group chat room (/staff-chat) — every owner admin,
-// branch admin, technician, and rider posts to and reads the same list.
-// Polls for new messages on an interval rather than a websocket/Realtime
-// subscription, same approach as live technician tracking elsewhere in
-// this app (see TechnicianTrackingView).
-export default function StaffChatView({ initial, currentUserId }: { initial: StaffChatMessage[]; currentUserId: string }) {
+// One staff group chat room — "all" (/staff-chat, every staff role) or
+// "admin" (/admin/admin-chat, owner admin + branch admin only; access is
+// enforced server-side in postStaffChatMessage/pollStaffChatMessages, this
+// prop just picks which room's messages to show). Polls for new messages
+// on an interval rather than a websocket/Realtime subscription, same
+// approach as live technician tracking elsewhere in this app (see
+// TechnicianTrackingView).
+export default function StaffChatView({
+  initial,
+  currentUserId,
+  room,
+}: {
+  initial: StaffChatMessage[];
+  currentUserId: string;
+  room: StaffChatRoom;
+}) {
   const [messages, setMessages] = useState(initial);
   // Read inside the polling interval/effect without re-creating it on every
   // new message — a plain `messages` dependency would restart the timer
@@ -48,14 +58,14 @@ export default function StaffChatView({ initial, currentUserId }: { initial: Sta
     const timer = setInterval(async () => {
       const lastId = messagesRef.current[messagesRef.current.length - 1]?.id ?? null;
       try {
-        const fresh = await pollStaffChatMessages(lastId);
+        const fresh = await pollStaffChatMessages(lastId, room);
         if (fresh.length > 0) setMessages((prev) => (lastId ? mergeMessages(prev, fresh) : fresh));
       } catch {
         // offline for a moment — try again next tick
       }
     }, POLL_MS);
     return () => clearInterval(timer);
-  }, []);
+  }, [room]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: "end" });
@@ -68,10 +78,10 @@ export default function StaffChatView({ initial, currentUserId }: { initial: Sta
     if (!state?.ok) return;
     formRef.current?.reset();
     const lastId = messagesRef.current[messagesRef.current.length - 1]?.id ?? null;
-    pollStaffChatMessages(lastId).then((fresh) => {
+    pollStaffChatMessages(lastId, room).then((fresh) => {
       if (fresh.length > 0) setMessages((prev) => (lastId ? mergeMessages(prev, fresh) : fresh));
     });
-  }, [state]);
+  }, [state, room]);
 
   return (
     <div className="flex min-h-[70vh] flex-col">
@@ -96,6 +106,7 @@ export default function StaffChatView({ initial, currentUserId }: { initial: Sta
         <div ref={bottomRef} />
       </div>
       <form ref={formRef} action={formAction} className="flex items-end gap-2 border-t border-slate-200 pt-3">
+        <input type="hidden" name="room" value={room} />
         <textarea
           name="body"
           required
