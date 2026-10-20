@@ -714,6 +714,18 @@ export type CheckIn = {
   photoDataUrl: string | null;
 };
 
+// One message in the shared staff-only group chat (/staff-chat) — every
+// owner admin, branch admin, technician, and rider posts to and reads the
+// same single room.
+export type StaffChatMessage = {
+  id: string;
+  userId: string | null;
+  userName: string;
+  role: Role;
+  body: string;
+  createdAt: string;
+};
+
 // Digital pre-repair and post-repair checklists, filled out by the
 // technician once a job moves to "In Progress". Mirrors the shop's paper
 // "Post-Repair Checklist" / "Service Agreement" form — the same row set is

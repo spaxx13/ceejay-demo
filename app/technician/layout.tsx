@@ -36,6 +36,9 @@ export default async function TechnicianLayout({ children }: { children: React.R
             <Link href="/technician/panic-log" className="text-xs font-medium text-slate-500 hover:text-slate-800">
               Panic Log
             </Link>
+            <Link href="/staff-chat" className="text-xs font-medium text-slate-500 hover:text-slate-800">
+              Staff Chat
+            </Link>
             {user.canManageManualChecklists && (
               <Link href="/technician/manual-checklists" className="text-xs font-medium text-slate-500 hover:text-slate-800">
                 Manual Checklist
