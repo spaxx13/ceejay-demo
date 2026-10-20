@@ -1,4 +1,5 @@
 import type { BookingDetailRow } from "@/lib/bookingDetails";
+import ZoomableImage from "@/components/ZoomableImage";
 
 // The customer's own answers from the booking form (device, service
 // needed, problem, extra details, photo) — so admins and riders can see what
@@ -30,8 +31,7 @@ export default function BookingDetailsCard({
       {photoDataUrl && (
         <div>
           <p className="mb-1 text-xs text-slate-400">Photo from customer</p>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={photoDataUrl} alt="Device issue" className="max-h-60 rounded-lg border border-slate-200 object-contain" />
+          <ZoomableImage src={photoDataUrl} alt="Device issue" className="max-h-60 rounded-lg border border-slate-200 object-contain" />
         </div>
       )}
     </div>
