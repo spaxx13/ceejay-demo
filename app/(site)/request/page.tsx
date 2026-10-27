@@ -10,7 +10,7 @@ import type { HomeServiceQueue } from "@/lib/types";
 // submitHomeServiceRequest) so it's only ever managed by the admin assigned
 // to that queue, never guessed later from their address.
 const AREA_LABELS: Record<HomeServiceQueue, string> = {
-  near: "Metro Manila, Laguna, Batangas, Rizal, Bulacan, Cavite, and Pampanga",
+  near: "Metro Manila, Laguna, Batangas, Rizal, Bulacan, Cavite, Pampanga, and select towns in Pangasinan",
   far: "Other Provinces",
 };
 
