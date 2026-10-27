@@ -114,9 +114,17 @@ export default async function AdminDashboard() {
   // Sales — Today" card and Sales > Home Service, so this figure can't
   // drift from either of those. An "Owner's Final Total Sales" expense
   // logged with Branch = Home Service reduces this share, same as Sales >
-  // Home Service and Branch Sales.
-  const todayHomeServiceSales = sumHomeServiceSales(homeServiceSalesByTechnician(agreements, (date) => date === today, allRequests, technicians));
-  const todayHomeServiceExpenses = homeServiceBusinessExpenses(expenses, (date) => date === today, homeServiceQueueBranchIds);
+  // Home Service and Branch Sales. Both scoped to this account's visible
+  // queue branch(es) — unlike homeServiceQueueBranchIds above (line 84),
+  // which stays unscoped since it only excludes Home Service expenses from
+  // the POS total, a decision that doesn't depend on which queue this
+  // admin can see.
+  const visibleHomeServiceAgreements = agreements.filter((a) => !isBranchHidden(user, a.branchId));
+  const visibleHomeServiceQueueBranchIds = homeServiceQueueBranchIds.filter((id) => !isBranchHidden(user, id));
+  const todayHomeServiceSales = sumHomeServiceSales(
+    homeServiceSalesByTechnician(visibleHomeServiceAgreements, (date) => date === today, allRequests, technicians)
+  );
+  const todayHomeServiceExpenses = homeServiceBusinessExpenses(expenses, (date) => date === today, visibleHomeServiceQueueBranchIds);
   const businessShareNetToday = posBusinessShareNetToday + todayHomeServiceSales.companyShare - todayHomeServiceExpenses;
 
   const recent = [...requests].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)).slice(0, 6);
