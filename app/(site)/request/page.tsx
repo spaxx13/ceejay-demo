@@ -11,7 +11,7 @@ import type { HomeServiceQueue } from "@/lib/types";
 // to that queue, never guessed later from their address.
 const AREA_LABELS: Record<HomeServiceQueue, string> = {
   near: "Metro Manila, Laguna, Batangas, Rizal, Bulacan, Cavite, Pampanga, and select towns in Pangasinan",
-  far: "Other Provinces",
+  far: "Other Provinces (including the rest of Pangasinan)",
 };
 
 const AREA_ENABLED_KEY: Record<HomeServiceQueue, "nearAreaEnabled" | "farAreaEnabled"> = {
