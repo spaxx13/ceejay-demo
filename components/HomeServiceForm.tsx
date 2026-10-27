@@ -173,7 +173,12 @@ export default function HomeServiceForm({
   // data for the queue they didn't pick.
   const [phData, setPhData] = useState<PhProvince[] | null>(null);
   useEffect(() => {
-    const file = area === "near" ? "/ph-addresses-near.json" : "/ph-addresses-far.json";
+    // The Pangasinan-only picker path submits as area="far" (so the
+    // request reaches the "Other Provinces" admin team, not the near
+    // queue's — see app/(site)/request/page.tsx), but its 11 curated towns
+    // only live in the near-queue dataset (ph-addresses-near.json) — fetch
+    // that one regardless of area in this case.
+    const file = pangasinanOnly || area === "near" ? "/ph-addresses-near.json" : "/ph-addresses-far.json";
     fetch(file)
       .then((r) => r.json())
       // Pickup & Delivery only covers PICKUP_DELIVERY_COVERAGE (Metro
@@ -460,7 +465,10 @@ export default function HomeServiceForm({
             Track this request
           </a>
         )}
-        <a href={`/${mode === "pickup_delivery" ? "pickup-delivery" : "request"}?area=${area}`} className="btn-secondary inline-block">
+        <a
+          href={`/${mode === "pickup_delivery" ? "pickup-delivery" : "request"}?area=${area}${pangasinanOnly ? "&pangasinan=1" : ""}`}
+          className="btn-secondary inline-block"
+        >
           Submit another request
         </a>
       </div>

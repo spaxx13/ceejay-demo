@@ -11,11 +11,11 @@ import type { HomeServiceQueue } from "@/lib/types";
 // to that queue, never guessed later from their address. Pangasinan (only
 // 11 towns, see lib/homeServiceFees.ts) deliberately isn't folded into the
 // "near" label below — picking "Other Provinces" offers it as its own
-// sub-choice (?area=near&pangasinan=1) instead, since grouping it with
-// Metro Manila et al. read as misleading. It still submits with area=near
-// under the hood (same queue/dispatch as every other near-queue booking)
-// — only the picker path and the form's own province list
-// (HomeServiceForm's pangasinanOnly prop) are affected.
+// sub-choice (?area=far&pangasinan=1) instead, since grouping it with
+// Metro Manila et al. read as misleading. It submits with area=far (the
+// "Other Provinces" admin team's queue, not Metro Manila's) — only the
+// province/city dataset it draws from is near's (HomeServiceForm's
+// pangasinanOnly prop; see that component for why).
 const AREA_LABELS: Record<HomeServiceQueue, string> = {
   near: "Metro Manila, Laguna, Batangas, Rizal, Bulacan, Cavite, and Pampanga",
   far: "Other Provinces",
@@ -45,8 +45,12 @@ export default async function RequestPage({
   const enabledAreas = (Object.keys(AREA_LABELS) as HomeServiceQueue[]).filter((key) => content[AREA_ENABLED_KEY[key]]);
   // Ignore a stale/hand-typed ?area= link pointing at an area the owner has
   // since hidden — fall back to the picker instead of serving a form for a
-  // queue that's no longer taking bookings.
-  const area = requestedArea && enabledAreas.includes(requestedArea) ? requestedArea : null;
+  // queue that's no longer taking bookings. pangasinan=1 always forces
+  // area=far (never near) regardless of what ?area= says — the Pangasinan
+  // booking has to reach the "Other Provinces" admin team, not Metro
+  // Manila's, and a stray/hand-typed ?area=near&pangasinan=1 must not be
+  // able to route it to the wrong queue.
+  const area = pangasinanOnly ? (enabledAreas.includes("far") ? "far" : null) : requestedArea && enabledAreas.includes(requestedArea) ? requestedArea : null;
 
   if (!area) {
     return (
@@ -76,8 +80,9 @@ export default async function RequestPage({
   // instead of the digital booking form (built for the "near" queue's real
   // assignment flow) this just routes the customer straight into a chat —
   // except for Pangasinan's 11 covered towns (see AREA_LABELS above), which
-  // do have a real form, one step further in via this sub-picker.
-  if (area === "far") {
+  // do have a real form (still area=far, falls through to the shared form
+  // render below), one step further in via this sub-picker.
+  if (area === "far" && !pangasinanOnly) {
     if (sp.chat !== "1") {
       return (
         <main className="grid-bg px-4 py-10 sm:px-6">
@@ -93,12 +98,10 @@ export default async function RequestPage({
               </p>
             </div>
             <div className="space-y-3">
-              {enabledAreas.includes("near") && (
-                <Link href="/request?area=near&pangasinan=1" className="card block text-center hover:border-blue-300">
-                  <p className="text-sm font-semibold text-slate-800">Pangasinan</p>
-                  <p className="mt-0.5 text-xs text-slate-400">Calasiao, Binmaley, Mangaldan, and 8 other towns — online form</p>
-                </Link>
-              )}
+              <Link href="/request?area=far&pangasinan=1" className="card block text-center hover:border-blue-300">
+                <p className="text-sm font-semibold text-slate-800">Pangasinan</p>
+                <p className="mt-0.5 text-xs text-slate-400">Calasiao, Binmaley, Mangaldan, and 8 other towns — online form</p>
+              </Link>
               <Link href="/request?area=far&chat=1" className="card block text-center hover:border-blue-300">
                 <p className="text-sm font-semibold text-slate-800">Other Provinces</p>
                 <p className="mt-0.5 text-xs text-slate-400">Message us on WhatsApp or Viber</p>
