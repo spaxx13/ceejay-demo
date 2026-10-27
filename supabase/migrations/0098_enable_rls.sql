@@ -9,47 +9,52 @@
 -- reachable over the internet via the project's REST endpoint by anyone
 -- holding its anon/public API key. With RLS on and no policies, that
 -- endpoint denies every request instead.
+--
+-- IF EXISTS on every line: the flagged Supabase projects don't all carry
+-- the exact same table set (e.g. one is missing icloud_checks), so this
+-- stays safe to run as-is against any of them instead of aborting the
+-- whole batch on the first table that isn't there.
 
-alter table activity_log enable row level security;
-alter table branches enable row level security;
-alter table check_ins enable row level security;
-alter table conversations enable row level security;
-alter table courier_requests enable row level security;
-alter table crm_broadcasts enable row level security;
-alter table custom_form_fields enable row level security;
-alter table customer_push_tokens enable row level security;
-alter table customers enable row level security;
-alter table device_models enable row level security;
-alter table email_otp_codes enable row level security;
-alter table expenses enable row level security;
-alter table home_service_requests enable row level security;
-alter table icloud_checks enable row level security;
-alter table inventory_items enable row level security;
-alter table leads enable row level security;
-alter table login_logs enable row level security;
-alter table lookups enable row level security;
-alter table manual_checklists enable row level security;
-alter table manual_repair_records enable row level security;
-alter table notifications enable row level security;
-alter table otp_codes enable row level security;
-alter table posted_batches enable row level security;
-alter table push_subscriptions enable row level security;
-alter table repair_progress enable row level security;
-alter table repair_records enable row level security;
-alter table request_exceptions enable row level security;
-alter table request_form_content enable row level security;
-alter table request_updates enable row level security;
-alter table riders enable row level security;
-alter table sale_line_items enable row level security;
-alter table sales enable row level security;
-alter table service_agreements enable row level security;
-alter table service_fee_waivers enable row level security;
-alter table service_prices enable row level security;
-alter table site_content enable row level security;
-alter table staff_chat_messages enable row level security;
-alter table staff_push_tokens enable row level security;
-alter table stock_movements enable row level security;
-alter table technicians enable row level security;
-alter table users enable row level security;
-alter table walkin_requests enable row level security;
-alter table zones enable row level security;
+alter table if exists activity_log enable row level security;
+alter table if exists branches enable row level security;
+alter table if exists check_ins enable row level security;
+alter table if exists conversations enable row level security;
+alter table if exists courier_requests enable row level security;
+alter table if exists crm_broadcasts enable row level security;
+alter table if exists custom_form_fields enable row level security;
+alter table if exists customer_push_tokens enable row level security;
+alter table if exists customers enable row level security;
+alter table if exists device_models enable row level security;
+alter table if exists email_otp_codes enable row level security;
+alter table if exists expenses enable row level security;
+alter table if exists home_service_requests enable row level security;
+alter table if exists icloud_checks enable row level security;
+alter table if exists inventory_items enable row level security;
+alter table if exists leads enable row level security;
+alter table if exists login_logs enable row level security;
+alter table if exists lookups enable row level security;
+alter table if exists manual_checklists enable row level security;
+alter table if exists manual_repair_records enable row level security;
+alter table if exists notifications enable row level security;
+alter table if exists otp_codes enable row level security;
+alter table if exists posted_batches enable row level security;
+alter table if exists push_subscriptions enable row level security;
+alter table if exists repair_progress enable row level security;
+alter table if exists repair_records enable row level security;
+alter table if exists request_exceptions enable row level security;
+alter table if exists request_form_content enable row level security;
+alter table if exists request_updates enable row level security;
+alter table if exists riders enable row level security;
+alter table if exists sale_line_items enable row level security;
+alter table if exists sales enable row level security;
+alter table if exists service_agreements enable row level security;
+alter table if exists service_fee_waivers enable row level security;
+alter table if exists service_prices enable row level security;
+alter table if exists site_content enable row level security;
+alter table if exists staff_chat_messages enable row level security;
+alter table if exists staff_push_tokens enable row level security;
+alter table if exists stock_movements enable row level security;
+alter table if exists technicians enable row level security;
+alter table if exists users enable row level security;
+alter table if exists walkin_requests enable row level security;
+alter table if exists zones enable row level security;
