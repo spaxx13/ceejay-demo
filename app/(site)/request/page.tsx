@@ -8,10 +8,17 @@ import type { HomeServiceQueue } from "@/lib/types";
 // The customer picks their service area up front (?area=near|far) — this
 // tags the request with the right queue (lib/actions.ts's
 // submitHomeServiceRequest) so it's only ever managed by the admin assigned
-// to that queue, never guessed later from their address.
+// to that queue, never guessed later from their address. Pangasinan (only
+// 11 towns, see lib/homeServiceFees.ts) deliberately isn't folded into the
+// "near" label below — picking "Other Provinces" offers it as its own
+// sub-choice (?area=near&pangasinan=1) instead, since grouping it with
+// Metro Manila et al. read as misleading. It still submits with area=near
+// under the hood (same queue/dispatch as every other near-queue booking)
+// — only the picker path and the form's own province list
+// (HomeServiceForm's pangasinanOnly prop) are affected.
 const AREA_LABELS: Record<HomeServiceQueue, string> = {
-  near: "Metro Manila, Laguna, Batangas, Rizal, Bulacan, Cavite, Pampanga, and select towns in Pangasinan",
-  far: "Other Provinces (including the rest of Pangasinan)",
+  near: "Metro Manila, Laguna, Batangas, Rizal, Bulacan, Cavite, and Pampanga",
+  far: "Other Provinces",
 };
 
 const AREA_ENABLED_KEY: Record<HomeServiceQueue, "nearAreaEnabled" | "farAreaEnabled"> = {
@@ -19,9 +26,14 @@ const AREA_ENABLED_KEY: Record<HomeServiceQueue, "nearAreaEnabled" | "farAreaEna
   far: "farAreaEnabled",
 };
 
-export default async function RequestPage({ searchParams }: { searchParams: Promise<{ area?: string }> }) {
+export default async function RequestPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ area?: string; pangasinan?: string; chat?: string }>;
+}) {
   const sp = await searchParams;
   const requestedArea: HomeServiceQueue | null = sp.area === "near" || sp.area === "far" ? sp.area : null;
+  const pangasinanOnly = sp.pangasinan === "1";
 
   const [lookups, deviceModels, content, customFormFields] = await Promise.all([
     getLookups(),
@@ -62,8 +74,41 @@ export default async function RequestPage({ searchParams }: { searchParams: Prom
 
   // "Other Provinces" has no technicians on an automated dispatch queue, so
   // instead of the digital booking form (built for the "near" queue's real
-  // assignment flow) this just routes the customer straight into a chat.
+  // assignment flow) this just routes the customer straight into a chat —
+  // except for Pangasinan's 11 covered towns (see AREA_LABELS above), which
+  // do have a real form, one step further in via this sub-picker.
   if (area === "far") {
+    if (sp.chat !== "1") {
+      return (
+        <main className="grid-bg px-4 py-10 sm:px-6">
+          <div className="mx-auto max-w-xl space-y-6">
+            <div className="text-center">
+              <p className="kicker">Book a Home Service</p>
+              <h1 className="mt-1 text-2xl font-bold text-slate-900">Other Provinces</h1>
+              <p className="mt-2 text-sm text-slate-400">Pangasinan has its own online form for a few towns — everyone else, message us directly.</p>
+              <p className="mt-1 text-xs text-slate-400">
+                <Link href="/request" className="text-blue-500 hover:underline">
+                  Change area
+                </Link>
+              </p>
+            </div>
+            <div className="space-y-3">
+              {enabledAreas.includes("near") && (
+                <Link href="/request?area=near&pangasinan=1" className="card block text-center hover:border-blue-300">
+                  <p className="text-sm font-semibold text-slate-800">Pangasinan</p>
+                  <p className="mt-0.5 text-xs text-slate-400">Calasiao, Binmaley, Mangaldan, and 8 other towns — online form</p>
+                </Link>
+              )}
+              <Link href="/request?area=far&chat=1" className="card block text-center hover:border-blue-300">
+                <p className="text-sm font-semibold text-slate-800">Other Provinces</p>
+                <p className="mt-0.5 text-xs text-slate-400">Message us on WhatsApp or Viber</p>
+              </Link>
+            </div>
+          </div>
+        </main>
+      );
+    }
+
     const number = content.farAreaContactNumber.trim();
     const intlNumber = number ? toPhInternational(number) : null;
 
@@ -130,7 +175,7 @@ export default async function RequestPage({ searchParams }: { searchParams: Prom
           <h1 className="mt-1 text-2xl font-bold text-slate-900">{content.pageTitle}</h1>
           <p className="mt-2 text-sm text-slate-400">{content.pageSubtitle}</p>
           <p className="mt-1 text-xs text-slate-400">
-            Area: {AREA_LABELS[area]} ·{" "}
+            Area: {pangasinanOnly ? "Pangasinan (select towns)" : AREA_LABELS[area]} ·{" "}
             <Link href="/request" className="text-blue-500 hover:underline">
               Change
             </Link>
@@ -148,6 +193,7 @@ export default async function RequestPage({ searchParams }: { searchParams: Prom
             content={content}
             fields={fields}
             area={area}
+            pangasinanOnly={pangasinanOnly}
             smsAvailable={smsConfigured()}
           />
         )}

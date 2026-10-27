@@ -92,6 +92,7 @@ export default function HomeServiceForm({
   smsAvailable,
   mode = "on_site",
   branchPins = [],
+  pangasinanOnly = false,
 }: {
   brands: Brand[];
   models: Model[];
@@ -104,6 +105,13 @@ export default function HomeServiceForm({
   // user-facing toggle (Pickup & Delivery has its own separate page,
   // app/(site)/pickup-delivery, distinct from this Home Service form).
   mode?: "on_site" | "pickup_delivery";
+  // Reached via /request's "Other Provinces" sub-picker — locks the
+  // Province field to Pangasinan alone (auto-selected) instead of the
+  // normal near-queue list, which deliberately excludes Pangasinan (see
+  // app/(site)/request/page.tsx's AREA_LABELS comment). Only meaningful
+  // when mode is "on_site"; Pickup & Delivery has its own separate
+  // coverage filter below.
+  pangasinanOnly?: boolean;
   // Active branches with map pins — Pickup & Delivery only, for the live
   // distance-tiered fee preview once the customer pins their address
   // (lib/homeServiceFees.ts pickupDeliveryQuote; the server recomputes).
@@ -170,23 +178,28 @@ export default function HomeServiceForm({
       .then((r) => r.json())
       // Pickup & Delivery only covers PICKUP_DELIVERY_COVERAGE (Metro
       // Manila + a few Rizal towns) — trim the near queue's dataset down
-      // to that rather than fetching a separate file just for this.
-      .then((data: PhProvince[]) =>
-        mode === "pickup_delivery"
-          ? data.flatMap((p) => {
-              const cov = PICKUP_DELIVERY_COVERAGE.find((c) => c.provinceKey === p.key);
-              if (!cov) return [];
-              return [cov.cities === null ? p : { ...p, cities: p.cities.filter((c) => cov.cities!.includes(c.name)) }];
-            })
-          : data
-      )
+      // to that rather than fetching a separate file just for this. The
+      // plain Home Service flow instead either isolates Pangasinan
+      // (pangasinanOnly) or excludes it (the normal near-queue list) — see
+      // this component's pangasinanOnly prop doc.
+      .then((data: PhProvince[]) => {
+        if (mode === "pickup_delivery") {
+          return data.flatMap((p) => {
+            const cov = PICKUP_DELIVERY_COVERAGE.find((c) => c.provinceKey === p.key);
+            if (!cov) return [];
+            return [cov.cities === null ? p : { ...p, cities: p.cities.filter((c) => cov.cities!.includes(c.name)) }];
+          });
+        }
+        return pangasinanOnly ? data.filter((p) => p.label === "Pangasinan") : data.filter((p) => p.label !== "Pangasinan");
+      })
       .then(setPhData)
       .catch(() => setPhData([]));
-  }, [area, mode]);
-  // If Pickup & Delivery coverage ever collapses to a single province
-  // (filtered above) — treat it as selected without making the customer
-  // choose among one option, rather than setting state from an effect.
-  const effectiveProvince = mode === "pickup_delivery" && phData?.length === 1 ? phData[0].label : province;
+  }, [area, mode, pangasinanOnly]);
+  // If the province list ever collapses to a single option — Pickup &
+  // Delivery coverage, or the Pangasinan-only picker path — treat it as
+  // selected without making the customer choose among one option, rather
+  // than setting state from an effect.
+  const effectiveProvince = phData?.length === 1 ? phData[0].label : province;
   const selectedPhProvince = phData?.find((p) => p.label === effectiveProvince) ?? null;
   const selectedPhCity = selectedPhProvince?.cities.find((c) => c.name === city) ?? null;
 
@@ -563,7 +576,7 @@ export default function HomeServiceForm({
                   setBarangay("");
                 }}
                 className="input"
-                disabled={!phData || (mode === "pickup_delivery" && phData.length === 1)}
+                disabled={!phData || phData.length === 1}
               >
                 <option value="">{phData ? "Select province..." : "Loading..."}</option>
                 {provinces.map((p) => (
