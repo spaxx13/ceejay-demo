@@ -562,12 +562,20 @@ export default function HomeServiceForm({
         // (below) renders nothing here, its spot in the field order is
         // absorbed into this group.
         const provinces = phData ?? [];
+        // A disabled <select> is excluded from form submission entirely
+        // (native HTML behavior) — when the province list collapses to one
+        // option and this select locks itself, dropping its own `name`
+        // would otherwise silently submit no province at all. A sibling
+        // hidden input carries the forced value instead whenever that's
+        // the case (Pangasinan-only, or Pickup & Delivery coverage ever
+        // narrowing to one province).
+        const provinceLocked = !phData || phData.length === 1;
         return (
           <div key={field.id} className="space-y-3">
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-slate-500">Province {asterisk}</label>
               <select
-                name="province"
+                name={provinceLocked ? undefined : "province"}
                 required={req}
                 value={effectiveProvince}
                 onChange={(e) => {
@@ -576,7 +584,7 @@ export default function HomeServiceForm({
                   setBarangay("");
                 }}
                 className="input"
-                disabled={!phData || phData.length === 1}
+                disabled={provinceLocked}
               >
                 <option value="">{phData ? "Select province..." : "Loading..."}</option>
                 {provinces.map((p) => (
@@ -585,6 +593,7 @@ export default function HomeServiceForm({
                   </option>
                 ))}
               </select>
+              {provinceLocked && effectiveProvince && <input type="hidden" name="province" value={effectiveProvince} />}
             </div>
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-slate-500">City / Municipality {asterisk}</label>
