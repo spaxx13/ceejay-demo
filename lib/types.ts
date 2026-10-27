@@ -83,7 +83,7 @@ export type RequestFormContent = {
   submitButtonLabel: string;
   successTitle: string;
   successBody: string;
-  nearAreaEnabled: boolean; // whether "near" (Metro Manila/Laguna/Batangas/Rizal/Bulacan/Cavite/Pampanga) is offered on the area picker
+  nearAreaEnabled: boolean; // whether "near" (Metro Manila/Laguna/Batangas/Rizal/Bulacan/Cavite/Pampanga/select Pangasinan towns) is offered on the area picker
   farAreaEnabled: boolean; // whether "far" (Other Provinces) is offered on the area picker
   farAreaContactNumber: string; // PH mobile number (e.g. 09xxxxxxxxx) — "far" has no online booking form, so picking it shows WhatsApp/Viber links built from this instead
 };
@@ -140,8 +140,8 @@ export type CustomFormField = {
 
 // "near"/"far" mark the two address-less backend branches used purely as
 // Home Service queue buckets — near = Metro Manila/Laguna/Batangas/Rizal/
-// Bulacan/Cavite/Pampanga, far = Other Provinces. Null on every real
-// (address-having) branch.
+// Bulacan/Cavite/Pampanga/select Pangasinan towns, far = Other Provinces.
+// Null on every real (address-having) branch.
 export type HomeServiceQueue = "near" | "far";
 
 export type Branch = {

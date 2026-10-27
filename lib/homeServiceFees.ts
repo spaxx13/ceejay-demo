@@ -28,6 +28,10 @@ export const PROVINCE_FEES: Record<string, { base: number; higherTowns?: string[
     higherTowns: ["Tanay", "Baras", "Cardona", "Pililla", "Morong"],
     higherFee: 800,
   },
+  // Only these 11 towns (see ph-addresses-near.json's Pangasinan entry) —
+  // every other Pangasinan town still has no digital form and stays on
+  // the "far" queue's WhatsApp/Viber contact.
+  Pangasinan: { base: 700 },
 };
 
 // These provinces only get a home service visit once a week — the
