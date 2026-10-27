@@ -88,9 +88,7 @@ export default async function HomeServiceLandingPage() {
             <p className="kicker">{content.pageKicker}</p>
             <h2 className="mt-1 text-2xl font-bold text-slate-900">{content.pageTitle}</h2>
             <p className="mt-2 text-sm text-slate-400">{content.pageSubtitle}</p>
-            <p className="mt-1 text-xs text-slate-400">
-              Area: Metro Manila, Laguna, Batangas, Rizal, Bulacan, Cavite, Pampanga, and select towns in Pangasinan
-            </p>
+            <p className="mt-1 text-xs text-slate-400">Area: Metro Manila, Laguna, Batangas, Rizal, Bulacan, Cavite, and Pampanga</p>
           </div>
           {formAvailable ? (
             <HomeServiceForm
