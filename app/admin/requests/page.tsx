@@ -123,9 +123,12 @@ export default async function RequestsPage({
   // Same 30/70 split as Sales > Home Service, scoped to today only — a
   // quick "how are we doing" summary so this page doesn't need its own
   // date-range picker; the full breakdown is still one click away there.
-  const salesRows = homeServiceSalesByTechnician(agreements, (date) => date === todayStr, allRequests, technicians);
+  // Branch-scoped the same way visibleRequests above is, so this card never
+  // disagrees with what the rest of this page already shows this admin.
+  const visibleAgreements = agreements.filter((a) => !isBranchHidden(user, a.branchId));
+  const salesRows = homeServiceSalesByTechnician(visibleAgreements, (date) => date === todayStr, allRequests, technicians);
   const salesTotal = sumHomeServiceSales(salesRows);
-  const homeServiceQueueBranchIds = branches.filter((b) => b.homeServiceQueue !== null).map((b) => b.id);
+  const homeServiceQueueBranchIds = branches.filter((b) => b.homeServiceQueue !== null && !isBranchHidden(user, b.id)).map((b) => b.id);
   const salesBusinessExpenses = homeServiceBusinessExpenses(expenses, (date) => date === todayStr, homeServiceQueueBranchIds);
 
   function labelFor(id: string | null, list: { id: string; label?: string; name?: string }[]) {

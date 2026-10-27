@@ -8,7 +8,9 @@ import {
   homeServiceSalesByTechnician,
   sumHomeServiceSales,
   homeServiceBusinessExpenses,
+  isBranchHidden,
 } from "@/lib/db";
+import { getCurrentUser } from "@/lib/auth";
 import SalesTabs from "@/components/SalesTabs";
 import { todayDateStr } from "@/lib/format";
 
@@ -16,7 +18,8 @@ const peso = (n: number) => `₱${n.toLocaleString(undefined, { minimumFractionD
 
 export default async function HomeServiceSalesPage({ searchParams }: { searchParams: Promise<{ from?: string; to?: string }> }) {
   const sp = await searchParams;
-  const [agreements, requests, technicians, branches, expenses] = await Promise.all([
+  const [user, agreements, requests, technicians, branches, expenses] = await Promise.all([
+    getCurrentUser(),
     getServiceAgreements(),
     getRequests(),
     getTechnicians(),
@@ -43,18 +46,19 @@ export default async function HomeServiceSalesPage({ searchParams }: { searchPar
   // the 30/70 split, Parts/Material Cost is deducted from that
   // Total Amount to get a Net Amount — an internal-records-only figure,
   // never shown to the customer. Distinct from the Net Profit / 50% split
-  // used on the combined By Branch and By Technician reports. Not
-  // branch-scoped: this report is organized by technician, and a job's
-  // branch tag is incidental (whichever branch the technician was
-  // dispatched from), not a meaningful visibility boundary — every account
-  // that can open Sales sees all of it.
-  const rows = homeServiceSalesByTechnician(agreements, inRange, requests, technicians);
+  // used on the combined By Branch and By Technician reports. Branch-scoped
+  // by the agreement's own branchId (the technician's queue branch at
+  // assignment time — near vs far) same as the Branch Sales page's
+  // queueHomeServiceCards, so an admin restricted to one queue never sees
+  // the other queue's technicians or revenue here.
+  const visibleAgreements = agreements.filter((a) => !isBranchHidden(user, a.branchId));
+  const rows = homeServiceSalesByTechnician(visibleAgreements, inRange, requests, technicians);
   const grandTotal = sumHomeServiceSales(rows);
   // "Owner's Final Total Sales" expenses logged against a Home Service queue
   // branch (Sales > Expenses, Branch = Home Service) — deducted here since
-  // this is the one place that figure has anywhere to land; nothing else on
-  // this report is branch-scoped.
-  const homeServiceQueueBranchIds = branches.filter((b) => b.homeServiceQueue !== null).map((b) => b.id);
+  // this is the one place that figure has anywhere to land. Scoped to only
+  // the queue branch(es) this admin can see, same as the rows above.
+  const homeServiceQueueBranchIds = branches.filter((b) => b.homeServiceQueue !== null && !isBranchHidden(user, b.id)).map((b) => b.id);
   const businessExpenses = homeServiceBusinessExpenses(expenses, inRange, homeServiceQueueBranchIds);
   const businessShareNet = grandTotal.companyShare - businessExpenses;
 
