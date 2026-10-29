@@ -81,6 +81,8 @@ import {
   getStaffChatMessages,
   notifyStaffChatMessage,
   pickupDeliveryStage,
+  getNotifications,
+  isNotificationVisible,
   type PickupDeliveryStage,
 } from "./db";
 import { getCurrentUser, setSession, clearSession, requireRole } from "./auth";
@@ -5344,16 +5346,28 @@ export async function resendReceiptEmail(_prev: ResendReceiptResult | undefined,
 }
 
 export async function markNotificationRead(formData: FormData) {
-  if (!(await requireRole("owner_admin", "branch_admin"))) return;
+  const user = await requireRole("owner_admin", "branch_admin");
+  if (!user) return;
   const id = str(formData, "id");
+  // Only a notification this admin could actually see gets marked — same
+  // scoping the list itself applies — so a branch admin posting an id they
+  // don't otherwise see (not rendered as a button for them) can't silently
+  // clear it for whoever's queue it actually belongs to.
+  const n = (await getNotifications()).find((x) => x.id === id);
+  if (!n || !isNotificationVisible(user, n)) return;
   await query("update notifications set read_at = now() where id=$1", [id]);
   revalidatePath("/admin/notifications");
   revalidatePath("/admin");
 }
 
 export async function markAllNotificationsRead() {
-  if (!(await requireRole("owner_admin", "branch_admin"))) return;
-  await query("update notifications set read_at = now() where read_at is null");
+  const user = await requireRole("owner_admin", "branch_admin");
+  if (!user) return;
+  // Scoped to this admin's own visible notifications — marking a queue/
+  // branch/section they can't see as read would hide it from whichever
+  // admin it actually belongs to, without them ever having seen it.
+  const ids = (await getNotifications()).filter((n) => !n.readAt && isNotificationVisible(user, n)).map((n) => n.id);
+  if (ids.length > 0) await query("update notifications set read_at = now() where id = any($1)", [ids]);
   revalidatePath("/admin/notifications");
   revalidatePath("/admin");
 }

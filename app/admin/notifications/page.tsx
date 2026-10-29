@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getNotifications, getRequests, getWalkInRequests, requestAdminPath, canManagePickupDelivery } from "@/lib/db";
+import { getNotifications, getRequests, getWalkInRequests, requestAdminPath, isNotificationVisible } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { markNotificationRead, markAllNotificationsRead } from "@/lib/actions";
 import { formatDateTime } from "@/lib/format";
@@ -8,12 +8,11 @@ const ICON: Record<string, string> = { new_request: "📥", request_in_progress:
 
 export default async function AdminNotificationsPage() {
   const [user, allNotifications, requests, walkIns] = await Promise.all([getCurrentUser(), getNotifications(), getRequests(), getWalkInRequests()]);
-  // Pickup & Delivery is its own section — its notifications only show to
-  // accounts that can open that section.
-  const pdAccess = canManagePickupDelivery(user);
-  const pdRequestIds = new Set(requests.filter((r) => r.fulfillmentMode === "pickup_delivery").map((r) => r.id));
+  // Only this admin's own queue/branch/section — same scoping Admin >
+  // Requests / Pickup & Delivery / Walk-Ins already gate each notification's
+  // linked record behind.
   const notifications = [...allNotifications]
-    .filter((n) => pdAccess || !n.requestId || !pdRequestIds.has(n.requestId))
+    .filter((n) => isNotificationVisible(user, n))
     .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
   const unreadCount = notifications.filter((n) => !n.readAt).length;
 

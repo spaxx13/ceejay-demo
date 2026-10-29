@@ -841,7 +841,8 @@ export type RepairProgress = {
 };
 
 // In-app admin notification — stands in for the push/SMS/email alert a real
-// deployment would send. Owner and branch admins both see these.
+// deployment would send. Only the owner/branch admin(s) who could actually
+// open the linked request/walk-in see each one — see isNotificationVisible.
 export type Notification = {
   id: string;
   type: "new_request" | "request_in_progress" | "checklist_completed" | "new_walkin" | "technician_on_the_way";
@@ -850,6 +851,17 @@ export type Notification = {
   message: string;
   createdAt: string;
   readAt: string | null;
+  // Scoping snapshot joined in from the linked request/walk-in at read time
+  // (getNotifications), independent of getRequests()/getWalkInRequests()
+  // which hide trashed ones — so a notification keeps its original
+  // visibility even after the record it points to is moved to Trash. All
+  // null when the row isn't tied to a request/walk-in, or that row has
+  // since been hard-deleted.
+  queueBranchId: string | null;
+  fulfillmentMode: "on_site" | "pickup_delivery" | null;
+  deliveredBranchId: string | null;
+  pickupDeliveryNearestBranchId: string | null;
+  walkinBranchId: string | null;
 };
 
 // A CRM > Send Announcement broadcast, sent immediately or scheduled for
