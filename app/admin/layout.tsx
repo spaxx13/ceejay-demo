@@ -1,6 +1,16 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
-import { getNotifications, canManageHomeServiceRequests, canManageWalkIns, canManagePickupDelivery, canManageCourier, canViewBranchSales, canAccessCrm, canManageRepairPricing } from "@/lib/db";
+import {
+  getNotifications,
+  canManageHomeServiceRequests,
+  canManageWalkIns,
+  canManagePickupDelivery,
+  canManageCourier,
+  canViewBranchSales,
+  canAccessCrm,
+  canManageRepairPricing,
+  isNotificationVisible,
+} from "@/lib/db";
 import AdminNav from "@/components/AdminNav";
 import PwaNotificationBar from "@/components/PwaNotificationBar";
 import AppBadgeSync from "@/components/AppBadgeSync";
@@ -13,7 +23,10 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   if (user.role === "technician") redirect("/technician");
   if (user.role === "rider") redirect("/rider");
 
-  const unreadCount = (await getNotifications()).filter((n) => !n.readAt).length;
+  // Only count notifications this admin could actually open — same scoping
+  // the Notifications list itself applies, so the sidebar badge never
+  // advertises another queue/branch/section's unread count.
+  const unreadCount = (await getNotifications()).filter((n) => !n.readAt && isNotificationVisible(user, n)).length;
 
   return (
     <>

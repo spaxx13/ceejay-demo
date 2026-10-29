@@ -786,6 +786,11 @@ type NotificationRow = {
   message: string;
   created_at: Date;
   read_at: Date | null;
+  req_queue_branch_id: string | null;
+  req_fulfillment_mode: Notification["fulfillmentMode"];
+  req_delivered_branch_id: string | null;
+  req_pickup_delivery_nearest_branch_id: string | null;
+  walkin_branch_id: string | null;
 };
 function mapNotification(r: NotificationRow): Notification {
   return {
@@ -796,7 +801,39 @@ function mapNotification(r: NotificationRow): Notification {
     message: r.message,
     createdAt: toIso(r.created_at),
     readAt: toIsoOrNull(r.read_at),
+    queueBranchId: r.req_queue_branch_id,
+    fulfillmentMode: r.req_fulfillment_mode,
+    deliveredBranchId: r.req_delivered_branch_id,
+    pickupDeliveryNearestBranchId: r.req_pickup_delivery_nearest_branch_id,
+    walkinBranchId: r.walkin_branch_id,
   };
+}
+
+// Whether `user` should see this notification at all — the same
+// permission + branch/queue scoping its linked request or walk-in is
+// itself subject to on Admin > Requests / Pickup & Delivery / Walk-Ins, so
+// nobody gets alerted (in-app, push, or SMS) about something they couldn't
+// actually open. A notification tied to a request/walk-in that's since
+// been hard-deleted (every scoping field null) falls back to the on_site
+// Home Service check — every notification type is created for either an
+// on_site/unknown-mode request or a walk-in, never anything broader.
+export function isNotificationVisible(
+  user: Pick<User, "role" | "assignedBranchIds" | "canManageRequests" | "canManageWalkIns" | "canManagePickupDelivery"> | null,
+  n: Pick<Notification, "requestId" | "walkinRequestId" | "fulfillmentMode" | "queueBranchId" | "deliveredBranchId" | "pickupDeliveryNearestBranchId" | "walkinBranchId">
+): boolean {
+  if (n.walkinRequestId) {
+    return canManageWalkIns(user) && !isBranchHidden(user, n.walkinBranchId);
+  }
+  if (n.requestId) {
+    if (n.fulfillmentMode === "pickup_delivery") {
+      return (
+        canManagePickupDelivery(user) &&
+        !isPickupDeliveryJobHidden(user, { deliveredBranchId: n.deliveredBranchId, pickupDeliveryNearestBranchId: n.pickupDeliveryNearestBranchId })
+      );
+    }
+    return canManageHomeServiceRequests(user) && !isBranchHidden(user, n.queueBranchId);
+  }
+  return true;
 }
 
 type ExpenseRow = {
@@ -1571,7 +1608,20 @@ export async function getRepairProgressByRequestId(requestId: string): Promise<R
   return row ? mapRepairProgress(row) : null;
 }
 export async function getNotifications() {
-  return (await query<NotificationRow>("select * from notifications order by created_at desc")).map(mapNotification);
+  return (
+    await query<NotificationRow>(
+      `select n.*,
+         r.queue_branch_id as req_queue_branch_id,
+         r.fulfillment_mode as req_fulfillment_mode,
+         r.delivered_branch_id as req_delivered_branch_id,
+         r.pickup_delivery_nearest_branch_id as req_pickup_delivery_nearest_branch_id,
+         w.branch_id as walkin_branch_id
+       from notifications n
+       left join home_service_requests r on r.id = n.request_id
+       left join walkin_requests w on w.id = n.walkin_request_id
+       order by n.created_at desc`
+    )
+  ).map(mapNotification);
 }
 export async function getExpenses() {
   return (await query<ExpenseRow>("select * from expenses order by expense_date desc, created_at desc")).map(mapExpense);
@@ -1856,29 +1906,45 @@ export async function deleteStaffPushToken(token: string) {
 
 // Shared by notifyAdmins/notifyAdminsAboutWalkIn — writes the in-app
 // notification row (the caller already built the right INSERT for whichever
-// target column it points at) and best-effort fans it out to web push + SMS.
-// Neither channel is guaranteed configured/subscribed, so failures there are
-// swallowed rather than failing the request/checklist/lead/walk-in action
-// that triggered this.
-async function notifyAdminsCore(insertSql: string, insertParams: unknown[], url: string, message: string) {
+// target column it points at) and best-effort fans it out to web push + SMS,
+// to only the admins isRecipient allows — the same permission + branch/queue
+// scoping isNotificationVisible checks when the list/badge render, so an
+// admin is never alerted (in-app, push, or SMS) about a queue, fulfillment
+// mode, or branch they can't actually open. Neither channel is guaranteed
+// configured/subscribed, so failures there are swallowed rather than failing
+// the request/checklist/lead/walk-in action that triggered this.
+type AdminNotifyRecipient = Pick<User, "role" | "assignedBranchIds" | "canManageRequests" | "canManageWalkIns" | "canManagePickupDelivery">;
+type AdminNotifyRecipientPredicate = (user: AdminNotifyRecipient) => boolean;
+
+async function notifyAdminsCore(insertSql: string, insertParams: unknown[], url: string, message: string, isRecipient: AdminNotifyRecipientPredicate) {
   await query(insertSql, insertParams);
 
   try {
-    const admins = (await getUsers()).filter((u) => u.active && (u.role === "owner_admin" || u.role === "branch_admin"));
-
+    const admins = (await getUsers()).filter((u) => u.active && (u.role === "owner_admin" || u.role === "branch_admin") && isRecipient(u));
+    if (admins.length === 0) return;
     const adminIds = new Set(admins.map((a) => a.id));
-    // Included on every push so the home-screen icon badge updates from the
-    // service worker/native app even while it's closed — same unread count
-    // getNotifications()'s caller already shows in the sidebar.
-    const unread = await queryOne<{ n: number }>("select count(*)::int as n from notifications where read_at is null");
 
+    // Each recipient's own badge count — how many notifications *they*
+    // personally can see are still unread, not a shared global total, since
+    // different admins can see different notification sets. Grouped by
+    // count so each group of subscriptions gets its own accurate push
+    // (sendPushToUsers sends one shared payload per call).
+    const allNotifications = await getNotifications();
+    const subsByBadgeCount = new Map<number, PushSubscription[]>();
     const subs = await getPushSubscriptions();
-    const recipientSubs = subs.filter((s) => adminIds.has(s.userId));
-    if (recipientSubs.length > 0) {
-      const { expiredEndpoints } = await sendPushToUsers(recipientSubs, { title: "Ceejay Admin", body: message, url, badgeCount: unread?.n ?? undefined });
-      if (expiredEndpoints.length > 0) {
-        await query("delete from push_subscriptions where endpoint = any($1)", [expiredEndpoints]);
-      }
+    for (const s of subs) {
+      const admin = admins.find((a) => a.id === s.userId);
+      if (!admin) continue;
+      const n = allNotifications.filter((x) => !x.readAt && isNotificationVisible(admin, x)).length;
+      (subsByBadgeCount.get(n) ?? subsByBadgeCount.set(n, []).get(n)!).push(s);
+    }
+    const expiredEndpoints: string[] = [];
+    for (const [badgeCount, group] of subsByBadgeCount) {
+      const result = await sendPushToUsers(group, { title: "Ceejay Admin", body: message, url, badgeCount });
+      expiredEndpoints.push(...result.expiredEndpoints);
+    }
+    if (expiredEndpoints.length > 0) {
+      await query("delete from push_subscriptions where endpoint = any($1)", [expiredEndpoints]);
     }
 
     // FCM, for the native Ceejay Admin app — Web Push above doesn't reach
@@ -1911,12 +1977,31 @@ export function requestAdminPath(req: Pick<HomeServiceRequest, "id" | "fulfillme
 }
 
 export async function notifyAdmins(type: Notification["type"], requestId: string, message: string) {
-  const row = await queryOne<{ fulfillment_mode: HomeServiceRequest["fulfillmentMode"] | null }>(
-    "select fulfillment_mode from home_service_requests where id=$1",
+  const row = await queryOne<{
+    fulfillment_mode: HomeServiceRequest["fulfillmentMode"] | null;
+    queue_branch_id: string | null;
+    delivered_branch_id: string | null;
+    pickup_delivery_nearest_branch_id: string | null;
+  }>(
+    "select fulfillment_mode, queue_branch_id, delivered_branch_id, pickup_delivery_nearest_branch_id from home_service_requests where id=$1",
     [requestId]
   );
-  const url = requestAdminPath({ id: requestId, fulfillmentMode: row?.fulfillment_mode ?? "on_site" });
-  await notifyAdminsCore("insert into notifications (type, request_id, message) values ($1,$2,$3)", [type, requestId, message], url, message);
+  const fulfillmentMode = row?.fulfillment_mode ?? "on_site";
+  const url = requestAdminPath({ id: requestId, fulfillmentMode });
+  // Only the admin(s) who could actually open this request get alerted —
+  // same scoping Admin > Requests / Pickup & Delivery already gate the
+  // request itself behind (isNotificationVisible applies the identical
+  // check when this notification is later read back).
+  const isRecipient: AdminNotifyRecipientPredicate =
+    fulfillmentMode === "pickup_delivery"
+      ? (u) =>
+          canManagePickupDelivery(u) &&
+          !isPickupDeliveryJobHidden(u, {
+            deliveredBranchId: row?.delivered_branch_id ?? null,
+            pickupDeliveryNearestBranchId: row?.pickup_delivery_nearest_branch_id ?? null,
+          })
+      : (u) => canManageHomeServiceRequests(u) && !isBranchHidden(u, row?.queue_branch_id ?? null);
+  await notifyAdminsCore("insert into notifications (type, request_id, message) values ($1,$2,$3)", [type, requestId, message], url, message, isRecipient);
 }
 
 // Same delivery mechanics as notifyAdmins, pointed at a walkin_requests row
@@ -1924,11 +2009,13 @@ export async function notifyAdmins(type: Notification["type"], requestId: string
 // own notification type/link so it shows up on /admin/notifications and the
 // PWA push the same way a new Home Service Request already does.
 export async function notifyAdminsAboutWalkIn(walkinRequestId: string, message: string) {
+  const row = await queryOne<{ branch_id: string | null }>("select branch_id from walkin_requests where id=$1", [walkinRequestId]);
   await notifyAdminsCore(
     "insert into notifications (type, walkin_request_id, message) values ('new_walkin',$1,$2)",
     [walkinRequestId, message],
     `/admin/walk-ins/${walkinRequestId}`,
-    message
+    message,
+    (u) => canManageWalkIns(u) && !isBranchHidden(u, row?.branch_id ?? null)
   );
 }
 
