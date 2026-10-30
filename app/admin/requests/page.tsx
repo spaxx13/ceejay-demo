@@ -116,6 +116,20 @@ export default async function RequestsPage({
   // (not the whole backlog) so this answers "who's covered for today" and
   // "who's still free today," not a lifetime tally.
   const todaysRequests = visibleRequests.filter((r) => r.preferredDatetime.startsWith(todayStr));
+
+  // Requests scheduled after today, grouped by their preferred date — so
+  // this admin can see upcoming home service workload per day, not just
+  // today's, without digging through the Preferred date filter one day at
+  // a time. preferredDatetime is a plain YYYY-MM-DD string (lib/db.ts's
+  // toDateStr), so a plain string compare/sort is already chronological.
+  const upcomingByDate = Array.from(
+    visibleRequests
+      .filter((r) => r.preferredDatetime > todayStr)
+      .reduce((map, r) => map.set(r.preferredDatetime, (map.get(r.preferredDatetime) ?? 0) + 1), new Map<string, number>())
+  )
+    .map(([date, count]) => ({ date, count }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const upcomingTotal = upcomingByDate.reduce((s, d) => s + d.count, 0);
   const technicianCounts = homeServiceTechnicians
     .map((t) => ({ id: t.id, name: t.name, count: todaysRequests.filter((r) => r.assignedTechnicianId === t.id).length }))
     .sort((a, b) => a.count - b.count || a.name.localeCompare(b.name));
@@ -173,6 +187,36 @@ export default async function RequestsPage({
       <div className="card">
         <h3 className="mb-3 text-sm font-semibold text-slate-800">Requests by Status</h3>
         <BarBreakdownChart data={requestsByStatus} emptyMessage="No requests yet." />
+      </div>
+
+      <div className="card">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold text-slate-700">Upcoming Home Service — By Date</h2>
+          <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600">
+            Total Upcoming: {upcomingTotal}
+          </span>
+        </div>
+        <p className="mt-1 text-xs text-slate-400">Requests scheduled after today, grouped by preferred date. Click a date to see that day&apos;s list below.</p>
+        {upcomingByDate.length === 0 ? (
+          <p className="mt-3 text-sm text-slate-400">No home service requests scheduled for a future date.</p>
+        ) : (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {upcomingByDate.map((d) => {
+              const active = sp.date === d.date;
+              return (
+                <Link
+                  key={d.date}
+                  href={qs({ date: active ? undefined : d.date, unassigned: undefined })}
+                  className={`rounded-full border px-3 py-1 text-xs transition-colors ${
+                    active ? "border-blue-300 bg-blue-100 text-blue-700" : "border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100"
+                  }`}
+                >
+                  {formatDate(d.date)}: {d.count}
+                </Link>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       <div className="card">
