@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getRepairRecords, getServiceAgreements, getTechnicians, getExpenses, getRequests, isBranchHidden, homeServiceBranchId } from "@/lib/db";
+import { getRepairRecords, getServiceAgreements, getTechnicians, getExpenses, getRequests, isBranchHidden, agreementBranchId } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { computeTechnicianEarnings, resolveEarningsRange, type EarningsPeriod } from "@/lib/earnings";
 import SalesTabs from "@/components/SalesTabs";
@@ -29,9 +29,7 @@ export default async function TechnicianEarningsDetailPage({
   // Same branch scoping as the rest of Sales — a branch-scoped branch admin
   // only sees this technician's jobs at branches they're allowed to see.
   const repairRecords = allRepairRecords.filter((r) => !isBranchHidden(user, r.branchId));
-  const agreements = allAgreements.filter(
-    (a) => !isBranchHidden(user, a.requestId ? homeServiceBranchId(a.technicianId, a.branchId, technicians) : a.branchId)
-  );
+  const agreements = allAgreements.filter((a) => !isBranchHidden(user, agreementBranchId(a, technicians)));
   const expenses = allExpenses.filter((e) => !isBranchHidden(user, e.branchId));
 
   const period: EarningsPeriod = sp.period === "week" || sp.period === "month" ? sp.period : "day";

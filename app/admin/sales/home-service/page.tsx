@@ -9,6 +9,7 @@ import {
   sumHomeServiceSales,
   homeServiceBusinessExpenses,
   isBranchHidden,
+  agreementBranchId,
 } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import SalesTabs from "@/components/SalesTabs";
@@ -47,11 +48,12 @@ export default async function HomeServiceSalesPage({ searchParams }: { searchPar
   // Total Amount to get a Net Amount — an internal-records-only figure,
   // never shown to the customer. Distinct from the Net Profit / 50% split
   // used on the combined By Branch and By Technician reports. Branch-scoped
-  // by the agreement's own branchId (the technician's queue branch at
-  // assignment time — near vs far) same as the Branch Sales page's
-  // queueHomeServiceCards, so an admin restricted to one queue never sees
-  // the other queue's technicians or revenue here.
-  const visibleAgreements = agreements.filter((a) => !isBranchHidden(user, a.branchId));
+  // via agreementBranchId (the technician's *current* queue branch — near
+  // vs far — not the one-time snapshot stored on the agreement, which goes
+  // stale the moment a technician is reassigned) same as the Branch Sales
+  // page's queueHomeServiceCards, so an admin restricted to one queue never
+  // sees the other queue's technicians or revenue here.
+  const visibleAgreements = agreements.filter((a) => !isBranchHidden(user, agreementBranchId(a, technicians)));
   const rows = homeServiceSalesByTechnician(visibleAgreements, inRange, requests, technicians);
   const grandTotal = sumHomeServiceSales(rows);
   // "Owner's Final Total Sales" expenses logged against a Home Service queue

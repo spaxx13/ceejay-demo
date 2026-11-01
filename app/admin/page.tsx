@@ -22,6 +22,7 @@ import {
   canViewAllBranchSales,
   canViewBranchSales,
   isBranchHidden,
+  agreementBranchId,
 } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import StatusBadge from "@/components/StatusBadge";
@@ -119,7 +120,7 @@ export default async function AdminDashboard() {
   // which stays unscoped since it only excludes Home Service expenses from
   // the POS total, a decision that doesn't depend on which queue this
   // admin can see.
-  const visibleHomeServiceAgreements = agreements.filter((a) => !isBranchHidden(user, a.branchId));
+  const visibleHomeServiceAgreements = agreements.filter((a) => !isBranchHidden(user, agreementBranchId(a, technicians)));
   const visibleHomeServiceQueueBranchIds = homeServiceQueueBranchIds.filter((id) => !isBranchHidden(user, id));
   const todayHomeServiceSales = sumHomeServiceSales(
     homeServiceSalesByTechnician(visibleHomeServiceAgreements, (date) => date === today, allRequests, technicians)
