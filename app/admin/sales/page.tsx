@@ -20,7 +20,7 @@ import {
 import { getCurrentUser } from "@/lib/auth";
 import SalesTabs from "@/components/SalesTabs";
 import BarBreakdownChart from "@/components/BarBreakdownChart";
-import { todayDateStr, toManilaDateStr, formatDate } from "@/lib/format";
+import { todayDateStr, toManilaDateStr } from "@/lib/format";
 
 const peso = (n: number) => `₱${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
@@ -222,9 +222,6 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
   // Share and Remaining (branch totals and each technician's own row)
   // still add back up to exactly Net Profit (Before Sharing) — Revenue/Job
   // Cost/Net Profit stay factual and untouched, only the split moves.
-  // Aliased before the map below shadows `technicians` with each branch's
-  // own per-technician row array.
-  const allTechnicians = technicians;
   const rowsWithExpenses = rows.map((r) => {
     const branchNetProfitExpenseRows = netProfitExpenseRows.filter((e) => e.branchId === null || e.branchId === r.branchId);
     const techNames = new Set(r.technicians.map((t) => t.name));
@@ -270,31 +267,6 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
     const remaining = technicians.reduce((s, t) => s + t.remainingNet, 0);
     const businessExpenses = amountFor(remainingExpenseRows, r.branchId);
 
-    // Home Service for this branch — grouped/summed with the exact same
-    // helpers as the Requests page's "Home Service Sales — Today" card, so
-    // this can't disagree with that figure or with Sales > Home Service.
-    // homeServiceQueueBranchIds here too, so a technician based at this
-    // real branch who's ALSO on the Home Service roster doesn't have their
-    // home service jobs land here instead of on the actual Home Service
-    // queue card below.
-    const homeServiceTechnicians = homeServiceSalesByTechnician(
-      visibleAgreements.filter((a) => agreementBranchId(a, allTechnicians, homeServiceQueueBranchIds) === r.branchId),
-      inRange,
-      requests,
-      allTechnicians
-    );
-    const homeService = sumHomeServiceSales(homeServiceTechnicians);
-    // Pickup & Delivery for this branch — the repair happens at this branch
-    // (the checklist's branch), so its split lands here too, kept in
-    // its own section so it never mixes with Home Service.
-    const pickupDeliveryTechnicians = pickupDeliverySalesByTechnician(
-      visibleAgreements.filter((a) => agreementBranchId(a, allTechnicians) === r.branchId),
-      inRange,
-      requests,
-      allTechnicians
-    );
-    const pickupDelivery = sumHomeServiceSales(pickupDeliveryTechnicians);
-
     // Courier Service for this branch (the branch the device is shipped to):
     // requests whose payment was confirmed in range, counted at the repair
     // cost only — the return shipping fee goes to the courier. Kept in its
@@ -326,10 +298,6 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
       remaining,
       businessExpenses,
       businessShareNet: remaining - businessExpenses,
-      homeServiceTechnicians,
-      homeService,
-      pickupDeliveryTechnicians,
-      pickupDelivery,
     };
   });
   const grandNetProfitBeforeSharing = grandTotal.netProfit - totalNetProfitExpenses;
@@ -722,137 +690,10 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
                 </div>
               )}
 
-              <div className="space-y-2 border-t border-slate-200 pt-4">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <h4 className="text-sm font-semibold text-slate-800">Home Service</h4>
-                  <span className="rounded-full border border-slate-300 bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-700">
-                    {r.homeService.count} job{r.homeService.count === 1 ? "" : "s"} completed
-                  </span>
-                </div>
-                {r.homeService.count === 0 ? (
-                  <p className="text-sm text-slate-400">No home service jobs completed in this range.</p>
-                ) : (
-                  <>
-                    <table className="w-full text-left text-sm">
-                      <tbody>
-                        <tr className="border-b border-slate-100">
-                          <td className="py-2 pr-3 text-slate-600">Total Amount</td>
-                          <td className="py-2 pr-3 text-right text-slate-800">{peso(r.homeService.totalAmount)}</td>
-                        </tr>
-                        <tr className="border-b border-slate-100">
-                          <td className="py-2 pr-3 text-slate-600">− Parts/Material Cost</td>
-                          <td className="py-2 pr-3 text-right text-red-700">−{peso(r.homeService.partsCost)}</td>
-                        </tr>
-                        <tr className="border-b border-slate-200">
-                          <td className="py-2 pr-3 font-semibold text-slate-800">= Net Amount</td>
-                          <td className="py-2 pr-3 text-right font-semibold text-green-700">{peso(r.homeService.netAmount)}</td>
-                        </tr>
-                        <tr className="border-b border-slate-100">
-                          <td className="py-2 pr-3 pl-5 text-slate-500">Technician Share (70%)</td>
-                          <td className="py-2 pr-3 text-right text-amber-700">{peso(r.homeService.technicianShare)}</td>
-                        </tr>
-                        <tr>
-                          <td className="py-2 pr-3 pl-5 font-semibold text-slate-700">Company Share (30%)</td>
-                          <td className="py-2 pr-3 text-right">
-                            <span className="inline-block rounded-md border-2 border-green-300 bg-green-50 px-2.5 py-1 text-base font-bold text-green-900">
-                              {peso(r.homeService.companyShare)}
-                            </span>
-                          </td>
-                        </tr>
-                      </tbody>
-                    </table>
-
-                    {r.homeServiceTechnicians.length > 0 && (
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-left text-xs">
-                          <thead>
-                            <tr className="border-b border-slate-200 uppercase tracking-wide text-slate-400">
-                              <th className="pb-1.5 pr-3 font-medium">Technician</th>
-                              <th className="pb-1.5 pr-3 font-medium">Jobs</th>
-                              <th className="pb-1.5 pr-3 font-medium">Total Amount</th>
-                              <th className="pb-1.5 pr-3 font-medium">Technician Share</th>
-                              <th className="pb-1.5 font-medium">Company Share</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {r.homeServiceTechnicians.map((t) => (
-                              <tr key={t.name} className={`border-b border-slate-100 last:border-0 ${t.name === "Unassigned" ? "opacity-60" : ""}`}>
-                                <td className="py-1.5 pr-3 text-slate-700">{t.name}</td>
-                                <td className="py-1.5 pr-3 text-slate-500">{t.count}</td>
-                                <td className="py-1.5 pr-3 text-slate-800">{peso(t.totalAmount)}</td>
-                                <td className="py-1.5 pr-3 text-amber-700">{peso(t.technicianShare)}</td>
-                                <td className="py-1.5 text-green-700">{peso(t.companyShare)}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
-
-              <div className="space-y-2 border-t border-slate-200 pt-4">
-                <ModeSalesBlock title="Pickup & Delivery" noun="Pickup & Delivery" totals={r.pickupDelivery} technicians={r.pickupDeliveryTechnicians} />
-              </div>
-
-              {(r.courierJobs.length > 0 || branchEntry) && (
-                <div className="space-y-2 border-t border-slate-200 pt-4">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <h4 className="text-sm font-semibold text-slate-800">Courier Service</h4>
-                    <span className="rounded-full border border-slate-300 bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-700">
-                      {r.courierJobs.length} paid
-                    </span>
-                  </div>
-                  {r.courierJobs.length === 0 ? (
-                    <p className="text-sm text-slate-400">No Courier Service payments confirmed in this range.</p>
-                  ) : (
-                    <>
-                      <table className="w-full text-left text-sm">
-                        <tbody>
-                          <tr className="border-b border-slate-100">
-                            <td className="py-2 pr-3 font-semibold text-slate-800">Total Repair Cost</td>
-                            <td className="py-2 pr-3 text-right font-semibold text-green-700">{peso(r.courierTotal)}</td>
-                          </tr>
-                        </tbody>
-                      </table>
-                      <ul className="space-y-1 text-sm">
-                        {r.courierJobs.map((c) => (
-                          <li key={c.id} className="flex flex-wrap justify-between gap-x-3 text-slate-600">
-                            <Link href={`/admin/courier/${c.id}`} className="font-mono text-xs text-blue-500 hover:underline">
-                              {c.reference}
-                            </Link>
-                            <span>{c.name}</span>
-                            <span className="text-xs text-slate-400">{c.paidAt ? formatDate(c.paidAt) : ""}</span>
-                            <span className="text-slate-800">{peso(c.repairCost ?? 0)}</span>
-                          </li>
-                        ))}
-                      </ul>
-                      <p className="text-[11px] text-slate-400">Repair cost only — the return shipping fee goes to the courier. Counted on the day payment was confirmed.</p>
-                    </>
-                  )}
-                </div>
-              )}
-
               <div className="flex flex-wrap gap-2">
                 {branchEntry && (
                   <Link href={`/admin/pos?branch=${branchEntry.id}`} className="btn-secondary inline-block !px-3 !py-1 text-xs">
                     View POS Records
-                  </Link>
-                )}
-                {r.homeService.count > 0 && (
-                  <Link href="/admin/sales/home-service" className="btn-secondary inline-block !px-3 !py-1 text-xs">
-                    View Home Service Records
-                  </Link>
-                )}
-                {r.pickupDelivery.count > 0 && (
-                  <Link href="/admin/sales/pickup-delivery" className="btn-secondary inline-block !px-3 !py-1 text-xs">
-                    View Pickup &amp; Delivery Records
-                  </Link>
-                )}
-                {r.courierJobs.length > 0 && (
-                  <Link href="/admin/courier" className="btn-secondary inline-block !px-3 !py-1 text-xs">
-                    View Courier Records
                   </Link>
                 )}
               </div>
