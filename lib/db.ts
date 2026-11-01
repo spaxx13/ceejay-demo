@@ -217,6 +217,24 @@ export function homeServiceBranchId(
   return tech?.branchIds[0] ?? storedBranchId;
 }
 
+// The branch a service_agreements row should be matched/scoped against for
+// Sales — only a home-service/Pickup & Delivery one (requestId set) needs
+// homeServiceBranchId's re-resolution, since its branchId is the same
+// one-time technician-branch snapshot that goes stale the moment the
+// technician is reassigned. A walk-in/POS agreement (repairRecordId set
+// instead) picks its branch directly at submission time and never goes
+// stale this way, so its stored branchId is used as-is. Every Sales page
+// that filters/groups agreements by branch should go through this rather
+// than compare a.branchId directly, or a reassigned technician's older jobs
+// silently vanish from their old branch's card without showing up on the
+// new one either (they're still filtered against the stale stored id).
+export function agreementBranchId(
+  a: Pick<ServiceAgreement, "requestId" | "technicianId" | "branchId">,
+  technicians: Pick<Technician, "id" | "branchIds">[]
+): string | null {
+  return a.requestId ? homeServiceBranchId(a.technicianId, a.branchId, technicians) : a.branchId;
+}
+
 // Repair records and service agreements only ever store the technician's
 // *name* (no technician_id FK), so this is the one place that turns a raw
 // name into that technician's configured earnings share — every Sales

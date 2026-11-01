@@ -15,6 +15,7 @@ import {
   canViewAllBranchSales,
   technicianSharePercent,
   canonicalTechnicianName,
+  agreementBranchId,
 } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import SalesTabs from "@/components/SalesTabs";
@@ -57,7 +58,11 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
   // page and Sales > Home Service already use, so that figure can't drift
   // from either of those.
   const posSales = repairRecords.filter((r) => !r.cancelled && inRange(r.serviceDate) && !isBranchHidden(user, r.branchId));
-  const visibleAgreements = agreements.filter((a) => !isBranchHidden(user, a.branchId));
+  // agreementBranchId, not raw a.branchId — a home-service agreement's
+  // stored branchId is a one-time snapshot that goes stale the moment the
+  // technician is reassigned; comparing against it directly would hide a
+  // reassigned technician's older jobs from every branch's scoping below.
+  const visibleAgreements = agreements.filter((a) => !isBranchHidden(user, agreementBranchId(a, technicians)));
 
   // Every figure on this page is built the same way, bottom-up:
   //   1. Each technician's own Net Profit = their revenue minus their own
@@ -265,7 +270,7 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
     // helpers as the Requests page's "Home Service Sales — Today" card, so
     // this can't disagree with that figure or with Sales > Home Service.
     const homeServiceTechnicians = homeServiceSalesByTechnician(
-      visibleAgreements.filter((a) => a.branchId === r.branchId),
+      visibleAgreements.filter((a) => agreementBranchId(a, allTechnicians) === r.branchId),
       inRange,
       requests,
       allTechnicians
@@ -275,7 +280,7 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
     // (the checklist's branch), so its split lands here too, kept in
     // its own section so it never mixes with Home Service.
     const pickupDeliveryTechnicians = pickupDeliverySalesByTechnician(
-      visibleAgreements.filter((a) => a.branchId === r.branchId),
+      visibleAgreements.filter((a) => agreementBranchId(a, allTechnicians) === r.branchId),
       inRange,
       requests,
       allTechnicians
@@ -377,14 +382,14 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
   const homeServiceQueueBranches = allBranches.filter((b) => !isBranchHidden(user, b.id) && !b.address && b.active);
   const queueHomeServiceCards = homeServiceQueueBranches.map((b) => {
     const homeServiceTechnicians = homeServiceSalesByTechnician(
-      visibleAgreements.filter((a) => a.branchId === b.id),
+      visibleAgreements.filter((a) => agreementBranchId(a, technicians) === b.id),
       inRange,
       requests,
       technicians
     );
     const homeService = sumHomeServiceSales(homeServiceTechnicians);
     const pickupDeliveryTechnicians = pickupDeliverySalesByTechnician(
-      visibleAgreements.filter((a) => a.branchId === b.id),
+      visibleAgreements.filter((a) => agreementBranchId(a, technicians) === b.id),
       inRange,
       requests,
       technicians
