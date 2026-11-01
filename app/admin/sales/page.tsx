@@ -62,7 +62,11 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
   // stored branchId is a one-time snapshot that goes stale the moment the
   // technician is reassigned; comparing against it directly would hide a
   // reassigned technician's older jobs from every branch's scoping below.
-  const visibleAgreements = agreements.filter((a) => !isBranchHidden(user, agreementBranchId(a, technicians)));
+  // Passing homeServiceQueueBranchIds here too, so a technician who's both
+  // based at a real branch AND on the Home Service roster isn't gated out
+  // of a branch-restricted admin's queue-only view just because their real
+  // branch happens to be listed first on their account.
+  const visibleAgreements = agreements.filter((a) => !isBranchHidden(user, agreementBranchId(a, technicians, homeServiceQueueBranchIds)));
 
   // Every figure on this page is built the same way, bottom-up:
   //   1. Each technician's own Net Profit = their revenue minus their own
@@ -269,8 +273,12 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
     // Home Service for this branch — grouped/summed with the exact same
     // helpers as the Requests page's "Home Service Sales — Today" card, so
     // this can't disagree with that figure or with Sales > Home Service.
+    // homeServiceQueueBranchIds here too, so a technician based at this
+    // real branch who's ALSO on the Home Service roster doesn't have their
+    // home service jobs land here instead of on the actual Home Service
+    // queue card below.
     const homeServiceTechnicians = homeServiceSalesByTechnician(
-      visibleAgreements.filter((a) => agreementBranchId(a, allTechnicians) === r.branchId),
+      visibleAgreements.filter((a) => agreementBranchId(a, allTechnicians, homeServiceQueueBranchIds) === r.branchId),
       inRange,
       requests,
       allTechnicians
@@ -382,7 +390,7 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
   const homeServiceQueueBranches = allBranches.filter((b) => !isBranchHidden(user, b.id) && !b.address && b.active);
   const queueHomeServiceCards = homeServiceQueueBranches.map((b) => {
     const homeServiceTechnicians = homeServiceSalesByTechnician(
-      visibleAgreements.filter((a) => agreementBranchId(a, technicians) === b.id),
+      visibleAgreements.filter((a) => agreementBranchId(a, technicians, homeServiceQueueBranchIds) === b.id),
       inRange,
       requests,
       technicians

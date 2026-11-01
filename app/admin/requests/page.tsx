@@ -141,11 +141,16 @@ export default async function RequestsPage({
   // Branch-scoped the same way visibleRequests above is, via agreementBranchId
   // rather than the agreement's raw (and potentially stale, once a
   // technician's reassigned) branchId, so this card never disagrees with
-  // what the rest of this page already shows this admin.
-  const visibleAgreements = agreements.filter((a) => !isBranchHidden(user, agreementBranchId(a, technicians)));
+  // what the rest of this page already shows this admin. allQueueBranchIds
+  // (every queue branch, not just ones visible to this admin) lets
+  // agreementBranchId correctly prefer a technician's queue branch over a
+  // real one they're also based at, regardless of which of the two this
+  // admin happens to be able to see.
+  const allQueueBranchIds = branches.filter((b) => b.homeServiceQueue !== null).map((b) => b.id);
+  const visibleAgreements = agreements.filter((a) => !isBranchHidden(user, agreementBranchId(a, technicians, allQueueBranchIds)));
   const salesRows = homeServiceSalesByTechnician(visibleAgreements, (date) => date === todayStr, allRequests, technicians);
   const salesTotal = sumHomeServiceSales(salesRows);
-  const homeServiceQueueBranchIds = branches.filter((b) => b.homeServiceQueue !== null && !isBranchHidden(user, b.id)).map((b) => b.id);
+  const homeServiceQueueBranchIds = allQueueBranchIds.filter((id) => !isBranchHidden(user, id));
   const salesBusinessExpenses = homeServiceBusinessExpenses(expenses, (date) => date === todayStr, homeServiceQueueBranchIds);
 
   function labelFor(id: string | null, list: { id: string; label?: string; name?: string }[]) {
