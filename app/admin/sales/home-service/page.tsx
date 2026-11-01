@@ -52,15 +52,20 @@ export default async function HomeServiceSalesPage({ searchParams }: { searchPar
   // vs far — not the one-time snapshot stored on the agreement, which goes
   // stale the moment a technician is reassigned) same as the Branch Sales
   // page's queueHomeServiceCards, so an admin restricted to one queue never
-  // sees the other queue's technicians or revenue here.
-  const visibleAgreements = agreements.filter((a) => !isBranchHidden(user, agreementBranchId(a, technicians)));
+  // sees the other queue's technicians or revenue here. allQueueBranchIds
+  // (unscoped by this admin's own visibility) is only for picking out which
+  // of a technician's branches is a queue one — a tech who's also based at
+  // a real branch shouldn't have their home service work resolve to that
+  // real branch just because it's visible and the queue branch isn't.
+  const allQueueBranchIds = branches.filter((b) => b.homeServiceQueue !== null).map((b) => b.id);
+  const visibleAgreements = agreements.filter((a) => !isBranchHidden(user, agreementBranchId(a, technicians, allQueueBranchIds)));
   const rows = homeServiceSalesByTechnician(visibleAgreements, inRange, requests, technicians);
   const grandTotal = sumHomeServiceSales(rows);
   // "Owner's Final Total Sales" expenses logged against a Home Service queue
   // branch (Sales > Expenses, Branch = Home Service) — deducted here since
   // this is the one place that figure has anywhere to land. Scoped to only
   // the queue branch(es) this admin can see, same as the rows above.
-  const homeServiceQueueBranchIds = branches.filter((b) => b.homeServiceQueue !== null && !isBranchHidden(user, b.id)).map((b) => b.id);
+  const homeServiceQueueBranchIds = allQueueBranchIds.filter((id) => !isBranchHidden(user, id));
   const businessExpenses = homeServiceBusinessExpenses(expenses, inRange, homeServiceQueueBranchIds);
   const businessShareNet = grandTotal.companyShare - businessExpenses;
 

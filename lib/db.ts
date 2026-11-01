@@ -208,13 +208,27 @@ export function canDeleteHomeServiceRequests(user: Pick<User, "role" | "canDelet
 // branch instead, falling back to the stored value only when there's no
 // assigned technician (or the technician record itself has no branch) to
 // resolve from.
+//
+// queueBranchIds (optional): when given, and the technician is assigned to
+// more than one branch (e.g. based at a real branch for walk-ins, but also
+// on the Home Service dispatch roster), prefer whichever of their branches
+// is actually a Home Service queue branch over branchIds[0] — otherwise a
+// technician whose real branch happens to be listed first has every home
+// service job they complete misattributed to that real branch's card
+// instead of Home Service's, even though the job itself was dispatched
+// through the queue. Pass this only for a purely on_site context (every
+// caller that feeds homeServiceSalesByTechnician exclusively) — Pickup &
+// Delivery jobs are still repaired at a real branch, not a queue one, so
+// they should keep resolving to branchIds[0] as before.
 export function homeServiceBranchId(
   assignedTechnicianId: string | null,
   storedBranchId: string | null,
-  technicians: Pick<Technician, "id" | "branchIds">[]
+  technicians: Pick<Technician, "id" | "branchIds">[],
+  queueBranchIds: readonly string[] = []
 ) {
   const tech = assignedTechnicianId ? technicians.find((t) => t.id === assignedTechnicianId) : undefined;
-  return tech?.branchIds[0] ?? storedBranchId;
+  if (!tech) return storedBranchId;
+  return tech.branchIds.find((id) => queueBranchIds.includes(id)) ?? tech.branchIds[0] ?? storedBranchId;
 }
 
 // The branch a service_agreements row should be matched/scoped against for
@@ -228,11 +242,14 @@ export function homeServiceBranchId(
 // than compare a.branchId directly, or a reassigned technician's older jobs
 // silently vanish from their old branch's card without showing up on the
 // new one either (they're still filtered against the stale stored id).
+// See homeServiceBranchId's queueBranchIds doc — only pass it through for a
+// purely on_site (Home Service) context.
 export function agreementBranchId(
   a: Pick<ServiceAgreement, "requestId" | "technicianId" | "branchId">,
-  technicians: Pick<Technician, "id" | "branchIds">[]
+  technicians: Pick<Technician, "id" | "branchIds">[],
+  queueBranchIds: readonly string[] = []
 ): string | null {
-  return a.requestId ? homeServiceBranchId(a.technicianId, a.branchId, technicians) : a.branchId;
+  return a.requestId ? homeServiceBranchId(a.technicianId, a.branchId, technicians, queueBranchIds) : a.branchId;
 }
 
 // Repair records and service agreements only ever store the technician's
