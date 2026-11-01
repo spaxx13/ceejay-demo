@@ -9,6 +9,7 @@ const TABS = [
   { href: "/admin/sales/technicians", label: "By Technician" },
   { href: "/admin/sales/home-service", label: "Home Service" },
   { href: "/admin/sales/pickup-delivery", label: "Pickup & Delivery", pickupDeliveryGated: true },
+  { href: "/admin/sales/courier", label: "Courier Service", courierGated: true },
   { href: "/admin/sales/materials", label: "Parts/Material Cost" },
   { href: "/admin/sales/expenses", label: "Expenses" },
   { href: "/admin/sales/bir-records", label: "BIR Records", ownerOnly: true },
@@ -16,15 +17,17 @@ const TABS = [
 
 export default function SalesTabsClient({
   canManagePickupDelivery = true,
+  canManageCourier = true,
   isOwnerAdmin = true,
 }: {
   canManagePickupDelivery?: boolean;
+  canManageCourier?: boolean;
   isOwnerAdmin?: boolean;
 }) {
   const pathname = usePathname();
-  const tabs = TABS.filter((t) => !("pickupDeliveryGated" in t && t.pickupDeliveryGated) || canManagePickupDelivery).filter(
-    (t) => !("ownerOnly" in t && t.ownerOnly) || isOwnerAdmin
-  );
+  const tabs = TABS.filter((t) => !("pickupDeliveryGated" in t && t.pickupDeliveryGated) || canManagePickupDelivery)
+    .filter((t) => !("courierGated" in t && t.courierGated) || canManageCourier)
+    .filter((t) => !("ownerOnly" in t && t.ownerOnly) || isOwnerAdmin);
 
   return (
     <div className="card !p-3">
