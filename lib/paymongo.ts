@@ -100,11 +100,14 @@ export type CheckoutSessionStatus = { id: string; paid: boolean; paymentId: stri
 // from PayMongo, this asks PayMongo directly instead of leaving the
 // customer stuck on a "pending" screen.
 //
-// NOTE: derives "paid" from a non-empty `attributes.payments` array,
-// which is how PayMongo's docs describe a completed Checkout Session —
-// worth confirming against a real sandbox response once live keys exist,
-// since exact nested field names occasionally shift between PayMongo API
-// versions.
+// A non-empty `attributes.payments` array means a payment was *attempted*
+// against this session, not that it succeeded — a failed or cancelled
+// attempt (e.g. a bank redirect that errors out before completing) still
+// shows up there with its own status. Confirmed live: a customer's failed
+// BDO attempt left a non-empty payments array, which an earlier version
+// of this function (checking only payments.length > 0) read as "paid" and
+// wrongly confirmed a booking nobody had actually paid for. Only a
+// payment whose own status is "paid" counts.
 export async function retrieveCheckoutSession(sessionId: string): Promise<CheckoutSessionStatus> {
   const res = await fetch(`${API_BASE}/checkout_sessions/${sessionId}`, {
     headers: { Authorization: authHeader() },
@@ -114,8 +117,8 @@ export async function retrieveCheckoutSession(sessionId: string): Promise<Checko
   if (!res.ok || !data?.data?.id) throw new Error(`PayMongo checkout session lookup failed (${res.status})`);
 
   const payments: Array<{ id: string; attributes?: { status?: string } }> = data.data.attributes?.payments ?? [];
-  const paidPayment = payments.find((p) => p.attributes?.status === "paid") ?? payments[0];
-  return { id: data.data.id, paid: payments.length > 0, paymentId: paidPayment?.id ?? null };
+  const paidPayment = payments.find((p) => p.attributes?.status === "paid");
+  return { id: data.data.id, paid: !!paidPayment, paymentId: paidPayment?.id ?? null };
 }
 
 // Verifies PayMongo's `Paymongo-Signature` header: `t=<unix ts>,te=<test
