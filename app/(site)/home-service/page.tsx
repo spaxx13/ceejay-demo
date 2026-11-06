@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import HomeServiceVideo from "@/components/site/HomeServiceVideo";
 import HomeServiceForm from "@/components/HomeServiceForm";
 import InstantQuote from "@/components/site/InstantQuote";
+import AppStoreButton from "@/components/site/AppStoreButton";
 import { HOME_SERVICE_VIDEO_URL } from "@/lib/homeServiceVideo";
 import { getLookups, getDeviceModels, getRequestFormContent, getCustomFormFields } from "@/lib/db";
 import { smsConfigured } from "@/lib/sms";
@@ -68,6 +69,9 @@ export default async function HomeServiceLandingPage() {
               <li key={b}>✓ {b}</li>
             ))}
           </ul>
+          <div className="mt-6 flex justify-center">
+            <AppStoreButton />
+          </div>
         </div>
       </section>
 
