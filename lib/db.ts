@@ -1149,6 +1149,25 @@ export async function claimHomeServiceDownpaymentAsPaid(token: string, paymongoP
 export async function getRequestsByBookingGroup(groupId: string) {
   return (await query<RequestRow>("select * from home_service_requests where booking_group_id = $1", [groupId])).map(mapRequest);
 }
+
+// Whether `req` is the device that should actually be billed its booking's
+// visit fee — the earliest-submitted (lowest reference) device in its
+// booking_group_id. A multi-device on-site booking is one technician visit
+// to one address, so the fee is owed once, not once per device; every
+// sibling device bills ₱0 for it (requestServiceFee in
+// lib/homeServiceFees.ts). Compares against every request that ever shared
+// this group, trashed ones included — a later-cancelled first device
+// doesn't shift the fee onto whichever device happens to survive. Scoped
+// to on_site only: Pickup & Delivery's fee/down-payment lifecycle is
+// different enough (paid at delivery, not via a technician checklist the
+// same way) that it's left untouched here — always "first" for it.
+export async function isFirstHomeServiceBookingInGroup(
+  req: Pick<HomeServiceRequest, "id" | "reference" | "bookingGroupId" | "fulfillmentMode">
+): Promise<boolean> {
+  if (req.fulfillmentMode === "pickup_delivery" || !req.bookingGroupId) return true;
+  const siblings = await getRequestsByBookingGroup(req.bookingGroupId);
+  return !siblings.some((s) => s.id !== req.id && s.reference < req.reference);
+}
 // The customer app's "My Bookings" dashboard — every request (any
 // fulfillment mode, any status) that belongs to this customer, newest
 // first. Excludes trashed rows the same way getRequests() does; a deleted

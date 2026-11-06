@@ -136,8 +136,12 @@ class Writer {
   }
 
   // Shop logo top-left, branch/home-service contact numbers top-right,
-  // both anchored to the same top edge, followed by a rule.
-  header(reference: string, subtitle: string) {
+  // both anchored to the same top edge, followed by a rule. contactLines
+  // defaults to every branch — generateQuotationPdf's on-site (home
+  // service) quotation passes just the Home Service line instead, since a
+  // home-visit customer never goes to Cubao/Greenhills/Malolos and listing
+  // them there was confusing.
+  header(reference: string, subtitle: string, contactLines: readonly (readonly [string, string])[] = CONTACT_LINES) {
     const logoH = 46;
     const logoScale = logoH / this.logoImg.height;
     const logoW = this.logoImg.width * logoScale;
@@ -147,14 +151,14 @@ class Writer {
     const contactSize = 8.5;
     const lineHeight = 11;
     let cy = topY - 2;
-    for (const [label, number] of CONTACT_LINES) {
+    for (const [label, number] of contactLines) {
       const text = `${label}: ${number}`;
       const textWidth = this.font.widthOfTextAtSize(text, contactSize);
       this.page.drawText(text, { x: MARGIN + CONTENT_W - textWidth, y: cy - contactSize, size: contactSize, font: this.font, color: MUTED });
       cy -= lineHeight;
     }
 
-    this.y = topY - Math.max(logoH, lineHeight * CONTACT_LINES.length + 4) - 8;
+    this.y = topY - Math.max(logoH, lineHeight * contactLines.length + 4) - 8;
     this.page.drawLine({ start: { x: MARGIN, y: this.y }, end: { x: MARGIN + CONTENT_W, y: this.y }, thickness: 0.75, color: RULE });
     this.y -= 14;
 
@@ -462,7 +466,11 @@ export async function generateQuotationPdf(opts: {
   const feeLabel = pickupDelivery ? "Booking, Diagnostic & Delivery Fee" : "Service Fee (one visit)";
 
   const title = pickupDelivery ? "Pickup & Delivery Quotation" : "Repair Quotation";
-  w.header(opts.referenceList, opts.devices.length > 1 ? `${title} (Multiple Devices)` : title);
+  // On-site (home service) customers are visited at their own address, not
+  // at a branch — only the Home Service line is relevant to them.
+  // Pickup & Delivery still shows every branch's number, since the device
+  // ends up at one of them for repair.
+  w.header(opts.referenceList, opts.devices.length > 1 ? `${title} (Multiple Devices)` : title, pickupDelivery ? undefined : [CONTACT_LINES[0]]);
 
   w.heading("Request Details");
   w.row("Customer Name", opts.customerName, { boldValue: true });

@@ -40,6 +40,7 @@ import {
   getRequestById,
   getRequestsByConfirmationToken,
   getRequestsByBookingGroup,
+  isFirstHomeServiceBookingInGroup,
   getRepairRecordById,
   getServiceAgreements,
   getServiceAgreementsForRequest,
@@ -4875,8 +4876,9 @@ export async function submitChecklist(_prev: SubmitChecklistResult | undefined, 
       // "Repair Price + labor_cost" as the customer's Total Amount. Never
       // taken from the form: the technician only types the Repair Price and
       // the internal Parts/Material Cost. Other Expenses isn't collected on
-      // this flow at all.
-      laborCost = requestServiceFee(req!);
+      // this flow at all. ₱0 for every device after the first in a
+      // multi-device on-site booking — one visit, one fee.
+      laborCost = requestServiceFee(req!, await isFirstHomeServiceBookingInGroup(req!));
       otherExpenses = 0;
     }
   }
@@ -5092,7 +5094,7 @@ export async function updateAgreementPrice(
   }
 
   const cost = Math.max(0, Number(str(formData, "cost")) || 0);
-  const laborCost = requestServiceFee(req);
+  const laborCost = requestServiceFee(req, await isFirstHomeServiceBookingInGroup(req));
   const partsCost = Math.max(0, Number(str(formData, "partsCost")) || 0);
 
   await query("update service_agreements set cost=$1, labor_cost=$2, parts_cost=$3, price_edit_count=price_edit_count+1 where id=$4", [
@@ -5151,7 +5153,7 @@ export async function updateAgreementPriceAdmin(
   if (hidden) return { ok: false, error: "You don't have access to this request." };
 
   const cost = Math.max(0, Number(str(formData, "cost")) || 0);
-  const laborCost = requestServiceFee(req);
+  const laborCost = requestServiceFee(req, await isFirstHomeServiceBookingInGroup(req));
   const partsCost = Math.max(0, Number(str(formData, "partsCost")) || 0);
 
   await query("update service_agreements set cost=$1, labor_cost=$2, parts_cost=$3 where id=$4", [cost, laborCost, partsCost, agreementId]);
@@ -5198,7 +5200,7 @@ export async function createAgreementPriceAdmin(
 
   const cost = Math.max(0, Number(str(formData, "cost")) || 0);
   const partsCost = Math.max(0, Number(str(formData, "partsCost")) || 0);
-  const laborCost = requestServiceFee(req);
+  const laborCost = requestServiceFee(req, await isFirstHomeServiceBookingInGroup(req));
 
   const technicians = await getTechnicians();
   const technician = technicians.find((t) => t.id === req.assignedTechnicianId);
