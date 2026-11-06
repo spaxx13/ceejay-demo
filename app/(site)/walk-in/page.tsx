@@ -1,4 +1,5 @@
 import { getBranches, getLookups, getDeviceModels } from "@/lib/db";
+import FormAppPromo from "@/components/site/FormAppPromo";
 import { emailConfigured } from "@/lib/email";
 import WalkInForm from "@/components/site/WalkInForm";
 
@@ -22,6 +23,7 @@ export default async function WalkInPage() {
 
   return (
     <main className="grid-bg px-4 py-14 sm:px-6">
+      <FormAppPromo />
       <div className="mx-auto max-w-xl">
         <div className="text-center">
           <p className="kicker">Visit a Branch</p>

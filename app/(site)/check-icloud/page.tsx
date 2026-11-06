@@ -1,10 +1,12 @@
 import IcloudCheckForm from "@/components/IcloudCheckForm";
+import FormAppPromo from "@/components/site/FormAppPromo";
 import { ICLOUD_CHECK_PRICE_PESOS } from "@/lib/config";
 
 export default function CheckIcloudPage() {
   return (
     <main>
       <section className="grid-bg px-4 py-14 text-center sm:px-6">
+        <FormAppPromo />
         <p className="kicker">iCloud Status Check</p>
         <h1 className="mt-1 text-3xl font-bold text-slate-900 sm:text-4xl">Check if Find My iPhone is ON or OFF</h1>
         <p className="mx-auto mt-4 max-w-2xl text-sm text-slate-400 sm:text-base">

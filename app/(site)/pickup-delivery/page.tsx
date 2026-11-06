@@ -1,4 +1,5 @@
 import Link from "next/link";
+import FormAppPromo from "@/components/site/FormAppPromo";
 import { getLookups, getDeviceModels, getRequestFormContent, getCustomFormFields, getBranches, canManagePickupDelivery } from "@/lib/db";
 import { PICKUP_DELIVERY_PUBLIC_ENABLED, PICKUP_DELIVERY_SKIP_OTP } from "@/lib/config";
 import { getCurrentUser } from "@/lib/auth";
@@ -45,6 +46,7 @@ async function OptionChooser() {
   const riderAvailable = PICKUP_DELIVERY_PUBLIC_ENABLED || staffPreview;
   return (
     <main className="grid-bg px-4 py-10 sm:px-6">
+      <FormAppPromo />
       <div className="mx-auto max-w-xl space-y-6">
         <div className="text-center">
           <p className="kicker">Pickup &amp; Delivery</p>
@@ -111,6 +113,7 @@ async function BookYourOwnOption() {
 
   return (
     <main className="grid-bg px-4 py-10 sm:px-6">
+      <FormAppPromo />
       <div className="mx-auto max-w-xl space-y-6">
         <div className="text-center">
           <p className="kicker">Pickup &amp; Delivery · Option 2</p>
@@ -167,6 +170,7 @@ async function RiderOption() {
   if (!PICKUP_DELIVERY_PUBLIC_ENABLED && !staffPreview) {
     return (
       <main className="grid-bg px-4 py-16 sm:px-6">
+        <FormAppPromo />
         <div className="mx-auto max-w-xl space-y-4 text-center">
           <p className="kicker">Pickup &amp; Delivery</p>
           <h1 className="text-3xl font-bold text-slate-900">Coming Soon</h1>
@@ -203,6 +207,7 @@ async function RiderOption() {
   if (!content.nearAreaEnabled) {
     return (
       <main className="grid-bg px-4 py-16 sm:px-6">
+        <FormAppPromo />
         <div className="mx-auto max-w-xl space-y-4 text-center">
           <p className="kicker">Pickup &amp; Delivery</p>
           <h1 className="text-2xl font-bold text-slate-900">Temporarily Unavailable</h1>
@@ -237,6 +242,7 @@ async function RiderOption() {
 
   return (
     <main className="grid-bg px-4 py-10 sm:px-6">
+      <FormAppPromo />
       <div className="mx-auto max-w-xl space-y-6">
         {staffPreview && (
           <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-center text-xs text-amber-800">
