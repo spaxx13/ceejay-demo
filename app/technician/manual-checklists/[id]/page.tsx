@@ -59,7 +59,9 @@ export default async function TechnicianManualChecklistDetailPage({ params }: { 
             Continue to Post-Repair →
           </Link>
         ) : (
-          <a href={`/api/manual-checklist-receipt/${record.id}`} target="_blank" rel="noopener noreferrer" className="btn-primary">
+          // No target="_blank" — see app/admin/requests/[id]/page.tsx's
+          // "View Receipt" link for why (native app WebView auth cookie).
+          <a href={`/api/manual-checklist-receipt/${record.id}`} className="btn-primary">
             View Receipt (PDF)
           </a>
         )}
