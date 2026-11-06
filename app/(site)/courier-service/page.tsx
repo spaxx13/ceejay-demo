@@ -1,4 +1,5 @@
 import Link from "next/link";
+import FormAppPromo from "@/components/site/FormAppPromo";
 import { getBranches, getLookups, getDeviceModels } from "@/lib/db";
 import CourierForm from "@/components/site/CourierForm";
 import { isCourierReceivingBranch } from "@/lib/courierService";
@@ -25,6 +26,7 @@ export default async function CourierServicePage() {
 
   return (
     <main className="grid-bg px-4 py-14 sm:px-6">
+      <FormAppPromo />
       <div className="mx-auto max-w-xl">
         <div className="text-center">
           <p className="kicker">Courier Service</p>

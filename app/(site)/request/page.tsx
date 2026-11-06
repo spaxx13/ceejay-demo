@@ -1,4 +1,5 @@
 import Link from "next/link";
+import FormAppPromo from "@/components/site/FormAppPromo";
 import { getLookups, getDeviceModels, getRequestFormContent, getCustomFormFields } from "@/lib/db";
 import HomeServiceForm from "@/components/HomeServiceForm";
 import { smsConfigured } from "@/lib/sms";
@@ -55,6 +56,7 @@ export default async function RequestPage({
   if (!area) {
     return (
       <main className="grid-bg px-4 py-10 sm:px-6">
+        <FormAppPromo />
         <div className="mx-auto max-w-xl space-y-6">
           <div className="text-center">
             <p className="kicker">Book a Home Service</p>
@@ -86,6 +88,7 @@ export default async function RequestPage({
     if (sp.chat !== "1") {
       return (
         <main className="grid-bg px-4 py-10 sm:px-6">
+          <FormAppPromo />
           <div className="mx-auto max-w-xl space-y-6">
             <div className="text-center">
               <p className="kicker">Book a Home Service</p>
@@ -117,6 +120,7 @@ export default async function RequestPage({
 
     return (
       <main className="grid-bg px-4 py-10 sm:px-6">
+        <FormAppPromo />
         <div className="mx-auto max-w-xl space-y-6 text-center">
           <div>
             <p className="kicker">Book a Home Service</p>
@@ -172,6 +176,7 @@ export default async function RequestPage({
 
   return (
     <main className="grid-bg px-4 py-10 sm:px-6">
+      <FormAppPromo />
       <div className="mx-auto max-w-xl space-y-6">
         <div className="text-center">
           <p className="kicker">{content.pageKicker}</p>
