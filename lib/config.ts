@@ -59,3 +59,9 @@ export const PICKUP_DELIVERY_SKIP_OTP =
 // override it, or to "off" to turn the Pixel off entirely.
 const META_PIXEL_ENV = process.env.NEXT_PUBLIC_META_PIXEL_ID;
 export const META_PIXEL_ID = META_PIXEL_ENV === "off" ? "" : META_PIXEL_ENV || "2115094332053907";
+
+// Public App Store listing of the Ceejay customer app. Set
+// NEXT_PUBLIC_APP_STORE_URL (e.g. https://apps.apple.com/ph/app/ceejay/id1234567890)
+// to show the "Download on the App Store" buttons on the public site;
+// while unset, they stay hidden.
+export const APP_STORE_URL = process.env.NEXT_PUBLIC_APP_STORE_URL || "";

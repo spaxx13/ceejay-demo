@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getSiteContent, getLookups, getBranches } from "@/lib/db";
-import { PICKUP_DELIVERY_PUBLIC_ENABLED } from "@/lib/config";
+import { PICKUP_DELIVERY_PUBLIC_ENABLED, APP_STORE_URL } from "@/lib/config";
+import AppStoreButton from "@/components/site/AppStoreButton";
 import InShopIllustration from "@/components/site/InShopIllustration";
 import HomeServiceIllustration from "@/components/site/HomeServiceIllustration";
 import PickupDeliveryIllustration from "@/components/site/PickupDeliveryIllustration";
@@ -71,7 +72,8 @@ export default async function HomePage() {
             {sc.heroHeadlinePrefix} <span className="brand-gradient-text">{sc.heroHeadlineHighlight}</span> {sc.heroHeadlineSuffix}
           </h1>
           <p className="mx-auto mt-4 max-w-xl text-sm text-slate-400 sm:text-base">{sc.heroSubtext}</p>
-          <div className="mt-8 flex justify-center">
+          <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
+            <AppStoreButton />
             <Link href="/branches" className="btn-secondary">
               {sc.secondaryCtaLabel}
             </Link>
@@ -197,6 +199,19 @@ export default async function HomePage() {
           ))}
         </div>
       </section>
+
+      {APP_STORE_URL && (
+        <section className="px-4 pb-4 sm:px-6">
+          <div className="card mx-auto flex max-w-4xl flex-col items-center gap-4 text-center sm:flex-row sm:justify-between sm:text-left">
+            <div>
+              <p className="kicker">Get the App</p>
+              <p className="mt-1 text-lg font-semibold text-slate-800">Download the Ceejay app on your iPhone</p>
+              <p className="mt-1 text-sm text-slate-400">Book repairs, track your device live, and get status updates right from your phone.</p>
+            </div>
+            <AppStoreButton className="shrink-0" />
+          </div>
+        </section>
+      )}
 
       <section className="space-y-4 px-4 pb-20 sm:px-6">
         <div className="card mx-auto flex max-w-4xl flex-col items-center gap-4 text-center sm:flex-row sm:justify-between sm:text-left">

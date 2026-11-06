@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getBranches } from "@/lib/db";
 import { PICKUP_DELIVERY_PUBLIC_ENABLED } from "@/lib/config";
+import AppStoreButton from "@/components/site/AppStoreButton";
 import Logo from "@/components/Logo";
 
 export default async function SiteFooter() {
@@ -17,6 +18,7 @@ export default async function SiteFooter() {
           <p className="text-sm text-slate-400">
             Apple specialists and multi-brand device repair — in-branch or at your doorstep.
           </p>
+          <AppStoreButton className="mt-2" />
         </div>
 
         <div className="space-y-2">
