@@ -45,15 +45,14 @@ export type CreateCheckoutSessionInput = {
   amountPesos: number;
   description: string;
   lineItemName: string;
-  // defaults to gcash+card. "dob"/"brankas" enable Direct Online Banking
-  // (bank redirect) — per PayMongo's own docs, "dob" covers BPI/UnionBank
-  // and "brankas" covers BDO/Landbank/Metrobank (RCBC's grouping is
-  // inconsistent across PayMongo's own pages) — but this sandbox can't
-  // reach PayMongo's docs to confirm the exact Checkout Session enum
-  // (vs. Payment Intent, which may differ), so treat this as a
-  // best-effort value to verify against a real checkout session before
-  // trusting it in production.
-  paymentMethodTypes?: ("gcash" | "card" | "qrph" | "dob" | "brankas")[];
+  // defaults to gcash+card. Bank redirect options, confirmed against a
+  // real checkout session (the plain "brankas" this used to list was
+  // silently ignored by PayMongo — no error, it just never showed up):
+  // "dob" is BPI only, UnionBank needs its own "dob_ubp", and each
+  // Brankas-backed bank needs its own "brankas_<bank>" code — no combined
+  // "brankas" value exists. No confirmed code for RCBC despite it showing
+  // Active on the PayMongo dashboard; leave it out until one turns up.
+  paymentMethodTypes?: ("gcash" | "card" | "qrph" | "dob" | "dob_ubp" | "brankas_bdo" | "brankas_landbank" | "brankas_metrobank")[];
   successUrl: string;
   cancelUrl: string;
 };

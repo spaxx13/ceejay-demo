@@ -120,8 +120,8 @@ export default async function ConfirmBookingPage({
             <>
               <p className="text-sm text-slate-400">
                 {isPickupDelivery
-                  ? `Pickup & Delivery bookings require a ${peso(reqs[0].downpaymentAmount ?? 0)} down payment via QR Ph before we can confirm your booking and assign a rider. It counts toward your Booking, Diagnostic & Delivery Fee — the remaining balance is paid together with the repair cost when your device is delivered back to you.`
-                  : `Home Service bookings in your area require a ${peso(reqs[0].downpaymentAmount ?? 0)} down payment via QR Ph before we can confirm your booking${reqs.length > 1 ? "s" : ""}.`}{" "}
+                  ? `Pickup & Delivery bookings require a ${peso(reqs[0].downpaymentAmount ?? 0)} down payment before we can confirm your booking and assign a rider. It counts toward your Booking, Diagnostic & Delivery Fee — the remaining balance is paid together with the repair cost when your device is delivered back to you.`
+                  : `Home Service bookings in your area require a ${peso(reqs[0].downpaymentAmount ?? 0)} down payment before we can confirm your booking${reqs.length > 1 ? "s" : ""}.`}{" "}
                 Unconfirmed bookings are automatically cancelled after the confirmation window.
               </p>
               {reqs[0].paymongoCheckoutUrl ? (
@@ -131,7 +131,7 @@ export default async function ConfirmBookingPage({
               ) : (
                 <form action={payDownpayment}>
                   <button type="submit" className="btn-primary w-full">
-                    Pay Down Payment via QR Ph ({peso(reqs[0].downpaymentAmount ?? 0)})
+                    Pay Down Payment ({peso(reqs[0].downpaymentAmount ?? 0)})
                   </button>
                 </form>
               )}
