@@ -60,8 +60,9 @@ export const PICKUP_DELIVERY_SKIP_OTP =
 const META_PIXEL_ENV = process.env.NEXT_PUBLIC_META_PIXEL_ID;
 export const META_PIXEL_ID = META_PIXEL_ENV === "off" ? "" : META_PIXEL_ENV || "2115094332053907";
 
-// Public App Store listing of the Ceejay customer app. Set
-// NEXT_PUBLIC_APP_STORE_URL (e.g. https://apps.apple.com/ph/app/ceejay/id1234567890)
-// to show the "Download on the App Store" buttons on the public site;
-// while unset, they stay hidden.
-export const APP_STORE_URL = process.env.NEXT_PUBLIC_APP_STORE_URL || "";
+// Public App Store listing of the Ceejay customer app, shown as "Download on
+// the App Store" buttons on the public site. NEXT_PUBLIC_APP_STORE_URL can
+// override it per environment (set it empty-string-free; unset uses the live
+// listing).
+export const APP_STORE_URL =
+  process.env.NEXT_PUBLIC_APP_STORE_URL || "https://apps.apple.com/ph/app/ceejay-repair/id6816708147";
