@@ -514,12 +514,13 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
           <h3 className="text-sm font-semibold text-slate-800">Receipt</h3>
           <p className="text-xs text-slate-500">The same PDF receipt that was emailed to the customer.</p>
           <div className="flex flex-wrap items-center gap-2">
-            <a
-              href={`/api/admin/receipt?requestId=${req.id}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="btn-secondary !px-3 !py-1.5 text-xs"
-            >
+            {/* No target="_blank" — the native Ceejay Admin app's WebView
+                sends any target="_blank" link straight to the system
+                browser, which has no cookies, so the receipt's auth check
+                fails with "Unauthorized" there. Same-tab navigation stays
+                in the app's own WebView (session cookie intact) and still
+                opens the PDF inline on desktop browsers. */}
+            <a href={`/api/admin/receipt?requestId=${req.id}`} className="btn-secondary !px-3 !py-1.5 text-xs">
               View Receipt
             </a>
             <ResendReceiptButton target={{ type: "request", id: req.id }} email={req.email} />
