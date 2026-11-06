@@ -1,5 +1,4 @@
 import { getLookups, getDeviceModels, getBranches } from "@/lib/db";
-import FormAppPromo from "@/components/site/FormAppPromo";
 import QuoteForm from "@/components/site/QuoteForm";
 
 export default async function QuotePage() {
@@ -24,7 +23,6 @@ export default async function QuotePage() {
 
   return (
     <main className="grid-bg px-4 py-14 sm:px-6">
-      <FormAppPromo />
       <div className="mx-auto max-w-xl">
         <div className="text-center">
           <p className="kicker">Get a Quote</p>

@@ -1,5 +1,4 @@
 import { getBranches } from "@/lib/db";
-import FormAppPromo from "@/components/site/FormAppPromo";
 import ContactForm from "@/components/site/ContactForm";
 
 export default async function ContactPage() {
@@ -10,7 +9,6 @@ export default async function ContactPage() {
 
   return (
     <main className="grid-bg px-4 py-14 sm:px-6">
-      <FormAppPromo />
       <div className="mx-auto max-w-5xl">
         <div className="text-center">
           <p className="kicker">Get In Touch</p>
