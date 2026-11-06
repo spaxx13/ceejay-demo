@@ -296,14 +296,27 @@ export function pickupDeliveryFeeSummary(req: {
   return { fee, paid, balance: Math.max(0, fee - paid) };
 }
 
-export function requestServiceFee(req: {
-  province: string;
-  city: string;
-  serviceFeeWaived: boolean;
-  fulfillmentMode: "on_site" | "pickup_delivery";
-  pickupDeliveryFeePesos?: number | null;
-  downpaymentAmount?: number | null;
-}): number {
-  if (req.serviceFeeWaived) return 0;
+// isFirstInBookingGroup (default true — every single-device booking is
+// trivially "first"): a multi-device on-site booking is one technician
+// visit to one address, so the visit fee is billed once, not once per
+// device — only the earliest-submitted device in the booking_group_id
+// actually owes it; every sibling device passes false here and bills ₱0,
+// same as a waived fee. Callers resolve this via
+// isFirstHomeServiceBookingInGroup (lib/db.ts), which already only applies
+// it to on_site bookings — pass the default for every other caller
+// (Pickup & Delivery's own fee math, or anywhere else this is just the
+// request's own sticker price regardless of booking siblings).
+export function requestServiceFee(
+  req: {
+    province: string;
+    city: string;
+    serviceFeeWaived: boolean;
+    fulfillmentMode: "on_site" | "pickup_delivery";
+    pickupDeliveryFeePesos?: number | null;
+    downpaymentAmount?: number | null;
+  },
+  isFirstInBookingGroup: boolean = true
+): number {
+  if (req.serviceFeeWaived || !isFirstInBookingGroup) return 0;
   return quotedServiceFee(req);
 }
