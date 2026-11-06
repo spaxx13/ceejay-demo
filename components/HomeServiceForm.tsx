@@ -391,8 +391,8 @@ export default function HomeServiceForm({
             </p>
             <p className="mt-1">
               {mode === "pickup_delivery"
-                ? `Pickup & Delivery bookings require a ₱${(state.downpaymentAmount ?? 0).toLocaleString()}.00 down payment via QR Ph before we can confirm your booking and assign a rider. It counts toward your ${state.quotation?.serviceFee ? `₱${state.quotation.serviceFee.toLocaleString()}.00 ` : ""}Booking, Diagnostic & Delivery Fee (pickup, diagnosis, and delivery back to you) — the remaining balance is paid together with the repair cost when your device is delivered back to you.`
-                : `Home Service bookings in your area require a ₱${(state.downpaymentAmount ?? 0).toLocaleString()}.00 down payment via QR Ph before we can confirm your booking.`}{" "}
+                ? `Pickup & Delivery bookings require a ₱${(state.downpaymentAmount ?? 0).toLocaleString()}.00 down payment before we can confirm your booking and assign a rider. It counts toward your ${state.quotation?.serviceFee ? `₱${state.quotation.serviceFee.toLocaleString()}.00 ` : ""}Booking, Diagnostic & Delivery Fee (pickup, diagnosis, and delivery back to you) — the remaining balance is paid together with the repair cost when your device is delivered back to you.`
+                : `Home Service bookings in your area require a ₱${(state.downpaymentAmount ?? 0).toLocaleString()}.00 down payment before we can confirm your booking.`}{" "}
               Please pay within {BOOKING_CONFIRMATION_WINDOW_MINUTES} minutes, or your request will be automatically cancelled.
             </p>
             <a href={state.confirmationUrl} className="btn-primary mt-3 inline-block">

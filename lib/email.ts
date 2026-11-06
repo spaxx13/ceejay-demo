@@ -223,7 +223,7 @@ export async function sendQuotationEmail(
       <div style="margin: 16px 0; padding: 16px; border: 2px solid #f59e0b; border-radius: 8px; background: #fffbeb;">
         <p style="font-size: 14px; font-weight: 700; color: #92400e; margin: 0 0 6px;">💳 ${peso(opts.downpaymentAmount)} down payment required to confirm your booking</p>
         <p style="font-size: 13px; color: #78350f; margin: 0; line-height: 1.5;">
-          Pay the ${peso(opts.downpaymentAmount)} down payment via QR Ph to confirm your booking and have a rider assigned.
+          Pay the ${peso(opts.downpaymentAmount)} down payment to confirm your booking and have a rider assigned.
           ${opts.serviceFee !== null && opts.serviceFee > opts.downpaymentAmount ? `It counts toward your ${peso(opts.serviceFee)} Booking, Diagnostic &amp; Delivery Fee (pickup trip, diagnosis, and delivery back to you) — the remaining ${peso(opts.serviceFee - opts.downpaymentAmount)} is paid together with the repair cost when your repaired device is delivered.` : "It covers your Booking, Diagnostic &amp; Delivery Fee."}
         </p>
       </div>
