@@ -194,7 +194,7 @@ export default async function RepairRecordDetailPage({ params }: { params: Promi
         (user?.role === "owner_admin" || user?.role === "branch_admin") &&
         (paymongoConfigured() ? (
           <div className="card space-y-2 print:hidden">
-            <h3 className="text-sm font-semibold text-slate-800">Pay Online via QR Ph</h3>
+            <h3 className="text-sm font-semibold text-slate-800">Pay Online (QR Ph / GrabPay)</h3>
             {record.qrPaymentStatus === "paid" ? (
               <p className="text-sm font-semibold text-green-700">
                 ✅ Paid online — {peso(record.qrPaymentAmount ?? 0)}
@@ -203,18 +203,18 @@ export default async function RepairRecordDetailPage({ params }: { params: Promi
             ) : (
               <>
                 <p className="text-xs text-slate-500">
-                  Generate a PayMongo QR Ph checkout for {peso(record.cost)} — show it to the customer to scan and pay online instead of
+                  Generate a PayMongo checkout for {peso(record.cost)} — the customer picks QR Ph or GrabPay to pay online instead of
                   in person.
                 </p>
                 {record.qrPaymentStatus === "pending" && record.paymongoCheckoutUrl && (
                   <a href={record.paymongoCheckoutUrl} target="_blank" rel="noreferrer" className="btn-primary block w-full text-center">
-                    Open Payment QR Page ({peso(record.qrPaymentAmount ?? record.cost)})
+                    Open Payment Page ({peso(record.qrPaymentAmount ?? record.cost)})
                   </a>
                 )}
                 <form action={startRepairRecordQrPayment}>
                   <input type="hidden" name="id" value={record.id} />
                   <button type="submit" className="btn-secondary w-full text-sm">
-                    {record.qrPaymentStatus === "pending" ? "Regenerate QR (new amount / expired)" : "Generate QR Ph Payment"}
+                    {record.qrPaymentStatus === "pending" ? "Regenerate QR (new amount / expired)" : "Generate Online Payment"}
                   </button>
                 </form>
               </>

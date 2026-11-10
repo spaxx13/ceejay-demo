@@ -2162,7 +2162,7 @@ export async function cancelRepairRecord(formData: FormData) {
   revalidatePath("/admin");
 }
 
-// Staff-triggered: generates a PayMongo QR Ph checkout for this record's
+// Staff-triggered: generates a PayMongo checkout (QR Ph or GrabPay) for this record's
 // Cost, for a customer who'd rather pay online than in person. Unlike the
 // public-facing startIcloudCheck/startHomeServiceDownpayment, this never
 // redirects the caller (an admin, not the paying customer) — it just saves
@@ -2186,7 +2186,7 @@ export async function startRepairRecordQrPayment(formData: FormData) {
       amountPesos: record.cost,
       description: `Repair payment — ${record.reference}`,
       lineItemName: "Repair Payment",
-      paymentMethodTypes: ["qrph"],
+      paymentMethodTypes: ["qrph", "grab_pay"],
       // Not used to drive any UI state (this page always re-derives status
       // from the DB, with a fallback re-verification against PayMongo
       // directly) — just needs to be a valid URL for PayMongo's checkout.
