@@ -21,7 +21,7 @@ export default function IcloudCheckForm({ pricePesos }: { pricePesos: number }) 
       <button type="submit" disabled={pending} className="btn-primary w-full">
         {pending ? "Starting payment..." : `Pay ₱${pricePesos} & Check`}
       </button>
-      <p className="text-center text-xs text-slate-400">Secure payment via GCash or card, powered by PayMongo.</p>
+      <p className="text-center text-xs text-slate-400">Secure payment via GCash, GrabPay or card, powered by PayMongo.</p>
     </form>
   );
 }

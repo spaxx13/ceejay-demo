@@ -19,7 +19,7 @@ export default function CheckIcloudPage() {
         <div className="card mt-6 space-y-2">
           <h3 className="text-sm font-semibold text-slate-800">How it works</h3>
           <ol className="list-decimal space-y-1 pl-4 text-sm text-slate-500">
-            <li>Enter the IMEI or serial number and pay ₱{ICLOUD_CHECK_PRICE_PESOS} via GCash or card.</li>
+            <li>Enter the IMEI or serial number and pay ₱{ICLOUD_CHECK_PRICE_PESOS} via GCash, GrabPay or card.</li>
             <li>Your result shows automatically once payment is confirmed — usually within seconds.</li>
             <li>This only tells you whether Find My Device is ON or OFF — it does not unlock or remove iCloud activation lock.</li>
           </ol>
