@@ -45,14 +45,14 @@ export type CreateCheckoutSessionInput = {
   amountPesos: number;
   description: string;
   lineItemName: string;
-  // defaults to gcash+card. Bank redirect options, confirmed against a
+  // defaults to gcash+grab_pay+card. Bank redirect options, confirmed against a
   // real checkout session (the plain "brankas" this used to list was
   // silently ignored by PayMongo — no error, it just never showed up):
   // "dob" is BPI only, UnionBank needs its own "dob_ubp", and each
   // Brankas-backed bank needs its own "brankas_<bank>" code — no combined
   // "brankas" value exists. No confirmed code for RCBC despite it showing
   // Active on the PayMongo dashboard; leave it out until one turns up.
-  paymentMethodTypes?: ("gcash" | "card" | "qrph" | "dob" | "dob_ubp" | "brankas_bdo" | "brankas_landbank" | "brankas_metrobank")[];
+  paymentMethodTypes?: ("gcash" | "grab_pay" | "card" | "qrph" | "dob" | "dob_ubp" | "brankas_bdo" | "brankas_landbank" | "brankas_metrobank")[];
   successUrl: string;
   cancelUrl: string;
 };
@@ -77,7 +77,7 @@ export async function createCheckoutSession(input: CreateCheckoutSessionInput): 
               quantity: 1,
             },
           ],
-          payment_method_types: input.paymentMethodTypes ?? ["gcash", "card"],
+          payment_method_types: input.paymentMethodTypes ?? ["gcash", "grab_pay", "card"],
           description: input.description,
           success_url: input.successUrl,
           cancel_url: input.cancelUrl,

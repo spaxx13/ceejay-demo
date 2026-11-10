@@ -33,7 +33,7 @@ export default function PrivacyPage() {
           <p className="mt-2">We work with the following service providers to operate Ceejay:</p>
           <ul className="mt-2 list-disc space-y-1 pl-5">
             <li>
-              <strong>PayMongo</strong> — processes online payments (GCash, cards). We do not store your full
+              <strong>PayMongo</strong> — processes online payments (GCash, GrabPay, cards). We do not store your full
               payment details ourselves.
             </li>
             <li>

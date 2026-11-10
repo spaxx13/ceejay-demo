@@ -97,7 +97,7 @@ export async function processRepairRecordQrPayment(recordId: string, paymongoPay
   const claimed = await claimRepairRecordQrPaymentAsPaid(recordId, paymongoPaymentId);
   if (claimed) {
     if (claimed.customerId) {
-      await logActivity("customer", claimed.customerId, `Repair ${claimed.reference} paid online via QR Ph (₱${claimed.qrPaymentAmount})`, "System");
+      await logActivity("customer", claimed.customerId, `Repair ${claimed.reference} paid online via PayMongo (₱${claimed.qrPaymentAmount})`, "System");
     }
     revalidatePath(`/admin/pos/${recordId}`);
     revalidatePath("/admin/pos");
