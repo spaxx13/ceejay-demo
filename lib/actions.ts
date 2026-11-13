@@ -2186,7 +2186,7 @@ export async function startRepairRecordQrPayment(formData: FormData) {
       amountPesos: record.cost,
       description: `Repair payment — ${record.reference}`,
       lineItemName: "Repair Payment",
-      paymentMethodTypes: ["qrph", "grab_pay"],
+      paymentMethodTypes: ["qrph", "gcash", "grab_pay", "paymaya", "shopee_pay"],
       // Not used to drive any UI state (this page always re-derives status
       // from the DB, with a fallback re-verification against PayMongo
       // directly) — just needs to be a valid URL for PayMongo's checkout.
@@ -3073,11 +3073,11 @@ export async function startHomeServiceDownpayment(token: string): Promise<StartH
           : `Home Service down payment — ${reqs.map((r) => r.reference).join(", ")}`,
       lineItemName:
         first.fulfillmentMode === "pickup_delivery" ? "Pickup & Delivery Booking, Diagnostic & Delivery Fee" : "Home Service Down Payment",
-      // QR Ph, GrabPay plus the now-active bank direct-debit options — BPI (dob),
+      // QR Ph, GCash, GrabPay plus the now-active bank direct-debit options — BPI (dob),
       // UnionBank (dob_ubp), and BDO/Landbank/Metrobank (their own
       // brankas_<bank> codes each) — see paymongo.ts's doc comment on this
       // field. No RCBC yet; no confirmed Checkout Session code for it.
-      paymentMethodTypes: ["qrph", "grab_pay", "dob", "dob_ubp", "brankas_bdo", "brankas_landbank", "brankas_metrobank"],
+      paymentMethodTypes: ["qrph", "gcash", "grab_pay", "paymaya", "shopee_pay", "dob", "dob_ubp", "brankas_bdo", "brankas_landbank", "brankas_metrobank", "brankas_rcbc"],
       // Both point back to the same confirm-booking page — it always
       // re-derives payment status from the DB (with a fallback
       // re-verification against PayMongo directly), never trusting the
