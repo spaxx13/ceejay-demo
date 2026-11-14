@@ -44,5 +44,5 @@ click, so you can optimise/report on them in Ads Manager:
   `NEXT_PUBLIC_PROMO_VIDEO_BOARD_URL`, `NEXT_PUBLIC_PROMO_VIDEO_REGLASS_URL` to an
   .mp4 / YouTube / Facebook video link. Missing videos are hidden automatically.
   Keep each file small (compress to ~5 MB) so it loads fast on mobile data.
-- `PromoVideoPlay` (custom Pixel event) fires when the viewer unmutes or presses play — not on the automatic muted play. Autoplay is skipped on Data Saver / reduced motion.
+- `PromoVideoPlay` (custom Pixel event) fires when the viewer unmutes or presses play — not on the automatic muted play. Autoplay is skipped on Data Saver.
 - The App Store button uses `APP_STORE_URL` in `lib/config.ts`.

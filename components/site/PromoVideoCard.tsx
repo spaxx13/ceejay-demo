@@ -8,8 +8,7 @@ import type { PromoVideo } from "@/lib/promoVideos";
 // One vertical video for /promo. Plain files autoplay muted while they are on
 // screen and pause when scrolled away (mobile browsers only allow muted
 // autoplay, and only one video plays at a time this way, which keeps data use
-// down). Autoplay is skipped for visitors on Data Saver or with reduced motion
-// — they just tap play. A tap on "I-tap para sa sound" restarts it with sound.
+// down). Autoplay is skipped for visitors on Data Saver — they just tap play. A tap on "I-tap para sa sound" restarts it with sound.
 // The Meta Pixel "PromoVideoPlay" event fires on the viewer's own interaction
 // (unmute or pressing play), not on the automatic muted play.
 export default function PromoVideoCard({ video }: { video: PromoVideo }) {
@@ -24,23 +23,43 @@ export default function PromoVideoCard({ video }: { video: PromoVideo }) {
   useEffect(() => {
     const el = videoRef.current;
     if (!isFile || !el) return;
+    // Data Saver visitors tap play instead of spending data on autoplay.
     const conn = (navigator as Navigator & { connection?: { saveData?: boolean } }).connection;
-    if (conn?.saveData || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    if (conn?.saveData) return;
+
+    // iOS Safari only autoplays when the video is muted *and* the muted
+    // attribute is really on the element (React only sets the property).
+    el.muted = true;
+    el.setAttribute("muted", "");
+    el.setAttribute("playsinline", "");
+
+    let visible = false;
+    const tryPlay = () => {
+      if (!visible || !el.paused) return;
+      autoRef.current = true;
+      void el.play().catch(() => {
+        autoRef.current = false; // blocked (e.g. iOS Low Power Mode) — retried on the first tap/touch below
+      });
+    };
     const observer = new IntersectionObserver(
       ([entry]) => {
-        if (entry.isIntersecting) {
-          autoRef.current = true;
-          void el.play().catch(() => {
-            autoRef.current = false;
-          });
-        } else {
-          el.pause();
-        }
+        visible = entry.isIntersecting;
+        if (visible) tryPlay();
+        else el.pause();
       },
       { threshold: 0.6 },
     );
     observer.observe(el);
-    return () => observer.disconnect();
+    // Some browsers (iOS Low Power Mode) refuse autoplay until the visitor has
+    // touched the page once; retry then.
+    const retry = () => tryPlay();
+    window.addEventListener("touchend", retry, { passive: true });
+    window.addEventListener("click", retry);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("touchend", retry);
+      window.removeEventListener("click", retry);
+    };
   }, [isFile]);
 
   if (failed) return null;
@@ -79,6 +98,7 @@ export default function PromoVideoCard({ video }: { video: PromoVideo }) {
             ref={videoRef}
             className={`${frame} object-cover`}
             src={source.src}
+            poster={video.poster}
             controls
             muted={muted}
             loop
