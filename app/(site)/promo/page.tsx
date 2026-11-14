@@ -51,9 +51,24 @@ const FIXES = [
   "Diagnostic checkup",
 ];
 const STEPS = [
-  ["1", "Dalhin ang phone", "Walk in sa shop — walang appointment."],
-  ["2", "Libreng diagnostic", "Sasabihin namin kung ano ang sira bago ka mag-decide."],
-  ["3", "Same-day repair", "Karamihan ng repair, tapos na the same day."],
+  {
+    title: "Dalhin ang phone",
+    body: "Walk-in lang. Walang appointment, deretso ka lang sa shop.",
+    // phone
+    icon: "M8 3h8a1.5 1.5 0 0 1 1.5 1.5v15A1.5 1.5 0 0 1 16 21H8a1.5 1.5 0 0 1-1.5-1.5v-15A1.5 1.5 0 0 1 8 3Zm4 15.5h.01",
+  },
+  {
+    title: "Libreng diagnostic",
+    body: "Titingnan namin ang sira at sasabihin kung ano ito. Ikaw ang magdedesisyon.",
+    // magnifier
+    icon: "M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14Zm10 17-4.5-4.5",
+  },
+  {
+    title: "Same-day repair",
+    body: "Karamihan ng repair, tapos na the same day. Uwi ka na may gumaganang phone!",
+    // check circle
+    icon: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Zm-4 9.5 3 3 5-6",
+  },
 ];
 
 export default async function PromoPage() {
@@ -97,15 +112,37 @@ export default async function PromoPage() {
             </span>
           ))}
         </div>
-        <div className="mt-10 grid grid-cols-1 gap-4 sm:grid-cols-3">
-          {STEPS.map(([n, title, body]) => (
-            <div key={n} className="card text-center">
-              <p className="text-2xl font-bold text-blue-500">{n}</p>
-              <p className="mt-1 font-semibold text-slate-800">{title}</p>
-              <p className="mt-1 text-sm text-slate-400">{body}</p>
-            </div>
-          ))}
+        <div className="mt-12 text-center">
+          <p className="kicker">Ganito kadali</p>
+          <h2 className="mt-1 text-xl font-bold text-slate-900 sm:text-2xl">3 hakbang, tapos na</h2>
         </div>
+        <ol className="mt-8 grid grid-cols-1 gap-y-8 sm:grid-cols-3 sm:gap-x-6">
+          {STEPS.map((step, i) => (
+            <li key={step.title} className="relative flex gap-4 sm:flex-col sm:items-center sm:text-center">
+              {/* connector line to the next step */}
+              {i < STEPS.length - 1 && (
+                <span
+                  aria-hidden="true"
+                  className="absolute left-7 top-16 h-[calc(100%-2rem)] w-0.5 bg-gradient-to-b from-blue-300 to-blue-100 sm:left-[calc(50%+2.5rem)] sm:top-7 sm:h-0.5 sm:w-[calc(100%-5rem+1.5rem)] sm:bg-gradient-to-r"
+                />
+              )}
+              <div className="relative shrink-0">
+                <span className="flex h-14 w-14 items-center justify-center rounded-full bg-blue-500 text-white shadow-lg shadow-blue-500/30">
+                  <svg viewBox="0 0 24 24" className="h-7 w-7" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d={step.icon} />
+                  </svg>
+                </span>
+                <span className="absolute -right-1 -top-1 flex h-6 w-6 items-center justify-center rounded-full border-2 border-white bg-amber-400 text-xs font-bold text-slate-900">
+                  {i + 1}
+                </span>
+              </div>
+              <div className="pt-1 sm:pt-0">
+                <p className="text-lg font-bold text-slate-900">{step.title}</p>
+                <p className="mt-1 text-sm leading-relaxed text-slate-500">{step.body}</p>
+              </div>
+            </li>
+          ))}
+        </ol>
       </section>
 
       <section className="border-t border-slate-200 px-4 py-12 sm:px-6">
