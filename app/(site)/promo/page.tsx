@@ -34,7 +34,7 @@ const mapsUrl = (address: string) => `https://www.google.com/maps/search/?api=1&
 
 const FIXES = ["Cracked screen", "Battery replacement", "Charging port", "Water damage", "Camera", "Back glass"];
 const STEPS = [
-  ["1", "Dalhin ang phone", "Walk in sa Cubao branch — walang appointment."],
+  ["1", "Dalhin ang phone", "Walk in sa shop — walang appointment."],
   ["2", "Libreng diagnostic", "Sasabihin namin kung ano ang sira bago ka mag-decide."],
   ["3", "Same-day repair", "Karamihan ng repair, tapos na the same day."],
 ];
@@ -56,11 +56,11 @@ export default async function PromoPage() {
             Basag o sira ang phone? <span className="brand-gradient-text">Ayusin na today.</span>
           </h1>
           <p className="mx-auto mt-4 max-w-md text-sm text-slate-500 sm:text-base">
-            Libreng diagnostic at same-day repair sa Cubao branch namin. Walk-in lang, walang appointment.
+            Libreng diagnostic at same-day repair sa shop namin. Walk-in lang, walang appointment.
           </p>
           <div className="mt-7 flex flex-col items-center justify-center gap-3 sm:flex-row">
             <PromoCta href="#branches" event="FindLocation" label="Hero - Find a branch" className="btn-primary">
-              Pumunta sa Cubao branch
+              Pumunta sa shop
             </PromoCta>
             {messenger && (
               <PromoCta href={messenger} external event="Contact" label="Hero - Messenger" className="btn-secondary">
@@ -104,13 +104,19 @@ export default async function PromoPage() {
 
       <section id="branches" className="scroll-mt-4 border-t border-slate-200 bg-slate-50 px-4 py-12 sm:px-6">
         <div className="mx-auto max-w-4xl">
-          <h2 className="text-center text-xl font-bold text-slate-900 sm:text-2xl">{single ? "Pumunta sa Cubao branch" : "Pumunta sa shop"}</h2>
+          <h2 className="text-center text-xl font-bold text-slate-900 sm:text-2xl">Pumunta sa shop</h2>
           <div className={`mt-6 grid grid-cols-1 gap-5 sm:grid-cols-2 ${single ? "sm:mx-auto sm:max-w-md sm:grid-cols-1" : ""}`}>
             {branches.map((b) => (
               <div key={b.id} className="card space-y-3">
                 <div>
-                  <p className="text-lg font-semibold text-slate-800">{b.name}</p>
-                  <p className="mt-1 text-sm text-slate-400">{b.address}</p>
+                  {single ? (
+                    <p className="text-lg font-semibold text-slate-800">{b.address}</p>
+                  ) : (
+                    <>
+                      <p className="text-lg font-semibold text-slate-800">{b.name}</p>
+                      <p className="mt-1 text-sm text-slate-400">{b.address}</p>
+                    </>
+                  )}
                 </div>
                 <div className="flex flex-col gap-2 sm:flex-row">
                   <PromoCta href={mapsUrl(b.address)} external event="FindLocation" label={`Directions - ${b.name}`} className="btn-primary flex-1 text-center">
