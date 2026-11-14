@@ -4,6 +4,7 @@ import PromoCta from "@/components/site/PromoCta";
 import PromoVideoCard from "@/components/site/PromoVideoCard";
 import AppStoreButton from "@/components/site/AppStoreButton";
 import { PROMO_VIDEOS } from "@/lib/promoVideos";
+import { PICKUP_DELIVERY_COVERAGE_LABEL } from "@/lib/homeServiceFees";
 
 // Landing page for Facebook/Instagram ads — point the ad's "Website URL" here
 // (see docs/facebook-ads.md for ready-made ad copy and UTM links). One goal:
@@ -198,11 +199,20 @@ export default async function PromoPage() {
       </section>
 
       <section className="px-4 py-12 text-center sm:px-6">
-        <p className="text-lg font-semibold text-slate-800">Hindi makapunta sa branch?</p>
-        <p className="mt-1 text-sm text-slate-400">Pupunta ang technician namin sa bahay mo.</p>
-        <div className="mt-5">
-          <PromoCta href="/request" event="Schedule" label="Book home service" className="btn-secondary">
-            Mag-book ng Home Service
+        <p className="text-lg font-semibold text-slate-800">Hindi makapunta sa shop?</p>
+        <p className="mx-auto mt-1 max-w-md text-sm text-slate-400">
+          Ipadala mo na lang ang phone sa shop sa pamamagitan ng Pickup &amp; Delivery.
+        </p>
+        <div className="mt-5 flex justify-center">
+          <PromoCta href="/pickup-delivery" event="Schedule" label="Pickup & Delivery" className="btn-primary">
+            Pickup &amp; Delivery
+          </PromoCta>
+        </div>
+        <p className="mx-auto mt-3 max-w-md text-xs text-slate-400">Pickup &amp; Delivery: {PICKUP_DELIVERY_COVERAGE_LABEL}.</p>
+        <p className="mx-auto mt-8 max-w-md text-sm text-slate-400">Mas gusto mo bang pumunta ang technician namin sa bahay mo?</p>
+        <div className="mt-3">
+          <PromoCta href="/request" event="Schedule" label="Book home service" className="text-sm text-blue-500 hover:underline">
+            Mag-book ng Home Service →
           </PromoCta>
         </div>
       </section>
