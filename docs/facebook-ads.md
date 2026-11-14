@@ -36,3 +36,13 @@ click, so you can optimise/report on them in Ads Manager:
 - Description: Book online
 
 **Creative:** a short vertical video (10–15 s) of a repair or a before/after photo of the screen; add the branch name/area in the first line.
+
+## Videos and App Store link on `/promo`
+- 3 videos (simple repair, board problem, reglass) — tap-to-play, vertical 9:16.
+  Upload to `public/videos/` as `promo-simple-repair.mp4`, `promo-board-repair.mp4`,
+  `promo-reglass.mp4`, **or** set `NEXT_PUBLIC_PROMO_VIDEO_SIMPLE_URL`,
+  `NEXT_PUBLIC_PROMO_VIDEO_BOARD_URL`, `NEXT_PUBLIC_PROMO_VIDEO_REGLASS_URL` to an
+  .mp4 / YouTube / Facebook video link. Missing videos are hidden automatically.
+  Keep each file small (compress to ~5 MB) so it loads fast on mobile data.
+- First play of each video fires the custom Pixel event `PromoVideoPlay`.
+- The App Store button uses `APP_STORE_URL` in `lib/config.ts`.

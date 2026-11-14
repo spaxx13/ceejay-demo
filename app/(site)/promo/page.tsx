@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
 import { getBranches, getSiteContent } from "@/lib/db";
 import PromoCta from "@/components/site/PromoCta";
+import PromoVideoCard from "@/components/site/PromoVideoCard";
+import AppStoreButton from "@/components/site/AppStoreButton";
+import { PROMO_VIDEOS } from "@/lib/promoVideos";
 
 // Landing page for Facebook/Instagram ads — point the ad's "Website URL" here
 // (see docs/facebook-ads.md for ready-made ad copy and UTM links). One goal:
@@ -80,6 +83,17 @@ export default async function PromoPage() {
         </div>
       </section>
 
+      <section className="border-t border-slate-200 px-4 py-12 sm:px-6">
+        <div className="mx-auto max-w-5xl">
+          <h2 className="text-center text-xl font-bold text-slate-900 sm:text-2xl">Panoorin kung paano kami mag-ayos</h2>
+          <div className="mx-auto mt-6 grid max-w-xs grid-cols-1 gap-5 sm:max-w-none sm:grid-cols-3">
+            {PROMO_VIDEOS.map((v) => (
+              <PromoVideoCard key={v.id} video={v} />
+            ))}
+          </div>
+        </div>
+      </section>
+
       <section id="branches" className="scroll-mt-4 border-t border-slate-200 bg-slate-50 px-4 py-12 sm:px-6">
         <div className="mx-auto max-w-4xl">
           <h2 className="text-center text-xl font-bold text-slate-900 sm:text-2xl">Pumunta sa shop</h2>
@@ -104,6 +118,14 @@ export default async function PromoPage() {
             ))}
             {branches.length === 0 && <p className="text-center text-sm text-slate-400">Walang branch na nakalista pa.</p>}
           </div>
+        </div>
+      </section>
+
+      <section className="border-t border-slate-200 bg-slate-50 px-4 py-12 text-center sm:px-6">
+        <p className="text-lg font-semibold text-slate-800">I-download ang Ceejay app</p>
+        <p className="mt-1 text-sm text-slate-400">Mag-book at i-track ang repair mo sa phone.</p>
+        <div className="mt-5 flex justify-center">
+          <AppStoreButton />
         </div>
       </section>
 
