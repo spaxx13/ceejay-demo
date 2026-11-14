@@ -13,7 +13,7 @@ click, so you can optimise/report on them in Ads Manager:
 
 ## Ads Manager setup
 - **Objective:** Traffic (start) → later Leads, optimising for `Lead`/`Contact`.
-- **Location:** 3–5 km radius around each branch. **Age:** 18–55. Placements: Advantage+.
+- **Location:** 3–5 km radius around the Cubao branch (the page only shows the branch whose name/address contains "Cubao" — see `PROMO_BRANCH_KEYWORD` in `app/(site)/promo/page.tsx`). **Age:** 18–55. Placements: Advantage+.
 - **Daily budget:** start ₱150–300/branch, run 3–4 days before changing anything.
 - **Website URL** (UTM so you can see which ad worked):
   `https://www.ceejayrepair.com/promo?utm_source=facebook&utm_medium=paid&utm_campaign=repair-nov&utm_content=ad1`

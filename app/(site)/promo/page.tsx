@@ -25,18 +25,26 @@ function toMessengerUrl(facebookUrl: string): string {
   }
 }
 
+// This ad drives customers to one branch only. Matched against the branch
+// name or address (case-insensitive); if nothing matches — e.g. the branch
+// was renamed — every branch is shown instead of an empty section.
+const PROMO_BRANCH_KEYWORD = "cubao";
+
 const mapsUrl = (address: string) => `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
 
 const FIXES = ["Cracked screen", "Battery replacement", "Charging port", "Water damage", "Camera", "Back glass"];
 const STEPS = [
-  ["1", "Dalhin ang phone", "Walk in sa pinakamalapit na branch — walang appointment."],
+  ["1", "Dalhin ang phone", "Walk in sa Cubao branch — walang appointment."],
   ["2", "Libreng diagnostic", "Sasabihin namin kung ano ang sira bago ka mag-decide."],
   ["3", "Same-day repair", "Karamihan ng repair, tapos na the same day."],
 ];
 
 export default async function PromoPage() {
   const [allBranches, sc] = await Promise.all([getBranches(), getSiteContent()]);
-  const branches = allBranches.filter((b) => b.active && b.address.trim());
+  const open = allBranches.filter((b) => b.active && b.address.trim());
+  const matched = open.filter((b) => `${b.name} ${b.address}`.toLowerCase().includes(PROMO_BRANCH_KEYWORD));
+  const branches = matched.length > 0 ? matched : open;
+  const single = matched.length === 1;
   const messenger = sc.facebookUrl ? toMessengerUrl(sc.facebookUrl) : "";
 
   return (
@@ -48,11 +56,11 @@ export default async function PromoPage() {
             Basag o sira ang phone? <span className="brand-gradient-text">Ayusin na today.</span>
           </h1>
           <p className="mx-auto mt-4 max-w-md text-sm text-slate-500 sm:text-base">
-            Libreng diagnostic at same-day repair sa branch namin. Walk-in lang, walang appointment.
+            Libreng diagnostic at same-day repair sa Cubao branch namin. Walk-in lang, walang appointment.
           </p>
           <div className="mt-7 flex flex-col items-center justify-center gap-3 sm:flex-row">
             <PromoCta href="#branches" event="FindLocation" label="Hero - Find a branch" className="btn-primary">
-              Hanapin ang pinakamalapit na branch
+              Pumunta sa Cubao branch
             </PromoCta>
             {messenger && (
               <PromoCta href={messenger} external event="Contact" label="Hero - Messenger" className="btn-secondary">
@@ -96,8 +104,8 @@ export default async function PromoPage() {
 
       <section id="branches" className="scroll-mt-4 border-t border-slate-200 bg-slate-50 px-4 py-12 sm:px-6">
         <div className="mx-auto max-w-4xl">
-          <h2 className="text-center text-xl font-bold text-slate-900 sm:text-2xl">Pumunta sa shop</h2>
-          <div className="mt-6 grid grid-cols-1 gap-5 sm:grid-cols-2">
+          <h2 className="text-center text-xl font-bold text-slate-900 sm:text-2xl">{single ? "Pumunta sa Cubao branch" : "Pumunta sa shop"}</h2>
+          <div className={`mt-6 grid grid-cols-1 gap-5 sm:grid-cols-2 ${single ? "sm:mx-auto sm:max-w-md sm:grid-cols-1" : ""}`}>
             {branches.map((b) => (
               <div key={b.id} className="card space-y-3">
                 <div>
