@@ -32,7 +32,24 @@ const PROMO_BRANCH_KEYWORD = "cubao";
 
 const mapsUrl = (address: string) => `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
 
-const FIXES = ["Cracked screen", "Battery replacement", "Charging port", "Water damage", "Camera", "Back glass"];
+const FIXES = [
+  "Basag na screen",
+  "Palit battery",
+  "Charging port",
+  "No power / ayaw mag-on",
+  "Water damage",
+  "Logic board / board problem",
+  "Back glass / Reglass",
+  "Back housing",
+  "Camera (front & back)",
+  "Camera lens",
+  "Software / boot loop",
+  "Data recovery",
+  "Speaker & microphone",
+  "Face ID / Touch ID",
+  "Power & volume button",
+  "Diagnostic checkup",
+];
 const STEPS = [
   ["1", "Dalhin ang phone", "Walk in sa shop — walang appointment."],
   ["2", "Libreng diagnostic", "Sasabihin namin kung ano ang sira bago ka mag-decide."],
