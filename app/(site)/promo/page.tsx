@@ -105,7 +105,7 @@ export default async function PromoPage() {
       <section id="branches" className="scroll-mt-4 border-t border-slate-200 bg-slate-50 px-4 py-12 sm:px-6">
         <div className="mx-auto max-w-4xl">
           <h2 className="text-center text-xl font-bold text-slate-900 sm:text-2xl">Pumunta sa shop</h2>
-          <div className={`mt-6 grid grid-cols-1 gap-5 sm:grid-cols-2 ${single ? "sm:mx-auto sm:max-w-md sm:grid-cols-1" : ""}`}>
+          <div className={single ? "mx-auto mt-6 max-w-md" : "mt-6 grid grid-cols-1 gap-5 sm:grid-cols-2"}>
             {branches.map((b) => (
               <div key={b.id} className="card space-y-3">
                 <div>
@@ -118,19 +118,16 @@ export default async function PromoPage() {
                     </>
                   )}
                 </div>
-                <div className="flex flex-col gap-2 sm:flex-row">
-                  <PromoCta href={mapsUrl(b.address)} external event="FindLocation" label={`Directions - ${b.name}`} className="btn-primary flex-1 text-center">
+                <div className="flex flex-col gap-2">
+                  <PromoCta href={mapsUrl(b.address)} external event="FindLocation" label={`Directions - ${b.name}`} className="btn-primary text-center">
                     Get directions
                   </PromoCta>
                   {b.contactNumber && (
-                    <PromoCta href={`tel:${b.contactNumber.replace(/\s+/g, "")}`} external event="Contact" label={`Call - ${b.name}`} className="btn-secondary flex-1 text-center">
+                    <PromoCta href={`tel:${b.contactNumber.replace(/\s+/g, "")}`} external event="Contact" label={`Call - ${b.name}`} className="btn-secondary text-center">
                       Call {b.contactNumber}
                     </PromoCta>
                   )}
                 </div>
-                <PromoCta href="/walk-in" event="Lead" label={`Pre-register - ${b.name}`} className="block text-center text-sm text-blue-500 hover:underline">
-                  Mag-pre-register muna →
-                </PromoCta>
               </div>
             ))}
             {branches.length === 0 && <p className="text-center text-sm text-slate-400">Walang branch na nakalista pa.</p>}
