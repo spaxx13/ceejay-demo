@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import { getBranches, getSiteContent } from "@/lib/db";
 import PromoCta from "@/components/site/PromoCta";
 import PromoVideoCard from "@/components/site/PromoVideoCard";
@@ -100,6 +101,18 @@ export default async function PromoPage() {
               </PromoCta>
             )}
           </div>
+          <figure className="mx-auto mt-8 max-w-md overflow-hidden rounded-2xl border border-slate-200 shadow-lg">
+            <Image
+              src="/images/promo-hero.jpg"
+              alt="Technician ng Ceejay na nag-aayos ng phone sa ilalim ng microscope"
+              width={900}
+              height={877}
+              priority
+              sizes="(max-width: 448px) 100vw, 448px"
+              className="h-auto w-full"
+            />
+            <figcaption className="bg-white px-4 py-2 text-xs text-slate-500">Technician namin habang nag-aayos</figcaption>
+          </figure>
         </div>
       </section>
 
