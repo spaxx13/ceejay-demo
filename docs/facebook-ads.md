@@ -9,7 +9,6 @@ click, so you can optimise/report on them in Ads Manager:
 | Find a branch / Get directions | `FindLocation` |
 | Messenger / Call | `Contact` |
 | Book home service (button) | `Schedule` |
-| Mag-pre-register muna (/walk-in) | `Lead` |
 | Submitted booking (form) | `Lead` (existing) |
 
 ## Ads Manager setup

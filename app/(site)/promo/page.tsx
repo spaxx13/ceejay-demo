@@ -128,9 +128,6 @@ export default async function PromoPage() {
                     </PromoCta>
                   )}
                 </div>
-                <PromoCta href="/walk-in" event="Lead" label={`Pre-register - ${b.name}`} className="block text-center text-sm text-blue-500 hover:underline">
-                  Mag-pre-register muna →
-                </PromoCta>
               </div>
             ))}
             {branches.length === 0 && <p className="text-center text-sm text-slate-400">Walang branch na nakalista pa.</p>}

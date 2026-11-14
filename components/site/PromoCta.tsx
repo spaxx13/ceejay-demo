@@ -16,7 +16,7 @@ export default function PromoCta({
   children,
 }: {
   href: string;
-  event: "Contact" | "FindLocation" | "Schedule" | "Lead";
+  event: "Contact" | "FindLocation" | "Schedule";
   label: string;
   className?: string;
   external?: boolean;
