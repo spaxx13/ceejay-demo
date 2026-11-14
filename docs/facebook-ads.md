@@ -8,7 +8,7 @@ click, so you can optimise/report on them in Ads Manager:
 | --- | --- |
 | Find a branch / Get directions | `FindLocation` |
 | Messenger / Call | `Contact` |
-| Book home service (button) | `Schedule` |
+| Book home service / Pickup & Delivery (buttons) | `Schedule` |
 | Submitted booking (form) | `Lead` (existing) |
 
 ## Ads Manager setup
