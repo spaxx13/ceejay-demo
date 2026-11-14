@@ -65,7 +65,7 @@ const STEPS = [
   },
   {
     title: "Same-day repair",
-    body: "Karamihan ng repair, tapos na the same day. Uwi ka na may gumaganang phone!",
+    body: "Karamihan ng repair, tapos na the same day.",
     // check circle
     icon: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Zm-4 9.5 3 3 5-6",
   },
