@@ -187,7 +187,12 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
         const waivedFee = req.serviceFeeWaived ? quotedServiceFee ?? 0 : 0;
         const totalAmount = Math.max(0, postAgreement.cost + Math.max(0, postAgreement.laborCost - waivedFee));
         const netAmount = Math.max(0, totalAmount - postAgreement.partsCost);
-        const technicianSharePct = technicianSharePercent(postAgreement.technicianName, technicians);
+        // A configured 100% share means this technician IS the business
+        // (an owner-technician) — their full Net Amount is company money,
+        // never a "Technician Share" payout — same convention Sales >
+        // Home Service and POS/Branch Sales already use.
+        const configuredSharePercent = technicianSharePercent(postAgreement.technicianName, technicians);
+        const technicianSharePct = configuredSharePercent >= 100 ? 0 : configuredSharePercent;
         return {
           totalAmount,
           partsCost: postAgreement.partsCost,

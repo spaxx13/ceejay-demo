@@ -1521,10 +1521,13 @@ function salesByTechnicianForMode(
       // on the job) keeps the fixed on-site 30/70 too, for the same
       // reason — there's no one to look up a configured share for.
       // A real on-site technician gets their own Settings > Technicians
-      // Earnings Share instead of the shop's default 70/30 — e.g. a
-      // 100%-share owner-technician keeps the whole visit fee + repair
-      // price, same as their POS/walk-in jobs already do via
-      // technicianSharePercent.
+      // Earnings Share instead of the shop's default 70/30. A configured
+      // 100% share means this technician IS the business (an
+      // owner-technician) — their full Net Amount is the business's own
+      // money, not a payout to a separate party, so it belongs entirely
+      // under Company Share, never Technician Share — same convention
+      // POS/Branch Sales already uses (see the "A 100% share means..."
+      // comment in app/admin/sales/page.tsx).
       let companyRate: number;
       let technicianRate: number;
       if (mode === "pickup_delivery") {
@@ -1534,7 +1537,8 @@ function salesByTechnicianForMode(
         companyRate = HOME_SERVICE_COMPANY_SHARE;
         technicianRate = HOME_SERVICE_TECHNICIAN_SHARE;
       } else {
-        technicianRate = technicianSharePercent(t.name, technicians) / 100;
+        const configuredSharePercent = technicianSharePercent(t.name, technicians);
+        technicianRate = configuredSharePercent >= 100 ? 0 : configuredSharePercent / 100;
         companyRate = 1 - technicianRate;
       }
       return {
