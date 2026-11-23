@@ -128,9 +128,9 @@ export default async function HomeServiceSalesPage({ searchParams }: { searchPar
                   <span className="text-right text-red-700">−{peso(r.partsCost)}</span>
                   <span className="font-medium text-slate-500">Net Amount</span>
                   <span className="text-right font-medium text-slate-900">{peso(r.netAmount)}</span>
-                  <span className="text-green-700">Company Share (30%)</span>
+                  <span className="text-green-700">Company Share ({100 - r.technicianSharePercent}%)</span>
                   <span className="text-right text-green-700">{peso(r.companyShare)}</span>
-                  <span className="font-medium text-blue-300">Technician Share (70%)</span>
+                  <span className="font-medium text-blue-300">Technician Share ({r.technicianSharePercent}%)</span>
                   <span className="text-right font-medium text-blue-300">{peso(r.technicianShare)}</span>
                 </div>
               </div>
@@ -147,9 +147,9 @@ export default async function HomeServiceSalesPage({ searchParams }: { searchPar
                 <span className="text-right text-red-700">−{peso(grandTotal.partsCost)}</span>
                 <span className="font-semibold text-slate-700">Net Amount</span>
                 <span className="text-right font-semibold text-slate-900">{peso(grandTotal.netAmount)}</span>
-                <span className="font-medium text-green-700">Company Share (30%)</span>
+                <span className="font-medium text-green-700">Company Share</span>
                 <span className="text-right font-medium text-green-700">{peso(grandTotal.companyShare)}</span>
-                <span className="font-medium text-blue-300">Technician Share (70%)</span>
+                <span className="font-medium text-blue-300">Technician Share</span>
                 <span className="text-right font-medium text-blue-300">{peso(grandTotal.technicianShare)}</span>
                 <span className="text-slate-500">− Business Expenses</span>
                 <span className="text-right text-red-700">−{peso(businessExpenses)}</span>
@@ -170,8 +170,8 @@ export default async function HomeServiceSalesPage({ searchParams }: { searchPar
                   <th className="pb-2 pr-3 font-medium">Total Amount</th>
                   <th className="pb-2 pr-3 font-medium">Parts/Material Cost</th>
                   <th className="pb-2 pr-3 font-medium">Net Amount</th>
-                  <th className="pb-2 pr-3 font-medium">Company Share (30%)</th>
-                  <th className="pb-2 pr-3 font-medium">Technician Share (70%)</th>
+                  <th className="pb-2 pr-3 font-medium">Company Share</th>
+                  <th className="pb-2 pr-3 font-medium">Technician Share</th>
                   <th className="pb-2 pr-3 font-medium">Business Expenses</th>
                   <th className="pb-2 font-medium">Business Share (Net)</th>
                 </tr>

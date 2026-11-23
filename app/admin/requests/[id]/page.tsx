@@ -18,8 +18,7 @@ import {
   canWaiveServiceFee,
   canEditRepairPrice,
   isBranchHidden,
-  HOME_SERVICE_COMPANY_SHARE,
-  HOME_SERVICE_TECHNICIAN_SHARE,
+  technicianSharePercent,
 } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import StatusBadge from "@/components/StatusBadge";
@@ -177,22 +176,30 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
     .filter((e) => e.field);
   const preAgreement = agreements.find((a) => a.requestId === req.id && a.phase === "pre_repair");
   const postAgreement = agreements.find((a) => a.requestId === req.id && a.phase === "post_repair");
-  // The actual 30/70 split for this job, once completed — from the
-  // Post-Repair checklist's real Repair Price/Service Fee/Parts Cost, the
-  // same figures and formula Sales > Home Service uses, so this can never
-  // disagree with that report. Distinct from the Quotation above (the
+  // The actual split for this job, once completed — from the Post-Repair
+  // checklist's real Repair Price/Service Fee/Parts Cost, the same figures
+  // and formula Sales > Home Service uses (including that technician's own
+  // configured Earnings Share, not a fixed 30/70, so this can never
+  // disagree with that report). Distinct from the Quotation above (the
   // customer-facing estimate quoted before the job was even started).
   const revenueSplit = postAgreement
     ? (() => {
         const waivedFee = req.serviceFeeWaived ? quotedServiceFee ?? 0 : 0;
         const totalAmount = Math.max(0, postAgreement.cost + Math.max(0, postAgreement.laborCost - waivedFee));
         const netAmount = Math.max(0, totalAmount - postAgreement.partsCost);
+        // A configured 100% share means this technician IS the business
+        // (an owner-technician) — their full Net Amount is company money,
+        // never a "Technician Share" payout — same convention Sales >
+        // Home Service and POS/Branch Sales already use.
+        const configuredSharePercent = technicianSharePercent(postAgreement.technicianName, technicians);
+        const technicianSharePct = configuredSharePercent >= 100 ? 0 : configuredSharePercent;
         return {
           totalAmount,
           partsCost: postAgreement.partsCost,
           netAmount,
-          companyShare: netAmount * HOME_SERVICE_COMPANY_SHARE,
-          technicianShare: netAmount * HOME_SERVICE_TECHNICIAN_SHARE,
+          technicianSharePct,
+          companyShare: netAmount * (1 - technicianSharePct / 100),
+          technicianShare: netAmount * (technicianSharePct / 100),
         };
       })()
     : null;
@@ -282,11 +289,11 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
                 <span className="text-slate-900">{peso(revenueSplit.netAmount)}</span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-green-700">Company Share (30%)</span>
+                <span className="text-green-700">Company Share ({100 - revenueSplit.technicianSharePct}%)</span>
                 <span className="font-medium text-green-700">{peso(revenueSplit.companyShare)}</span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="font-medium text-blue-300">Technician Share (70%)</span>
+                <span className="font-medium text-blue-300">Technician Share ({revenueSplit.technicianSharePct}%)</span>
                 <span className="font-semibold text-blue-300">{peso(revenueSplit.technicianShare)}</span>
               </div>
               {canEditRepairPrice(user) && postAgreement && (
