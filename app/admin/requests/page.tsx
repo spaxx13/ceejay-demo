@@ -292,7 +292,7 @@ export default async function RequestsPage({
                 <p className="mt-0.5 text-sm font-semibold text-slate-800">{peso(salesTotal.totalAmount)}</p>
               </div>
               <div className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border-2 border-green-300 bg-green-50 px-3 py-2">
-                <span className="text-xs font-semibold text-green-900">Company Share (30%)</span>
+                <span className="text-xs font-semibold text-green-900">Company Share</span>
                 <span className="break-all text-lg font-bold text-green-900">{peso(salesTotal.companyShare)}</span>
               </div>
               {salesBusinessExpenses > 0 && (

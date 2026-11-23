@@ -732,11 +732,11 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
                       <td className="py-2 pr-3 text-right font-semibold text-green-700">{peso(homeService.netAmount)}</td>
                     </tr>
                     <tr className="border-b border-slate-100">
-                      <td className="py-2 pr-3 pl-5 text-slate-500">Technician Share (70%)</td>
+                      <td className="py-2 pr-3 pl-5 text-slate-500">Technician Share</td>
                       <td className="py-2 pr-3 text-right text-amber-700">{peso(homeService.technicianShare)}</td>
                     </tr>
                     <tr className="border-b border-slate-100">
-                      <td className="py-2 pr-3 pl-5 font-semibold text-slate-700">Company Share (30%)</td>
+                      <td className="py-2 pr-3 pl-5 font-semibold text-slate-700">Company Share</td>
                       <td className="py-2 pr-3 text-right font-semibold text-green-700">{peso(homeService.companyShare)}</td>
                     </tr>
                     <tr className="border-b border-slate-100">
@@ -877,11 +877,11 @@ export default async function BranchSalesPage({ searchParams }: { searchParams: 
                       <td className="py-2 pr-3 text-right font-semibold text-green-700">{peso(grandHomeService.netAmount)}</td>
                     </tr>
                     <tr className="border-b border-slate-100">
-                      <td className="py-2 pr-3 pl-5 text-slate-500">Technician Share (70%)</td>
+                      <td className="py-2 pr-3 pl-5 text-slate-500">Technician Share</td>
                       <td className="py-2 pr-3 text-right text-amber-700">{peso(grandHomeService.technicianShare)}</td>
                     </tr>
                     <tr className="border-b border-slate-100">
-                      <td className="py-2 pr-3 pl-5 font-semibold text-slate-700">Company Share (30%)</td>
+                      <td className="py-2 pr-3 pl-5 font-semibold text-slate-700">Company Share</td>
                       <td className="py-2 pr-3 text-right font-semibold text-green-700">{peso(grandHomeService.companyShare)}</td>
                     </tr>
                     <tr className="border-b border-slate-100">

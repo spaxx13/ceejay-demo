@@ -1437,6 +1437,13 @@ export type HomeServiceSalesRow = {
   netAmount: number;
   companyShare: number;
   technicianShare: number;
+  // This row's own technician/company split, as a technician-share
+  // percentage (e.g. 70, or 100 for a full-share owner-technician) — for
+  // display only ("Technician Share (70%)"); companyShare/technicianShare
+  // above are already computed from it. A sum across multiple rows with
+  // different rates (sumHomeServiceSales) has no single percentage of its
+  // own, so this is per-row only.
+  technicianSharePercent: number;
   jobs: { deviceLabel: string; amount: number }[];
 };
 
@@ -1467,7 +1474,7 @@ function salesByTechnicianForMode(
   agreements: ServiceAgreement[],
   inRange: (date: string) => boolean,
   requests: SalesRequestPick[],
-  technicians: Pick<Technician, "name">[],
+  technicians: Pick<Technician, "name" | "earningsSharePercent">[],
   mode: "on_site" | "pickup_delivery"
 ): HomeServiceSalesRow[] {
   const requestById = new Map(requests.filter((r) => r.fulfillmentMode === mode).map((r) => [r.id, r]));
@@ -1506,9 +1513,37 @@ function salesByTechnicianForMode(
   return Array.from(totals.values())
     .map((t) => {
       const netAmount = Math.max(0, t.totalAmount - t.partsCost);
-      const companyRate = mode === "pickup_delivery" ? PICKUP_DELIVERY_COMPANY_SHARE : HOME_SERVICE_COMPANY_SHARE;
-      const technicianRate = mode === "pickup_delivery" ? PICKUP_DELIVERY_TECHNICIAN_SHARE : HOME_SERVICE_TECHNICIAN_SHARE;
-      return { ...t, netAmount, companyShare: netAmount * companyRate, technicianShare: netAmount * technicianRate };
+      // Pickup & Delivery stays the fixed 50/50 shop policy regardless of
+      // the technician's own configured share — earnings_share_percent
+      // defaults to 70 (the on-site rate), so applying it here would
+      // silently change every P&D technician's split who hasn't been
+      // individually configured for it. "Unassigned" (no real technician
+      // on the job) keeps the fixed on-site 30/70 too, for the same
+      // reason — there's no one to look up a configured share for.
+      // A real on-site technician gets their own Settings > Technicians
+      // Earnings Share instead of the shop's default 70/30 — e.g. a
+      // 100%-share owner-technician keeps the whole visit fee + repair
+      // price, same as their POS/walk-in jobs already do via
+      // technicianSharePercent.
+      let companyRate: number;
+      let technicianRate: number;
+      if (mode === "pickup_delivery") {
+        companyRate = PICKUP_DELIVERY_COMPANY_SHARE;
+        technicianRate = PICKUP_DELIVERY_TECHNICIAN_SHARE;
+      } else if (t.name === "Unassigned") {
+        companyRate = HOME_SERVICE_COMPANY_SHARE;
+        technicianRate = HOME_SERVICE_TECHNICIAN_SHARE;
+      } else {
+        technicianRate = technicianSharePercent(t.name, technicians) / 100;
+        companyRate = 1 - technicianRate;
+      }
+      return {
+        ...t,
+        netAmount,
+        companyShare: netAmount * companyRate,
+        technicianShare: netAmount * technicianRate,
+        technicianSharePercent: Math.round(technicianRate * 100),
+      };
     })
     .sort((a, b) => {
       if (a.name === "Unassigned") return 1;
@@ -1526,7 +1561,7 @@ export function homeServiceSalesByTechnician(
   agreements: ServiceAgreement[],
   inRange: (date: string) => boolean,
   requests: SalesRequestPick[] = [],
-  technicians: Pick<Technician, "name">[] = []
+  technicians: Pick<Technician, "name" | "earningsSharePercent">[] = []
 ): HomeServiceSalesRow[] {
   return salesByTechnicianForMode(agreements, inRange, requests, technicians, "on_site");
 }
@@ -1540,7 +1575,7 @@ export function pickupDeliverySalesByTechnician(
   agreements: ServiceAgreement[],
   inRange: (date: string) => boolean,
   requests: SalesRequestPick[] = [],
-  technicians: Pick<Technician, "name">[] = []
+  technicians: Pick<Technician, "name" | "earningsSharePercent">[] = []
 ): HomeServiceSalesRow[] {
   return salesByTechnicianForMode(agreements, inRange, requests, technicians, "pickup_delivery");
 }
